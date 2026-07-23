@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+source "$ROOT/scripts/common.sh"
+load_env "$ROOT"
+exec "$TAILSCALE_BIN" "$@"

@@ -27,14 +27,17 @@ gitignored `rules_of_the_land.md`, not here.
 
 - pacman keyrings (`archlinux` + `holo`) via `ensure-pacman.sh`
 - `sshd`, WOL (`wol.service` → `enable-wol.sh`)
-- OpenRGB udev rules from Flatpak + user service
+- OpenRGB udev rules from Flatpak + user service + SDK device rescan (DIMMs often need UI "Rescan devices" otherwise)
 - Sunshine user service (enable only if disabled)
 - Gear Lever Flatpak (AppImage manager on `/home`)
 
 **Manual only** (detect + print exact commands via `record_manual`):
 
 - Tailscale / Headscale re-login (do **not** auto-login; do **not** add `--ssh` unless explicitly requested)
-- Decky Loader install/restore after updates
+
+**Light checks** (no reinstall nag):
+
+- Decky: success if `~/homebrew` / PluginLoader files exist; optional warn if missing
 
 ## Script conventions
 

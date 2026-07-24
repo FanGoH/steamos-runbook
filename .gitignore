@@ -2,3 +2,5 @@
 logs/
 *.log
 rules_of_the_land.md
+__pycache__/
+*.pyc

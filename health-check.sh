@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Full post-update verification checklist (run by post-update.sh and standalone).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,10 +8,13 @@ source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 setup_user_dbus
 
-MANUAL_ACTIONS_FILE="$ROOT/logs/manual-actions-health.txt"
+MANUAL_ACTIONS_FILE="${MANUAL_ACTIONS_FILE:-$ROOT/logs/manual-actions-health.txt}"
 export MANUAL_ACTIONS_FILE
 mkdir -p "$ROOT/logs"
-: >"$MANUAL_ACTIONS_FILE"
+# Only truncate when we own a dedicated health file (post-update may already have one)
+if [ "$MANUAL_ACTIONS_FILE" = "$ROOT/logs/manual-actions-health.txt" ]; then
+  : >"$MANUAL_ACTIONS_FILE"
+fi
 
 ok() { echo "✅ $1"; }
 warn() { echo "⚠️  $1"; }
@@ -53,7 +57,8 @@ echo
 
 echo "[Networking]"
 if command -v ip >/dev/null 2>&1; then
-  ip -4 addr show scope global 2>/dev/null | awk '/inet / {print "  " $2 " on " $NF}' || true
+  ip -br addr show 2>/dev/null | sed 's/^/  /' || true
+  ip -4 addr show scope global 2>/dev/null | awk '/inet / {print "  inet " $2 " on " $NF}' || true
   default_route="$(ip route show default 2>/dev/null | head -1)"
   if [ -n "$default_route" ]; then
     ok "Default route: $default_route"
@@ -78,6 +83,11 @@ if systemctl is-enabled sshd.service >/dev/null 2>&1; then
   ok "sshd enabled"
 else
   fail "sshd not enabled"
+fi
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE ':22\s'; then
+  ok "sshd listening on :22"
+else
+  warn "Could not confirm sshd listening on :22"
 fi
 echo
 
@@ -115,17 +125,14 @@ echo "[Wake-on-LAN]"
 if [ ! -d "/sys/class/net/$STEAMOS_NIC_INTERFACE" ]; then
   fail "NIC $STEAMOS_NIC_INTERFACE not found"
 elif command -v ethtool >/dev/null 2>&1; then
-  wol="$(sudo ethtool "$STEAMOS_NIC_INTERFACE" 2>/dev/null | awk -F': ' '/Wake-on:/ {print $2}')"
+  wol="$(sudo ethtool "$STEAMOS_NIC_INTERFACE" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}' | tr -d '[:space:]')"
   if [ "$wol" = "g" ]; then
     ok "Wake-on: g on $STEAMOS_NIC_INTERFACE"
   else
     fail "Wake-on not g on $STEAMOS_NIC_INTERFACE (${wol:-unknown})"
     record_manual "Enable Wake-on-LAN" <<EOF
-cd ~/steamos-playbook
 ./scripts/ensure-wol.sh
-# or:
-sudo ./enable-wol.sh
-sudo ethtool $STEAMOS_NIC_INTERFACE | grep Wake-on
+sudo ethtool $STEAMOS_NIC_INTERFACE | grep -E '^[[:space:]]*Wake-on:'
 EOF
   fi
   if systemctl is-enabled wol.service >/dev/null 2>&1; then
@@ -158,9 +165,7 @@ if [ -f "$OPENRGB_UDEV_RULES" ]; then
 else
   fail "OpenRGB udev rules missing"
   record_manual "Install OpenRGB udev rules" <<'EOF'
-cd ~/steamos-playbook
-./scripts/install-openrgb-udev.sh
-systemctl --user restart openrgb.service
+./scripts/ensure-openrgb.sh
 EOF
 fi
 
@@ -178,6 +183,12 @@ if systemctl --user is-active openrgb.service >/dev/null 2>&1; then
   ok "openrgb.service active"
 else
   warn "openrgb.service inactive"
+fi
+
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE ":${OPENRGB_SDK_PORT:-6742}\\s"; then
+  ok "OpenRGB SDK listening on :${OPENRGB_SDK_PORT:-6742}"
+else
+  warn "OpenRGB SDK port :${OPENRGB_SDK_PORT:-6742} not listening"
 fi
 echo
 
@@ -216,15 +227,10 @@ echo
 
 echo "[Decky]"
 HOMEBREW_DIR="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}"
-if [ -d "$HOMEBREW_DIR" ] || [ -e "$HOMEBREW_DIR/services/PluginLoader" ]; then
-  ok "Decky homebrew tree present ($HOMEBREW_DIR)"
-  warn "If Game Mode menu is missing after an update, re-run the Decky installer"
+if [ -e "$HOMEBREW_DIR/services/PluginLoader" ] || [ -d "$HOMEBREW_DIR" ]; then
+  ok "Decky files present ($HOMEBREW_DIR)"
 else
-  warn "Decky Loader not detected (optional manual install)"
-  record_manual "Install Decky Loader (manual)" <<'EOF'
-curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/install_release.sh | sh
-# Then return to Game Mode and confirm the Decky menu.
-EOF
+  warn "Decky files not found (optional)"
 fi
 echo
 

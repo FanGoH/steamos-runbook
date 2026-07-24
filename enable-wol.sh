@@ -19,7 +19,9 @@ fi
 
 /usr/bin/ethtool -s "$STEAMOS_NIC_INTERFACE" wol g
 
-current_wol="$(/usr/bin/ethtool "$STEAMOS_NIC_INTERFACE" | awk -F': ' '/Wake-on:/ {print $2}')"
+current_wol="$(nic_wake_on "$STEAMOS_NIC_INTERFACE")"
+# Normalize whitespace
+current_wol="$(printf '%s' "$current_wol" | tr -d '[:space:]')"
 if [ "$current_wol" = "g" ]; then
   echo "Wake-on-LAN enabled on $STEAMOS_NIC_INTERFACE."
 else

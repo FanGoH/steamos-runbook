@@ -29,6 +29,9 @@ load_env() {
   TAILSCALE_BIN="${TAILSCALE_BIN:-/opt/tailscale/tailscale}"
   OPENRGB_FLATPAK_ID="${OPENRGB_FLATPAK_ID:-org.openrgb.OpenRGB}"
   OPENRGB_UDEV_RULES="${OPENRGB_UDEV_RULES:-/etc/udev/rules.d/60-openrgb.rules}"
+  OPENRGB_PROFILE="${OPENRGB_PROFILE:-ramoff}"
+  OPENRGB_SDK_HOST="${OPENRGB_SDK_HOST:-127.0.0.1}"
+  OPENRGB_SDK_PORT="${OPENRGB_SDK_PORT:-6742}"
   SUNSHINE_USER_SERVICE="${SUNSHINE_USER_SERVICE:-app-dev.lizardbyte.app.Sunshine.service}"
   AUR_HELPER="${AUR_HELPER:-paru}"
   GEARLEVER_FLATPAK_ID="${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}"
@@ -64,6 +67,9 @@ record_manual() {
 
 print_manual_summary() {
   local file="${1:-${MANUAL_ACTIONS_FILE:-}}"
+  if [ "${SKIP_MANUAL_SUMMARY:-0}" = "1" ]; then
+    return 0
+  fi
   if [ -z "$file" ] || [ ! -s "$file" ]; then
     echo "No manual actions needed."
     return 0
@@ -147,4 +153,10 @@ steamos_readonly_restore() {
   if [ "$previous" = "enabled" ] && command -v steamos-readonly >/dev/null 2>&1; then
     sudo steamos-readonly enable
   fi
+}
+
+# Current Wake-on mode for a NIC (exact "Wake-on:" line, not "Supports Wake-on:").
+nic_wake_on() {
+  local nic="$1"
+  ethtool "$nic" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}'
 }

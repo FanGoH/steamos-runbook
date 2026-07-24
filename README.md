@@ -20,22 +20,24 @@ cp .env.example .env
 cd ~/steamos-playbook
 git pull
 ./post-update.sh
-./health-check.sh
 ```
+
+`post-update.sh` restores services, then runs `health-check.sh` (the verification checklist) and prints failures / manual actions at the end.
 
 `post-update.sh` restores when needed:
 
 - pacman keyrings (`archlinux` + `holo`)
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
-- OpenRGB udev rules + user service
+- OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
 - Sunshine user service
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 
 Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
-- Decky Loader reinstall if the Game Mode menu is missing
+
+Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
 ### Tailscale / Headscale re-login
 

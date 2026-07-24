@@ -60,7 +60,7 @@ fi
 
 sudo systemctl restart wol.service
 
-current_wol="$(sudo ethtool "$STEAMOS_NIC_INTERFACE" | awk -F': ' '/Wake-on:/ {print $2}')"
+current_wol="$(sudo ethtool "$STEAMOS_NIC_INTERFACE" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}' | tr -d '[:space:]')"
 if [ "$current_wol" = "g" ]; then
   echo "WoL enabled on $STEAMOS_NIC_INTERFACE (Wake-on: g)."
 else

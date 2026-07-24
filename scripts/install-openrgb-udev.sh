@@ -35,6 +35,7 @@ else
   sudo cp "$rules_src" "$OPENRGB_UDEV_RULES"
   sudo udevadm control --reload-rules
   sudo udevadm trigger
+  sudo udevadm settle || true
   installed=1
   echo "Installed OpenRGB udev rules to $OPENRGB_UDEV_RULES."
 fi

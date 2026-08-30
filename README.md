@@ -30,7 +30,7 @@ git pull
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine user service
+- Sunshine (Decky-owned; systemd user-unit autostart disabled)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 
 Manual follow-ups (printed when needed):
@@ -78,7 +78,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `TAILSCALE_HOSTNAME` | Hostname on the tailnet |
 | `TAILSCALE_OPERATOR` | Operator user (usually `deck`) |
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
-| `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit |
+| `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
 
 ## Manual checks
@@ -86,7 +86,10 @@ Copy `.env.example` to `.env`. Important variables:
 ```bash
 sudo systemctl status wol.service --no-pager
 sudo ethtool "$STEAMOS_NIC_INTERFACE" | grep Wake-on
-systemctl --user list-unit-files | grep -i sunshine
+# Sunshine should NOT be enabled as a user unit (Decky starts it)
+systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
+curl -s http://127.0.0.1:47989/serverinfo
+# Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)
 ```
 
 Expected WOL: `Wake-on: g` (`active (exited)` is normal for the oneshot service).

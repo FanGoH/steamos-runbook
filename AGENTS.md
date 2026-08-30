@@ -28,7 +28,7 @@ gitignored `rules_of_the_land.md`, not here.
 - pacman keyrings (`archlinux` + `holo`) via `ensure-pacman.sh`
 - `sshd`, WOL (`wol.service` → `enable-wol.sh`)
 - OpenRGB udev rules from Flatpak + user service + SDK device rescan (DIMMs often need UI "Rescan devices" otherwise)
-- Sunshine user service (enable only if disabled)
+- Sunshine: disable Flatpak user-unit autostart; Decky Sunshine is the only starter (same Flatpak install). Clear stale `SUNSHINE_SERVER_BUSY` (Moonlight 503) via `ensure-sunshine.sh`
 - Gear Lever Flatpak (AppImage manager on `/home`)
 
 **Manual only** (detect + print exact commands via `record_manual`):

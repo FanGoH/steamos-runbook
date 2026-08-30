@@ -35,6 +35,7 @@ load_env() {
   SUNSHINE_USER_SERVICE="${SUNSHINE_USER_SERVICE:-app-dev.lizardbyte.app.Sunshine.service}"
   SUNSHINE_FLATPAK_ID="${SUNSHINE_FLATPAK_ID:-dev.lizardbyte.app.Sunshine}"
   SUNSHINE_LOG="${SUNSHINE_LOG:-/home/${STEAMOS_USER}/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine.log}"
+  SUNSHINE_STATE="${SUNSHINE_STATE:-/home/${STEAMOS_USER}/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine_state.json}"
   SUNSHINE_GAMESTREAM_URL="${SUNSHINE_GAMESTREAM_URL:-http://127.0.0.1:47989}"
   SUNSHINE_UI_URL="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
   DECKY_SUNSHINE_SETTINGS="${DECKY_SUNSHINE_SETTINGS:-/home/${STEAMOS_USER}/homebrew/settings/decky-sunshine/decky-sunshine.json}"
@@ -94,6 +95,81 @@ sunshine_systemd_enabled() {
 
 sunshine_systemd_active() {
   systemctl --user is-active "${SUNSHINE_USER_SERVICE}" >/dev/null 2>&1
+}
+
+# Probe the Web UI the same way Decky does (GET /api/apps).
+# Prints one token: OK | DOWN | NO_CREDS | UNAUTH_HASH_OK | UNAUTH_MISMATCH | UNAUTH | UNEXPECTED
+# Never prints the password or Authorization header.
+sunshine_ui_login_state() {
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  local state="${SUNSHINE_STATE:-}"
+  local ui="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
+  python3 - "$ui" "${settings:-}" "${state:-}" <<'PY'
+import base64, hashlib, json, ssl, sys, urllib.error, urllib.request
+
+ui, settings, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
+ctx = ssl._create_unverified_context()
+
+def get(path, auth=None):
+    req = urllib.request.Request(ui.rstrip("/") + path)
+    req.add_header("User-Agent", "steamos-playbook")
+    if auth:
+        req.add_header("Authorization", auth)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+            return resp.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None
+
+anon = get("/api/apps")
+if anon is None:
+    print("DOWN")
+    sys.exit(0)
+
+hdr = ""
+user = ""
+pwd = ""
+if settings:
+    try:
+        raw = json.loads(open(settings, encoding="utf-8").read())
+        hdr = raw.get("lastAuthHeader") or ""
+    except (OSError, json.JSONDecodeError):
+        hdr = ""
+if hdr.startswith("Basic "):
+    try:
+        decoded = base64.b64decode(hdr[6:]).decode("utf-8")
+        user, pwd = decoded.split(":", 1)
+    except (ValueError, UnicodeDecodeError):
+        hdr, user, pwd = "", "", ""
+
+if not hdr:
+    print("NO_CREDS")
+    sys.exit(0)
+
+authed = get("/api/apps", hdr)
+if 200 <= (authed or 0) < 400:
+    print("OK")
+    sys.exit(0)
+if authed != 401:
+    print("UNEXPECTED")
+    sys.exit(0)
+
+# 401 with stored creds: hash-check vs sunshine_state.json (sha256(password+salt)).
+hash_ok = False
+try:
+    st = json.loads(open(state_path, encoding="utf-8").read()) if state_path else {}
+    salt = st.get("salt") or ""
+    stored = (st.get("password") or "").lower()
+    uname = st.get("username") or ""
+    digest = hashlib.sha256((pwd + salt).encode()).hexdigest().lower()
+    hash_ok = bool(stored) and digest == stored and user.lower() == uname.lower()
+except (OSError, json.JSONDecodeError, TypeError):
+    hash_ok = False
+
+print("UNAUTH_HASH_OK" if hash_ok else "UNAUTH_MISMATCH" if state_path else "UNAUTH")
+PY
 }
 
 # Restart the instance that owns :47990 using Decky's stored Basic auth. Never prints the header.

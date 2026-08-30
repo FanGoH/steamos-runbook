@@ -225,6 +225,43 @@ else
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 EOF
 fi
+
+login_state="$(sunshine_ui_login_state 2>/dev/null || true)"
+case "$login_state" in
+  OK)
+    ok "Web UI login works (Decky stored creds against ${SUNSHINE_UI_URL}/api/apps)"
+    ;;
+  DOWN)
+    if [ "$gs_state" = "FREE" ] || [ "$gs_state" = "BUSY" ]; then
+      fail "Web UI not answering (${SUNSHINE_UI_URL}) while GameStream is up"
+    else
+      warn "Web UI not answering (${SUNSHINE_UI_URL})"
+    fi
+    ;;
+  NO_CREDS)
+    warn "No Decky lastAuthHeader — cannot test Web UI login"
+    ;;
+  UNAUTH_HASH_OK)
+    fail "Web UI 401 but Decky password still matches sunshine_state.json (not reset)"
+    record_manual "Restart Sunshine — credentials are valid, UI is rejecting login" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+# Then open ${SUNSHINE_UI_URL} as decky_sunshine with the existing Decky password.
+# Do not generate a new password.
+EOF
+    ;;
+  UNAUTH_MISMATCH|UNAUTH)
+    fail "Web UI login failed (Decky stored creds rejected)"
+    record_manual "Re-enter the existing Decky Sunshine password (do not generate a new one first)" <<EOF
+# Decky → Sunshine → login with the existing password
+# Confirm at ${SUNSHINE_UI_URL}
+# Only set new credentials if the Web UI itself rejects that password.
+EOF
+    ;;
+  *)
+    warn "Web UI login probe returned ${login_state:-empty}"
+    ;;
+esac
 echo
 
 echo "[Gear Lever]"

@@ -89,6 +89,7 @@ sudo ethtool "$STEAMOS_NIC_INTERFACE" | grep Wake-on
 # Sunshine should NOT be enabled as a user unit (Decky starts it)
 systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
 curl -s http://127.0.0.1:47989/serverinfo
+# Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)
 ```
 
 Expected WOL: `Wake-on: g` (`active (exited)` is normal for the oneshot service).

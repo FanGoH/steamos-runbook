@@ -91,6 +91,21 @@ fi
 
 if [ "$state" = "FREE" ]; then
   echo "Sunshine is FREE (Decky-owned). Systemd autostart is disabled."
+  login_state="$(sunshine_ui_login_state 2>/dev/null || true)"
+  echo "Web UI login: ${login_state}"
+  if [ "$login_state" = "UNAUTH_HASH_OK" ]; then
+    echo "UI 401 with a hash-matching password (zombie host). Restarting via API."
+    if sunshine_restart_via_api && wait_for_state FREE; then
+      echo "Sunshine is FREE after login-failure restart."
+      exit 0
+    fi
+    record_manual "Restart Sunshine — Web UI 401 with valid stored password" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+# Decky → Sunshine → Stop, then Start
+curl -sk -o /dev/null -w '%{http_code}\n' $SUNSHINE_UI_URL/api/apps
+EOF
+    exit 2
+  fi
   exit 0
 fi
 

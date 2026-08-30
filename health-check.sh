@@ -193,23 +193,37 @@ fi
 echo
 
 echo "[Sunshine]"
-if systemctl --user list-unit-files "$SUNSHINE_USER_SERVICE" >/dev/null 2>&1; then
-  if systemctl --user is-enabled "$SUNSHINE_USER_SERVICE" >/dev/null 2>&1; then
-    ok "$SUNSHINE_USER_SERVICE enabled"
-  else
-    fail "$SUNSHINE_USER_SERVICE not enabled"
-    record_manual "Enable Sunshine user service" <<EOF
+if sunshine_systemd_enabled || sunshine_systemd_active; then
+  fail "systemd $SUNSHINE_USER_SERVICE still enabled/active (duplicates Decky)"
+  record_manual "Disable systemd Sunshine; leave Decky as the starter" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-systemctl --user enable --now $SUNSHINE_USER_SERVICE
+./scripts/ensure-sunshine.sh
+EOF
+else
+  ok "systemd Sunshine autostart disabled (Decky owns start)"
+fi
+
+gs_state="$(sunshine_serverinfo_state 2>/dev/null || true)"
+if [ "$gs_state" = "FREE" ]; then
+  ok "GameStream SUNSHINE_SERVER_FREE"
+elif [ "$gs_state" = "BUSY" ]; then
+  if sunshine_stream_udp_up; then
+    ok "GameStream BUSY with live stream UDP (in session)"
+  else
+    fail "GameStream stale BUSY (currentgame=$(sunshine_currentgame)) — Moonlight 503"
+    record_manual "Clear stale Sunshine session" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 EOF
   fi
-  if systemctl --user is-active "$SUNSHINE_USER_SERVICE" >/dev/null 2>&1; then
-    ok "$SUNSHINE_USER_SERVICE active"
-  else
-    fail "$SUNSHINE_USER_SERVICE not active"
-  fi
 else
-  warn "Sunshine user service not found (optional)"
+  fail "GameStream not answering (${SUNSHINE_GAMESTREAM_URL})"
+  record_manual "Start Sunshine from Decky Sunshine" <<EOF
+# Decky → Sunshine → Start
+# Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
+curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
+EOF
 fi
 echo
 

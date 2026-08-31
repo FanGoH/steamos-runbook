@@ -64,6 +64,22 @@ wait_for_state() {
   return 1
 }
 
+# FREE or BUSY — GameStream is answering. startSunshine can return true
+# after a failed bwrap while :47989 is still down.
+wait_for_gamestream() {
+  local waited=0
+  local state
+  while [ "$waited" -lt "$WAIT_SECS" ]; do
+    state="$(sunshine_serverinfo_state 2>/dev/null || true)"
+    if [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
 disable_systemd_autostart
 
 # A second user-owned sunshine (Flatpak/systemd) next to Decky's root instance.
@@ -84,9 +100,36 @@ echo "GameStream state: ${state:-DOWN} currentgame=$(sunshine_currentgame || ech
 
 if [ -z "$state" ] || [ "$state" = "DOWN" ] || [ "$state" = "UNKNOWN" ]; then
   echo "Sunshine GameStream is not answering on ${SUNSHINE_GAMESTREAM_URL}."
-  echo "Decky Sunshine should start the Flatpak (privileged bwrap in Game Mode)."
-  manual_start_decky
-  exit 2
+  last_run="$(sunshine_decky_last_run_state 2>/dev/null || echo missing)"
+  echo "Decky lastRunState: ${last_run}"
+  if [ "$last_run" = "stop" ]; then
+    echo "Decky lastRunState is stop — not auto-starting."
+    manual_start_decky
+    exit 2
+  fi
+  echo "Waiting for Pulse (${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native) before asking Decky to start."
+  if sunshine_wait_for_pulse; then
+    echo "Pulse is up."
+  else
+    echo "Pulse socket not ready yet; still asking Decky to start."
+  fi
+  echo "Calling Decky Sunshine startSunshine via PluginLoader (not systemd, not /api/restart)."
+  if sunshine_start_via_decky; then
+    echo "Decky accepted startSunshine."
+  else
+    echo "Could not ask Decky to start Sunshine."
+    manual_start_decky
+    exit 2
+  fi
+  # startSunshine can return true on a flatpak-ps false positive; wait for GameStream.
+  if wait_for_gamestream; then
+    state="$(sunshine_serverinfo_state 2>/dev/null || true)"
+    echo "GameStream state after Decky start: ${state:-DOWN} currentgame=$(sunshine_currentgame || echo none)"
+  else
+    echo "GameStream still down after Decky startSunshine (boot Pulse race?)."
+    manual_start_decky
+    exit 2
+  fi
 fi
 
 if [ "$state" = "FREE" ]; then
@@ -94,14 +137,15 @@ if [ "$state" = "FREE" ]; then
   login_state="$(sunshine_ui_login_state 2>/dev/null || true)"
   echo "Web UI login: ${login_state}"
   if [ "$login_state" = "UNAUTH_HASH_OK" ]; then
-    echo "UI 401 with a hash-matching password (zombie host). Restarting via API."
-    if sunshine_restart_via_api && wait_for_state FREE; then
-      echo "Sunshine is FREE after login-failure restart."
+    echo "UI 401 with a hash-matching password (zombie host). Closing leftover app."
+    if sunshine_close_app_via_api && wait_for_state FREE; then
+      echo "Sunshine is FREE after closing leftover app."
       exit 0
     fi
-    record_manual "Restart Sunshine — Web UI 401 with valid stored password" <<EOF
+    record_manual "Close leftover Sunshine app — Web UI 401 with valid stored password" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 # Decky → Sunshine → Stop, then Start
+# Do not POST /api/restart (kills Decky's setuid Sunshine)
 curl -sk -o /dev/null -w '%{http_code}\n' $SUNSHINE_UI_URL/api/apps
 EOF
     exit 2
@@ -115,13 +159,14 @@ if sunshine_stream_udp_up; then
 fi
 
 echo "Sunshine is BUSY (currentgame=$(sunshine_currentgame)) with no stream UDP — stale session."
-echo "Restarting the Decky-owned instance via the local HTTPS API."
-if sunshine_restart_via_api; then
-  echo "Issued /api/restart."
+echo "Closing leftover app via POST /api/apps/close (do not /api/restart the Decky instance)."
+if sunshine_close_app_via_api; then
+  echo "Issued /api/apps/close."
 else
-  echo "Could not call /api/restart (missing Decky auth header?)."
-  record_manual "Restart Sunshine from Decky to clear BUSY/503" <<EOF
-# Decky → Sunshine → Stop, then Start
+  echo "Could not call /api/apps/close (missing Decky auth header?)."
+  record_manual "Close leftover Sunshine app from Decky" <<EOF
+# Decky → Sunshine → Stop the running app / Stop, then Start
+# Do not: curl .../api/restart  (kills Decky's setuid Sunshine)
 # Do not enable $SUNSHINE_USER_SERVICE
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 EOF
@@ -129,12 +174,12 @@ EOF
 fi
 
 if wait_for_state FREE; then
-  echo "Sunshine is FREE after restart."
+  echo "Sunshine is FREE after closing leftover Desktop/app."
   exit 0
 fi
 
-echo "Warning: GameStream did not return FREE after restart."
-record_manual "Confirm Sunshine from Decky after stale-session restart" <<EOF
+echo "Warning: GameStream did not return FREE after /api/apps/close."
+record_manual "Confirm Sunshine from Decky after closing leftover app" <<EOF
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 # Expect SUNSHINE_SERVER_FREE and currentgame 0
 # If still down: Decky → Sunshine → Start

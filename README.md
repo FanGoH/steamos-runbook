@@ -30,7 +30,7 @@ git pull
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; systemd user-unit autostart disabled)
+- Sunshine (Decky-owned; systemd user-unit autostart disabled; asks Decky to start if GameStream is down)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 
 Manual follow-ups (printed when needed):

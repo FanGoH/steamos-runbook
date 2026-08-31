@@ -39,6 +39,8 @@ load_env() {
   SUNSHINE_GAMESTREAM_URL="${SUNSHINE_GAMESTREAM_URL:-http://127.0.0.1:47989}"
   SUNSHINE_UI_URL="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
   DECKY_SUNSHINE_SETTINGS="${DECKY_SUNSHINE_SETTINGS:-/home/${STEAMOS_USER}/homebrew/settings/decky-sunshine/decky-sunshine.json}"
+  DECKY_LOADER_URL="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
+  DECKY_SUNSHINE_PLUGIN_NAME="${DECKY_SUNSHINE_PLUGIN_NAME:-Decky Sunshine}"
   AUR_HELPER="${AUR_HELPER:-paru}"
   GEARLEVER_FLATPAK_ID="${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}"
   FLATPAK_REMOTE="${FLATPAK_REMOTE:-flathub}"
@@ -200,6 +202,250 @@ except urllib.error.HTTPError as e:
 except (urllib.error.URLError, TimeoutError, OSError):
     sys.exit(0)
 PY
+}
+
+# Pulse unix socket Decky's setuid bwrap bind-mounts into the Sunshine Flatpak.
+sunshine_pulse_socket() {
+  printf '%s\n' "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
+}
+
+sunshine_pulse_ready() {
+  local sock
+  sock="$(sunshine_pulse_socket)"
+  [ -S "$sock" ]
+}
+
+# Wait until Pulse is listening. Decky Sunshine autostart at PluginLoader
+# boot often races this and dies with:
+#   bwrap: Can't find source path /run/user/UID/pulse/native: Permission denied
+# after which Decky still reports "Sunshine started" (flatpak ps false positive).
+sunshine_wait_for_pulse() {
+  local secs="${1:-${SUNSHINE_PULSE_WAIT_SECS:-20}}"
+  local waited=0
+  while [ "$waited" -lt "$secs" ]; do
+    if sunshine_pulse_ready; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  sunshine_pulse_ready
+}
+
+# lastRunState from Decky settings: start | stop | empty | missing
+# Never prints lastAuthHeader.
+sunshine_decky_last_run_state() {
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  [ -n "$settings" ] && [ -f "$settings" ] || { printf '%s\n' "missing"; return 1; }
+  python3 - "$settings" <<'PY'
+import json, sys
+try:
+    raw = json.loads(open(sys.argv[1], encoding="utf-8").read())
+except (OSError, json.JSONDecodeError):
+    print("missing")
+    sys.exit(1)
+state = raw.get("lastRunState")
+print("empty" if state in (None, "") else str(state))
+PY
+}
+
+# Ask PluginLoader to call Decky Sunshine startSunshine (same as the UI button).
+# Uses the legacy kwargs call — decky-sunshine ships api_version 0.
+# Briefly replaces Decky's frontend websocket; we close after the reply so
+# Steam reconnects. Never prints the CSRF token. Do not enable systemd.
+# Do not POST /api/restart (kills Decky's setuid instance).
+sunshine_start_via_decky() {
+  local loader="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
+  local plugin="${DECKY_SUNSHINE_PLUGIN_NAME:-Decky Sunshine}"
+  python3 - "$loader" "$plugin" <<'PY'
+import base64, json, os, socket, struct, sys, urllib.error, urllib.parse, urllib.request
+
+loader, plugin = sys.argv[1], sys.argv[2]
+
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def main():
+    parsed = urllib.parse.urlparse(loader)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    timeout = int(os.environ.get("SUNSHINE_DECKY_START_TIMEOUT", "90"))
+
+    try:
+        with urllib.request.urlopen(loader.rstrip("/") + "/auth/token", timeout=5) as resp:
+            token = resp.read().decode("utf-8", errors="replace").strip()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        die(f"PluginLoader not answering at {loader}: {e.__class__.__name__}")
+
+    if not token:
+        die("PluginLoader /auth/token was empty")
+
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
+    path = "/ws?" + urllib.parse.urlencode({"auth": token})
+    handshake = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        f"Upgrade: websocket\r\n"
+        f"Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        f"Sec-WebSocket-Version: 13\r\n"
+        f"\r\n"
+    ).encode("ascii")
+
+    try:
+        sock = socket.create_connection((host, port), timeout=10)
+    except OSError as e:
+        die(f"Could not connect to PluginLoader websocket: {e.__class__.__name__}")
+
+    leftover = b""
+    msg = None
+    call_id = 1
+    sock.settimeout(timeout)
+    try:
+        sock.sendall(handshake)
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
+                die("PluginLoader websocket handshake closed")
+            buf += chunk
+        header, leftover = buf.split(b"\r\n\r\n", 1)
+        status = header.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+        if " 101 " not in status:
+            die(f"PluginLoader websocket handshake failed ({status})")
+
+        def send_text(text):
+            payload = text.encode("utf-8")
+            n = len(payload)
+            hdr = bytearray([0x81])
+            if n < 126:
+                hdr.append(0x80 | n)
+            elif n < 65536:
+                hdr.append(0x80 | 126)
+                hdr.extend(struct.pack("!H", n))
+            else:
+                hdr.append(0x80 | 127)
+                hdr.extend(struct.pack("!Q", n))
+            mask = os.urandom(4)
+            masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+            sock.sendall(bytes(hdr) + mask + masked)
+
+        def need(n):
+            nonlocal leftover
+            while len(leftover) < n:
+                chunk = sock.recv(max(4096, n - len(leftover)))
+                if not chunk:
+                    raise OSError("ws closed")
+                leftover += chunk
+            data, leftover = leftover[:n], leftover[n:]
+            return data
+
+        def recv_message():
+            while True:
+                header2 = need(2)
+                opcode = header2[0] & 0x0F
+                masked = bool(header2[1] & 0x80)
+                length = header2[1] & 0x7F
+                if length == 126:
+                    length = struct.unpack("!H", need(2))[0]
+                elif length == 127:
+                    length = struct.unpack("!Q", need(8))[0]
+                mask = need(4) if masked else b""
+                payload = need(length)
+                if masked:
+                    payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+                if opcode == 0x8:
+                    return None
+                if opcode == 0x9:
+                    pn = len(payload)
+                    pmask = os.urandom(4)
+                    masked_payload = bytes(b ^ pmask[i % 4] for i, b in enumerate(payload))
+                    sock.sendall(bytes([0x8A, 0x80 | pn]) + pmask + masked_payload)
+                    continue
+                if opcode == 0xA or opcode != 0x1:
+                    continue
+                return json.loads(payload.decode("utf-8"))
+
+        send_text(json.dumps({
+            "type": 0,
+            "id": call_id,
+            "route": "loader/call_legacy_plugin_method",
+            "args": [plugin, "startSunshine", {}],
+        }))
+        msg = recv_message()
+        try:
+            sock.sendall(bytes([0x88, 0x80]) + os.urandom(4))
+        except OSError:
+            pass
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+    if not msg:
+        die("PluginLoader closed the websocket before startSunshine replied")
+    if msg.get("id") != call_id:
+        die("PluginLoader reply id mismatch")
+    if msg.get("type") == -1:
+        err = (msg.get("error") or {}).get("message") or "unknown error"
+        die(f"Decky startSunshine failed: {err}")
+    if msg.get("type") != 1:
+        die(f"Unexpected PluginLoader message type {msg.get('type')}")
+    result = msg.get("result")
+    ok = False
+    if isinstance(result, dict):
+        ok = bool(result.get("success")) and result.get("result") is True
+    elif result is True:
+        ok = True
+    sys.exit(0 if ok else 1)
+
+
+main()
+PY
+}
+
+# POST a Sunshine Web UI path using Decky's stored Basic auth. Never prints the header.
+# Usage: sunshine_ui_post /api/apps/close
+sunshine_ui_post() {
+  local path="$1"
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  local ui="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
+  [ -n "$path" ] && [ -n "$settings" ] && [ -f "$settings" ] || return 1
+  python3 - "$settings" "$ui" "$path" <<'PY'
+import json, ssl, sys, urllib.error, urllib.request
+
+settings, ui, path = sys.argv[1], sys.argv[2], sys.argv[3]
+if not path.startswith("/"):
+    path = "/" + path
+try:
+    hdr = json.loads(open(settings, encoding="utf-8").read()).get("lastAuthHeader") or ""
+except OSError:
+    sys.exit(1)
+if not hdr.startswith("Basic "):
+    sys.exit(1)
+ctx = ssl._create_unverified_context()
+req = urllib.request.Request(ui.rstrip("/") + path, method="POST", data=b"")
+req.add_header("Authorization", hdr)
+req.add_header("User-Agent", "steamos-playbook")
+req.add_header("Content-Type", "application/json")
+try:
+    with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+        sys.exit(0 if 200 <= resp.status < 400 else 1)
+except urllib.error.HTTPError as e:
+    sys.exit(0 if e.code in (200, 204) else 1)
+except (urllib.error.URLError, TimeoutError, OSError):
+    sys.exit(1)
+PY
+}
+
+# Close the leftover Desktop/game (clears SUNSHINE_SERVER_BUSY). Do not use /api/restart
+# on Decky's setuid instance — it kills listeners and leaves a defunct bwrap.
+sunshine_close_app_via_api() {
+  sunshine_ui_post "/api/apps/close"
 }
 
 # Record a copy-paste manual fix. Body is read from stdin.

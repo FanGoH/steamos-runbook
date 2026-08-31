@@ -220,8 +220,11 @@ EOF
 else
   fail "GameStream not answering (${SUNSHINE_GAMESTREAM_URL})"
   record_manual "Start Sunshine from Decky Sunshine" <<EOF
-# Decky → Sunshine → Start
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+# If that still exits 2: Decky → Sunshine → Start
 # Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
+# Do not: curl .../api/restart
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 EOF
 fi

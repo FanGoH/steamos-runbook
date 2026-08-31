@@ -79,6 +79,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `TAILSCALE_OPERATOR` | Operator user (usually `deck`) |
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
 | `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |
+| `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `startSunshine` when GameStream is down |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
 
 ## Manual checks

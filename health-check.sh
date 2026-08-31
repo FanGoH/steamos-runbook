@@ -203,6 +203,18 @@ else
   ok "systemd Sunshine autostart disabled (Decky owns start)"
 fi
 
+if systemctl --user is-enabled "${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}" >/dev/null 2>&1; then
+  ok "watch timer ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} enabled"
+else
+  fail "watch timer ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} not enabled"
+  record_manual "Enable the Sunshine watch timer (not the Flatpak Sunshine unit)" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+systemctl --user is-enabled ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}
+# Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
+EOF
+fi
+
 gs_state="$(sunshine_serverinfo_state 2>/dev/null || true)"
 if [ "$gs_state" = "FREE" ]; then
   ok "GameStream SUNSHINE_SERVER_FREE"

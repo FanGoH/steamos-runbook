@@ -30,7 +30,7 @@ git pull
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; systemd user-unit autostart disabled; asks Decky to start if GameStream is down)
+- Sunshine (Decky-owned; Flatpak systemd unit stays disabled; playbook watch timer re-asks Decky if GameStream is down)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 
 Manual follow-ups (printed when needed):
@@ -62,6 +62,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `health-check.sh` | Status report with ✅/❌ + manual actions |
 | `enable-wol.sh` | Apply Wake-on-LAN (used by `wol.service`) |
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
+| `scripts/sunshine-watch.sh` | User-timer entrypoint: health-check + Decky start if GameStream is down |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |
@@ -80,6 +81,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
 | `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |
 | `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `startSunshine` when GameStream is down |
+| `SUNSHINE_WATCH_TIMER` | Playbook watchdog timer (not the Flatpak Sunshine unit) |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
 
 ## Manual checks

@@ -16,6 +16,13 @@ setup_user_dbus
 
 WAIT_SECS="${SUNSHINE_WAIT_SECS:-25}"
 UNIT_PATH="/home/$STEAMOS_USER/.config/systemd/user/$SUNSHINE_USER_SERVICE"
+WATCH_SERVICE="${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}"
+WATCH_TIMER="${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}"
+WATCH_DIR="/home/$STEAMOS_USER/.config/systemd/user"
+WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
+WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
+WATCH_SCRIPT="$ROOT/scripts/sunshine-watch.sh"
+WATCH_LOG="$ROOT/logs/sunshine-watch.log"
 
 manual_start_decky() {
   record_manual "Start Sunshine from Decky Sunshine (do not enable systemd)" <<EOF
@@ -80,7 +87,73 @@ wait_for_gamestream() {
   return 1
 }
 
+# Playbook watchdog — not the Flatpak Sunshine unit. Re-asks Decky to start
+# after the Pulse boot race / PluginLoader restarts. Lives under /home so it
+# survives SteamOS updates.
+install_watch_timer() {
+  mkdir -p "$WATCH_DIR" "$ROOT/logs"
+  chmod +x "$WATCH_SCRIPT" 2>/dev/null || true
+
+  local desired_service desired_timer
+  desired_service="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook Sunshine health check
+After=default.target
+
+[Service]
+Type=oneshot
+Nice=10
+TimeoutStartSec=120
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$WATCH_SCRIPT
+StandardOutput=append:$WATCH_LOG
+StandardError=append:$WATCH_LOG
+EOS
+)"
+  desired_timer="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook Sunshine watchdog
+
+[Timer]
+OnStartupSec=${WATCH_ON_STARTUP_SEC}
+OnUnitActiveSec=${WATCH_INTERVAL}
+AccuracySec=15s
+Persistent=true
+Unit=$WATCH_SERVICE
+
+[Install]
+WantedBy=timers.target
+EOS
+)"
+
+  local service_path="$WATCH_DIR/$WATCH_SERVICE"
+  local timer_path="$WATCH_DIR/$WATCH_TIMER"
+  local changed=0
+  if [ ! -f "$service_path" ] || [ "$(cat "$service_path")" != "$desired_service" ]; then
+    printf '%s\n' "$desired_service" >"$service_path"
+    changed=1
+  fi
+  if [ ! -f "$timer_path" ] || [ "$(cat "$timer_path")" != "$desired_timer" ]; then
+    printf '%s\n' "$desired_timer" >"$timer_path"
+    changed=1
+  fi
+  if [ "$changed" -eq 1 ]; then
+    systemctl --user daemon-reload
+    echo "Updated $WATCH_TIMER (OnStartupSec=${WATCH_ON_STARTUP_SEC}, then every ${WATCH_INTERVAL})."
+  fi
+  if ! systemctl --user is-enabled "$WATCH_TIMER" >/dev/null 2>&1; then
+    systemctl --user enable --now "$WATCH_TIMER"
+    echo "Enabled $WATCH_TIMER."
+  elif [ "$changed" -eq 1 ]; then
+    systemctl --user restart "$WATCH_TIMER"
+    echo "Restarted $WATCH_TIMER after unit change."
+  else
+    echo "$WATCH_TIMER already enabled."
+  fi
+}
+
 disable_systemd_autostart
+install_watch_timer
 
 # A second user-owned sunshine (Flatpak/systemd) next to Decky's root instance.
 user_sunshine="$(pgrep -u "$STEAMOS_USER" -x sunshine 2>/dev/null || true)"

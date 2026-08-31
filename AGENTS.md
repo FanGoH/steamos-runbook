@@ -28,7 +28,7 @@ gitignored `rules_of_the_land.md`, not here.
 - pacman keyrings (`archlinux` + `holo`) via `ensure-pacman.sh`
 - `sshd`, WOL (`wol.service` → `enable-wol.sh`)
 - OpenRGB udev rules from Flatpak + user service + SDK device rescan (DIMMs often need UI "Rescan devices" otherwise)
-- Sunshine: disable Flatpak user-unit autostart; Decky Sunshine is the only starter (same Flatpak install). If GameStream is down and Decky `lastRunState` is `start`, `ensure-sunshine.sh` waits for Pulse then calls Decky `startSunshine` (PluginLoader WS). Do **not** enable the systemd user unit; do **not** `/api/restart` the Decky setuid instance. Clear stale `SUNSHINE_SERVER_BUSY` (Moonlight 503) via `ensure-sunshine.sh`.
+- Sunshine: disable Flatpak user-unit autostart; Decky Sunshine is the only starter (same Flatpak install). If GameStream is down and Decky `lastRunState` is `start`, `ensure-sunshine.sh` waits for Pulse then calls Decky `startSunshine` (PluginLoader WS). A user timer (`steamos-sunshine-watch.timer`) re-runs that check after login and every few minutes. Do **not** enable the Flatpak systemd user unit; do **not** `/api/restart` the Decky setuid instance. Clear stale `SUNSHINE_SERVER_BUSY` (Moonlight 503) with `POST /api/apps/close`.
 - Gear Lever Flatpak (AppImage manager on `/home`)
 
 **Manual only** (detect + print exact commands via `record_manual`):

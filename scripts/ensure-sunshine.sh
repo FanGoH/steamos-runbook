@@ -94,9 +94,9 @@ if [ "$state" = "FREE" ]; then
   login_state="$(sunshine_ui_login_state 2>/dev/null || true)"
   echo "Web UI login: ${login_state}"
   if [ "$login_state" = "UNAUTH_HASH_OK" ]; then
-    echo "UI 401 with a hash-matching password (zombie host). Restarting via API."
-    if sunshine_restart_via_api && wait_for_state FREE; then
-      echo "Sunshine is FREE after login-failure restart."
+    echo "UI 401 with a hash-matching password (zombie host). Closing leftover app."
+    if sunshine_close_app_via_api && wait_for_state FREE; then
+      echo "Sunshine is FREE after closing leftover app."
       exit 0
     fi
     record_manual "Restart Sunshine — Web UI 401 with valid stored password" <<EOF
@@ -115,13 +115,14 @@ if sunshine_stream_udp_up; then
 fi
 
 echo "Sunshine is BUSY (currentgame=$(sunshine_currentgame)) with no stream UDP — stale session."
-echo "Restarting the Decky-owned instance via the local HTTPS API."
-if sunshine_restart_via_api; then
-  echo "Issued /api/restart."
+echo "Closing leftover app via POST /api/apps/close (do not /api/restart the Decky instance)."
+if sunshine_close_app_via_api; then
+  echo "Issued /api/apps/close."
 else
-  echo "Could not call /api/restart (missing Decky auth header?)."
-  record_manual "Restart Sunshine from Decky to clear BUSY/503" <<EOF
-# Decky → Sunshine → Stop, then Start
+  echo "Could not call /api/apps/close (missing Decky auth header?)."
+  record_manual "Close leftover Sunshine app from Decky" <<EOF
+# Decky → Sunshine → Stop the running app / Stop, then Start
+# Do not: curl .../api/restart  (kills Decky's setuid Sunshine)
 # Do not enable $SUNSHINE_USER_SERVICE
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 EOF
@@ -129,12 +130,12 @@ EOF
 fi
 
 if wait_for_state FREE; then
-  echo "Sunshine is FREE after restart."
+  echo "Sunshine is FREE after closing leftover Desktop/app."
   exit 0
 fi
 
-echo "Warning: GameStream did not return FREE after restart."
-record_manual "Confirm Sunshine from Decky after stale-session restart" <<EOF
+echo "Warning: GameStream did not return FREE after /api/apps/close."
+record_manual "Confirm Sunshine from Decky after closing leftover app" <<EOF
 curl -s $SUNSHINE_GAMESTREAM_URL/serverinfo
 # Expect SUNSHINE_SERVER_FREE and currentgame 0
 # If still down: Decky → Sunshine → Start

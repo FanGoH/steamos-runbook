@@ -172,6 +172,47 @@ print("UNAUTH_HASH_OK" if hash_ok else "UNAUTH_MISMATCH" if state_path else "UNA
 PY
 }
 
+# POST a Sunshine Web UI path using Decky's stored Basic auth. Never prints the header.
+# Usage: sunshine_ui_post /api/apps/close
+# Exit 0 on HTTP 2xx or a dropped connection (some endpoints close the socket).
+sunshine_ui_post() {
+  local path="$1"
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  local ui="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
+  [ -n "$path" ] && [ -n "$settings" ] && [ -f "$settings" ] || return 1
+  python3 - "$settings" "$ui" "$path" <<'PY'
+import json, ssl, sys, urllib.error, urllib.request
+
+settings, ui, path = sys.argv[1], sys.argv[2], sys.argv[3]
+if not path.startswith("/"):
+    path = "/" + path
+try:
+    hdr = json.loads(open(settings, encoding="utf-8").read()).get("lastAuthHeader") or ""
+except OSError:
+    sys.exit(1)
+if not hdr.startswith("Basic "):
+    sys.exit(1)
+ctx = ssl._create_unverified_context()
+req = urllib.request.Request(ui.rstrip("/") + path, method="POST", data=b"")
+req.add_header("Authorization", hdr)
+req.add_header("User-Agent", "steamos-playbook")
+req.add_header("Content-Type", "application/json")
+try:
+    with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+        sys.exit(0 if 200 <= resp.status < 400 else 1)
+except urllib.error.HTTPError as e:
+    sys.exit(0 if e.code in (200, 204) else 1)
+except (urllib.error.URLError, TimeoutError, OSError):
+    sys.exit(1)
+PY
+}
+
+# Close the leftover Desktop/game (clears SUNSHINE_SERVER_BUSY). Do not use /api/restart
+# on Decky's setuid instance — it kills listeners and leaves a defunct bwrap.
+sunshine_close_app_via_api() {
+  sunshine_ui_post "/api/apps/close"
+}
+
 # Restart the instance that owns :47990 using Decky's stored Basic auth. Never prints the header.
 sunshine_restart_via_api() {
   local settings="${DECKY_SUNSHINE_SETTINGS:-}"

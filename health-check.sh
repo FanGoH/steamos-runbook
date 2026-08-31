@@ -203,16 +203,20 @@ else
   ok "systemd Sunshine autostart disabled (Decky owns start)"
 fi
 
-if systemctl --user is-enabled "${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}" >/dev/null 2>&1; then
-  ok "watch timer ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} enabled"
+if systemctl --user is-enabled "${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}" >/dev/null 2>&1 \
+  && systemctl --user is-enabled "${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}" >/dev/null 2>&1; then
+  ok "Pulse-ready start ${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path} enabled"
 else
-  fail "watch timer ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} not enabled"
-  record_manual "Enable the Sunshine watch timer (not the Flatpak Sunshine unit)" <<EOF
+  fail "Pulse-ready start units not enabled"
+  record_manual "Enable Sunshine Pulse-ready start (not the Flatpak Sunshine unit)" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-sunshine.sh
-systemctl --user is-enabled ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}
+systemctl --user is-enabled ${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}
 # Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
 EOF
+fi
+if systemctl --user is-enabled "${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}" >/dev/null 2>&1; then
+  warn "old polling ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} still enabled — re-run ensure-sunshine.sh"
 fi
 
 gs_state="$(sunshine_serverinfo_state 2>/dev/null || true)"

@@ -43,6 +43,7 @@ load_env() {
   DECKY_SUNSHINE_PLUGIN_NAME="${DECKY_SUNSHINE_PLUGIN_NAME:-Decky Sunshine}"
   SUNSHINE_WATCH_SERVICE="${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}"
   SUNSHINE_WATCH_TIMER="${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}"
+  SUNSHINE_WATCH_PATH="${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}"
   SUNSHINE_WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
   SUNSHINE_WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
   AUR_HELPER="${AUR_HELPER:-paru}"
@@ -217,6 +218,18 @@ sunshine_pulse_ready() {
   local sock
   sock="$(sunshine_pulse_socket)"
   [ -S "$sock" ]
+}
+
+# Decky's setuid bwrap bind-mounts pulse/native. Mode 700 on the pulse dir
+# makes that look like EACCES from the sandbox even when the socket exists.
+# 755 lets the sandbox reach the already world-writable socket. /run is
+# tmpfs — this must be re-applied each session.
+sunshine_open_pulse_dir() {
+  local dir
+  dir="$(dirname "$(sunshine_pulse_socket)")"
+  [ -d "$dir" ] || return 1
+  chmod 755 "$dir" 2>/dev/null || return 1
+  sunshine_pulse_ready
 }
 
 # Wait until Pulse is listening. Decky Sunshine autostart at PluginLoader

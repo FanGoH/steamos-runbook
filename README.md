@@ -30,7 +30,7 @@ git pull
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; Flatpak systemd unit stays disabled; playbook watch timer re-asks Decky if GameStream is down)
+- Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 
 Manual follow-ups (printed when needed):
@@ -62,7 +62,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `health-check.sh` | Status report with ✅/❌ + manual actions |
 | `enable-wol.sh` | Apply Wake-on-LAN (used by `wol.service`) |
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
-| `scripts/sunshine-watch.sh` | User-timer entrypoint: health-check + Decky start if GameStream is down |
+| `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, log, Decky start if GameStream is down |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |
@@ -81,7 +81,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
 | `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |
 | `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `startSunshine` when GameStream is down |
-| `SUNSHINE_WATCH_TIMER` | Playbook watchdog timer (not the Flatpak Sunshine unit) |
+| `SUNSHINE_WATCH_PATH` | Fires when Pulse appears (chmod + start); not the Flatpak Sunshine unit |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
 
 ## Manual checks
@@ -91,7 +91,7 @@ sudo systemctl status wol.service --no-pager
 sudo ethtool "$STEAMOS_NIC_INTERFACE" | grep Wake-on
 # Sunshine should NOT be enabled as a user unit (Decky starts it)
 systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
-systemctl --user is-enabled steamos-sunshine-watch.timer
+systemctl --user is-enabled steamos-sunshine-watch.path
 curl -s http://127.0.0.1:47989/serverinfo
 # Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)
 ```

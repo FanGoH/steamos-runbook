@@ -99,9 +99,10 @@ if [ "$state" = "FREE" ]; then
       echo "Sunshine is FREE after closing leftover app."
       exit 0
     fi
-    record_manual "Restart Sunshine — Web UI 401 with valid stored password" <<EOF
+    record_manual "Close leftover Sunshine app — Web UI 401 with valid stored password" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 # Decky → Sunshine → Stop, then Start
+# Do not POST /api/restart (kills Decky's setuid Sunshine)
 curl -sk -o /dev/null -w '%{http_code}\n' $SUNSHINE_UI_URL/api/apps
 EOF
     exit 2

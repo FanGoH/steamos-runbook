@@ -71,5 +71,13 @@ log "Asking Decky to start Sunshine (not systemd, not /api/restart)"
 SKIP_MANUAL_SUMMARY=1 "$ROOT/scripts/ensure-sunshine.sh"
 rc=$?
 state="$(sunshine_serverinfo_state 2>/dev/null || true)"
+if [ "$rc" -ne 0 ] && [ "$state" != "FREE" ] && [ "$state" != "BUSY" ]; then
+  log "startSunshine did not bring GameStream up (exit=$rc); retrying once"
+  sleep 2
+  sunshine_open_pulse_dir || true
+  SKIP_MANUAL_SUMMARY=1 "$ROOT/scripts/ensure-sunshine.sh"
+  rc=$?
+  state="$(sunshine_serverinfo_state 2>/dev/null || true)"
+fi
 log "After Decky start: GameStream ${state:-DOWN} ensure-sunshine exit=$rc"
 exit "$rc"

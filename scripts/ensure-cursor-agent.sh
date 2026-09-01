@@ -117,9 +117,9 @@ else
   echo "$SERVICE already enabled."
 fi
 
-if [ "$unit_changed" -eq 1 ]; then
+if [ "$unit_changed" -eq 1 ] || [ "$RUNNER" -nt "$UNIT_PATH" ]; then
   systemctl --user restart "$SERVICE" || true
-  echo "Restarted $SERVICE after unit change."
+  echo "Restarted $SERVICE after unit or runner change."
 elif systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
   echo "$SERVICE already active."
 else

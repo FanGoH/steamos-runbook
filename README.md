@@ -86,15 +86,16 @@ Copy `.env.example` to `.env`. Important variables:
 | `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `startSunshine` when GameStream is down |
 | `SUNSHINE_WATCH_PATH` | Fires when Pulse appears (chmod + start); not the Flatpak Sunshine unit |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
-| `CURSOR_WORKER_DIR` | Folder the Cursor worker serves (default `~/code`). If this is not a git checkout, each immediate child git repo is registered via `--worker-dir`. |
-| `CURSOR_WORKER_EXTRA_DIRS` | Extra `--worker-dir` paths, **space-separated** (paths with spaces are not supported). Default includes this playbook. |
+| `CURSOR_WORKER_DIR` | Folder the Cursor worker registers as its My Machines identity (default: this playbook). Must be a checkout of the repo you want to launch agents against. |
+| `CURSOR_WORKER_EXTRA_DIRS` | Extra workspace roots, **space-separated** (paths with spaces are not supported). These are additional folders on the same worker, not extra repo registrations. |
 | `CURSOR_WORKER_MGMT_ADDR` | Worker healthz listen address (default `127.0.0.1:18789`) |
 | `CURSOR_WORKER_DATA_DIR` | Worker data dir (separate from the Cursor app's default lock) |
 
-`CURSOR_WORKER_DIR` is the main tree. Add any other checkouts with `CURSOR_WORKER_EXTRA_DIRS` in `.env` — one line, paths separated by spaces:
+`CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 
 ```bash
-CURSOR_WORKER_EXTRA_DIRS=/home/deck/steamos-playbook
+CURSOR_WORKER_DIR=/home/deck/steamos-playbook
+CURSOR_WORKER_EXTRA_DIRS=/home/deck/code
 ```
 
 Then run `./scripts/ensure-cursor-agent.sh` so the worker restarts with the new roots.

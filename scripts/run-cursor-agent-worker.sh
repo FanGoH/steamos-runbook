@@ -37,6 +37,9 @@ until getent hosts api2.cursor.sh >/dev/null 2>&1; do
 done
 
 args=(worker)
+# First --worker-dir is the My Machines assignment identity (must be this
+# playbook so reboot still serves steamos-runbook). Extra dirs are additional
+# workspace roots on the same worker, not extra repo registrations.
 for d in "${worker_dirs[@]}"; do
   args+=(--worker-dir "$d")
 done

@@ -283,6 +283,59 @@ EOF
 esac
 echo
 
+echo "[Cursor Agent]"
+AGENT="$(cursor_agent_bin || true)"
+if [ -n "$AGENT" ] && [ -x "$AGENT" ]; then
+  ok "agent CLI present ($AGENT)"
+else
+  fail "Cursor agent CLI not found"
+  record_manual "Install Cursor agent CLI" <<'EOF'
+curl https://cursor.com/install -fsS | bash
+export PATH="$HOME/.local/bin:$PATH"
+EOF
+fi
+
+if [ -d "$CURSOR_WORKER_DIR" ]; then
+  ok "Worker dir present ($CURSOR_WORKER_DIR)"
+else
+  fail "Worker dir missing ($CURSOR_WORKER_DIR)"
+fi
+
+if [ -f "/home/$STEAMOS_USER/.config/systemd/user/$CURSOR_WORKER_SERVICE" ]; then
+  if systemctl --user is-enabled "$CURSOR_WORKER_SERVICE" >/dev/null 2>&1; then
+    ok "$CURSOR_WORKER_SERVICE enabled"
+  else
+    fail "$CURSOR_WORKER_SERVICE not enabled"
+    record_manual "Enable Cursor agent worker" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-cursor-agent.sh
+EOF
+  fi
+  if systemctl --user is-active "$CURSOR_WORKER_SERVICE" >/dev/null 2>&1; then
+    ok "$CURSOR_WORKER_SERVICE active"
+  else
+    fail "$CURSOR_WORKER_SERVICE not active"
+    record_manual "Start Cursor agent worker" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+agent login
+systemctl --user enable --now $CURSOR_WORKER_SERVICE
+EOF
+  fi
+else
+  fail "Cursor agent worker unit not found"
+  record_manual "Install Cursor agent worker user service" <<'EOF'
+./scripts/ensure-cursor-agent.sh
+EOF
+fi
+
+HEALTHZ="$(cursor_worker_healthz_url)"
+if command -v curl >/dev/null 2>&1 && curl -sf --max-time 2 "$HEALTHZ" >/dev/null 2>&1; then
+  ok "Worker healthz $HEALTHZ"
+else
+  warn "Worker healthz not answering ($HEALTHZ)"
+fi
+echo
+
 echo "[Gear Lever]"
 if flatpak info --user "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1 \
   || flatpak info "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1; then

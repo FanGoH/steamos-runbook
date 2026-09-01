@@ -59,6 +59,7 @@ run_step "ensure-wol" "$ROOT/scripts/ensure-wol.sh"
 run_step "ensure-openrgb" "$ROOT/scripts/ensure-openrgb.sh"
 run_step "ensure-sunshine" "$ROOT/scripts/ensure-sunshine.sh"
 run_step "ensure-gearlever" "$ROOT/scripts/ensure-gearlever.sh"
+run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn
 

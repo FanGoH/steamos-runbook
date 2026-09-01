@@ -46,6 +46,15 @@ load_env() {
   SUNSHINE_WATCH_PATH="${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}"
   SUNSHINE_WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
   SUNSHINE_WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
+  SUNSHINE_PLUGINLOADER_WAIT_SECS="${SUNSHINE_PLUGINLOADER_WAIT_SECS:-60}"
+  CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
+  CURSOR_WORKER_SERVICE="${CURSOR_WORKER_SERVICE:-cursor-agent-worker.service}"
+  CURSOR_WORKER_DIR="${CURSOR_WORKER_DIR:-/home/${STEAMOS_USER}/code}"
+  CURSOR_WORKER_EXTRA_DIRS="${CURSOR_WORKER_EXTRA_DIRS:-${STEAMOS_PLAYBOOK_DIR:-/home/${STEAMOS_USER}/steamos-playbook}}"
+  CURSOR_WORKER_NAME="${CURSOR_WORKER_NAME:-}"
+  CURSOR_WORKER_MGMT_ADDR="${CURSOR_WORKER_MGMT_ADDR:-127.0.0.1:18789}"
+  CURSOR_WORKER_IDLE_RELEASE_TIMEOUT="${CURSOR_WORKER_IDLE_RELEASE_TIMEOUT:-0}"
+  CURSOR_WORKER_DATA_DIR="${CURSOR_WORKER_DATA_DIR:-/home/${STEAMOS_USER}/.local/share/cursor-agent-systemd}"
   AUR_HELPER="${AUR_HELPER:-paru}"
   GEARLEVER_FLATPAK_ID="${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}"
   FLATPAK_REMOTE="${FLATPAK_REMOTE:-flathub}"
@@ -230,6 +239,26 @@ sunshine_open_pulse_dir() {
   [ -d "$dir" ] || return 1
   chmod 755 "$dir" 2>/dev/null || return 1
   sunshine_pulse_ready
+}
+
+# PluginLoader HTTP is what startSunshine talks to. Pulse can appear (and the
+# path unit can fire) several seconds before :1337 is accepting.
+sunshine_pluginloader_ready() {
+  local loader="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
+  curl -sf --max-time 2 "${loader%/}/auth/token" >/dev/null 2>&1
+}
+
+sunshine_wait_for_pluginloader() {
+  local secs="${1:-${SUNSHINE_PLUGINLOADER_WAIT_SECS:-60}}"
+  local waited=0
+  while [ "$waited" -lt "$secs" ]; do
+    if sunshine_pluginloader_ready; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  sunshine_pluginloader_ready
 }
 
 # Wait until Pulse is listening. Decky Sunshine autostart at PluginLoader
@@ -463,6 +492,58 @@ PY
 # on Decky's setuid instance — it kills listeners and leaves a defunct bwrap.
 sunshine_close_app_via_api() {
   sunshine_ui_post "/api/apps/close"
+}
+
+# Resolved path to the Cursor `agent` CLI, if present.
+cursor_agent_bin() {
+  if [ -n "${CURSOR_AGENT_BIN:-}" ] && [ -x "$CURSOR_AGENT_BIN" ]; then
+    printf '%s\n' "$CURSOR_AGENT_BIN"
+    return 0
+  fi
+  local home="/home/${STEAMOS_USER:-deck}"
+  if [ -x "$home/.local/bin/agent" ]; then
+    printf '%s\n' "$home/.local/bin/agent"
+    return 0
+  fi
+  command -v agent 2>/dev/null || return 1
+}
+
+# Workspace roots to pass as --worker-dir (one per line, unique).
+# If CURSOR_WORKER_DIR is a git checkout, use it. Otherwise use each immediate
+# child that is a git checkout (so My Machines can match repo remotes).
+# Falls back to CURSOR_WORKER_DIR itself when no git children exist.
+# CURSOR_WORKER_EXTRA_DIRS is space-separated (paths with spaces are not supported).
+cursor_worker_dirs() {
+  local root="${CURSOR_WORKER_DIR:-}"
+  local d found=0
+  {
+    if [ -n "$root" ] && [ -d "$root" ]; then
+      if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf '%s\n' "$root"
+        found=1
+      else
+        for d in "$root"/*; do
+          [ -d "$d" ] || continue
+          if git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            printf '%s\n' "$d"
+            found=1
+          fi
+        done
+        if [ "$found" -eq 0 ]; then
+          printf '%s\n' "$root"
+        fi
+      fi
+    fi
+    # shellcheck disable=SC2086
+    for d in ${CURSOR_WORKER_EXTRA_DIRS:-}; do
+      [ -d "$d" ] || continue
+      printf '%s\n' "$d"
+    done
+  } | awk 'NF && !seen[$0]++'
+}
+
+cursor_worker_healthz_url() {
+  printf 'http://%s/healthz\n' "${CURSOR_WORKER_MGMT_ADDR:-127.0.0.1:18789}"
 }
 
 # Record a copy-paste manual fix. Body is read from stdin.

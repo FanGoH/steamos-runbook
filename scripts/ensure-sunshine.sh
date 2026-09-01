@@ -90,6 +90,8 @@ wait_for_gamestream() {
 # chmod 755 on the Pulse dir so Decky's setuid bwrap can bind-mount the socket,
 # then start Sunshine via Decky if GameStream is still down. Path unit fires
 # when pulse/native appears; the service also runs at default.target.
+# Restart=on-failure covers the boot race where PluginLoader is not on :1337
+# yet (that used to exit in ~200ms and hit systemd start-limit).
 install_watch_units() {
   mkdir -p "$WATCH_DIR" "$ROOT/logs"
   chmod +x "$WATCH_SCRIPT" 2>/dev/null || true
@@ -106,11 +108,16 @@ install_watch_units() {
 [Unit]
 Description=SteamOS playbook Sunshine Pulse-ready start
 After=default.target pipewire-pulse.service pipewire-pulse.socket
+StartLimitIntervalSec=600
+StartLimitBurst=12
 
 [Service]
 Type=oneshot
 Nice=10
-TimeoutStartSec=120
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=15
+RemainAfterExit=yes
 Environment=XDG_RUNTIME_DIR=/run/user/%U
 ExecStart=$WATCH_SCRIPT
 StandardOutput=append:$WATCH_LOG
@@ -202,6 +209,18 @@ if [ -z "$state" ] || [ "$state" = "DOWN" ] || [ "$state" = "UNKNOWN" ]; then
     fi
   else
     echo "Pulse socket not ready yet; still asking Decky to start."
+  fi
+  if sunshine_pluginloader_ready; then
+    echo "PluginLoader is answering on ${DECKY_LOADER_URL}."
+  else
+    echo "Waiting for PluginLoader (${DECKY_LOADER_URL}) before startSunshine."
+    if sunshine_wait_for_pluginloader; then
+      echo "PluginLoader is up."
+    else
+      echo "PluginLoader still not answering after wait."
+      manual_start_decky
+      exit 2
+    fi
   fi
   echo "Calling Decky Sunshine startSunshine via PluginLoader (not systemd, not /api/restart)."
   if sunshine_start_via_decky; then

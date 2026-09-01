@@ -30,12 +30,14 @@ git pull
 - `sshd`
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down)
+- Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
+- Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
 
 Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
+- Cursor `agent login` if the worker CLI is signed out
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
@@ -62,7 +64,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `health-check.sh` | Status report with ✅/❌ + manual actions |
 | `enable-wol.sh` | Apply Wake-on-LAN (used by `wol.service`) |
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
-| `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, log, Decky start if GameStream is down |
+| `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
+| `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |
@@ -83,6 +86,26 @@ Copy `.env.example` to `.env`. Important variables:
 | `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `startSunshine` when GameStream is down |
 | `SUNSHINE_WATCH_PATH` | Fires when Pulse appears (chmod + start); not the Flatpak Sunshine unit |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
+| `CURSOR_WORKER_DIR` | Folder the Cursor worker serves (default `~/code`). If this is not a git checkout, each immediate child git repo is registered via `--worker-dir`. |
+| `CURSOR_WORKER_EXTRA_DIRS` | Extra `--worker-dir` paths, **space-separated** (paths with spaces are not supported). Default includes this playbook. |
+| `CURSOR_WORKER_MGMT_ADDR` | Worker healthz listen address (default `127.0.0.1:18789`) |
+| `CURSOR_WORKER_DATA_DIR` | Worker data dir (separate from the Cursor app's default lock) |
+
+`CURSOR_WORKER_DIR` is the main tree. Add any other checkouts with `CURSOR_WORKER_EXTRA_DIRS` in `.env` — one line, paths separated by spaces:
+
+```bash
+CURSOR_WORKER_EXTRA_DIRS=/home/deck/steamos-playbook
+```
+
+Then run `./scripts/ensure-cursor-agent.sh` so the worker restarts with the new roots.
+
+`cursor-agent-worker.service` is a user systemd unit. It is not part of the Cursor AppImage and stays running when you quit the GUI. Confirm with:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+systemctl --user is-active cursor-agent-worker.service
+curl -sf http://127.0.0.1:18789/healthz
+```
 
 ## Manual checks
 
@@ -92,6 +115,7 @@ sudo ethtool "$STEAMOS_NIC_INTERFACE" | grep Wake-on
 # Sunshine should NOT be enabled as a user unit (Decky starts it)
 systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
 systemctl --user is-enabled steamos-sunshine-watch.path
+systemctl --user status cursor-agent-worker.service --no-pager
 curl -s http://127.0.0.1:47989/serverinfo
 # Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)
 ```

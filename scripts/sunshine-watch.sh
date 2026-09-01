@@ -28,6 +28,17 @@ else
   fi
 fi
 
+if ! sunshine_pluginloader_ready; then
+  log "PluginLoader not answering yet (${DECKY_LOADER_URL})"
+  if sunshine_wait_for_pluginloader; then
+    log "PluginLoader is up"
+    sunshine_open_pulse_dir || true
+  else
+    log "PluginLoader still down after wait — systemd will retry"
+    exit 1
+  fi
+fi
+
 if sunshine_systemd_enabled || sunshine_systemd_active; then
   log "Flatpak Sunshine user unit is on; disabling via ensure-sunshine.sh"
   SKIP_MANUAL_SUMMARY=1 "$ROOT/scripts/ensure-sunshine.sh"

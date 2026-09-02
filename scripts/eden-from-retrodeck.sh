@@ -280,11 +280,13 @@ focus_eden_in_gamescope() {
   DISPLAY="$display" xdotool windowmap "$id" windowmove "$id" 0 0 \
     windowraise "$id" windowactivate "$id" 2>/dev/null || true
   make_eden_fullscreen || true
-  # Do not put STEAM_GAME on Eden. Cemu never does — ES-DE stays the Steam app.
+  # Picture: gamescope must tag the Eden window as this Steam app.
+  # Session: ES-DE keeps the same id so overlay/Exit still see RetroDECK.
+  DISPLAY="$display" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
   esde="$(esde_window_id || true)"
   if [ -n "${esde:-}" ]; then
     DISPLAY="$display" xprop -id "$esde" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
-    log "Steam identity stays on ES-DE window=$esde"
+    log "ES-DE window=$esde also tagged STEAM_GAME=$STEAM_APP_ID"
   fi
   set_gamescope_focus "$id" "$STEAM_APP_ID"
   log "focused Eden window=$id app=$STEAM_APP_ID"
@@ -319,43 +321,41 @@ eden_bin_running() {
 watch_eden_focus() {
   log "watch start"
   F11_SENT=0
-  local waited=0
+  local waited=0 presented=0 saw_retrodeck=0 overlay=0 app id
+  if retrodeck_session_alive; then
+    saw_retrodeck=1
+    log "RetroDECK/reaper present — will stop Eden if that session dies"
+  fi
+  # Always present Eden once. Skipping this when Steam is on 769 leaves a
+  # black screen (gamescope keeps compositing Big Picture).
   while [ "$waited" -lt 120 ]; do
-    if ! eden_window_id >/dev/null; then
-      sleep 0.5
-      waited=$((waited + 1))
-      continue
-    fi
-    if steam_overlay_active || [ "$(focused_app)" = "$STEAM_CLIENT_ID" ]; then
-      log "Steam already has overlay/focus — not stealing Eden"
-      break
-    fi
     if focus_eden_in_gamescope; then
+      presented=1
       break
     fi
     sleep 0.5
     waited=$((waited + 1))
   done
-  if ! eden_window_id >/dev/null; then
+  if [ "$presented" -eq 0 ]; then
     log "watch gave up waiting for Eden window"
     exit 1
   fi
-  local overlay=0 app id
-  if steam_overlay_active || [ "$(focused_app)" = "$STEAM_CLIENT_ID" ]; then
-    overlay=1
-  else
-    make_eden_fullscreen || true
-  fi
   while eden_bin_running; do
-    if ! retrodeck_session_alive; then
+    if [ "$saw_retrodeck" -eq 1 ] && ! retrodeck_session_alive; then
       log "RetroDECK/reaper gone (Steam Exit) — stopping host Eden"
       kill_our_eden
       break
     fi
     app="$(focused_app)"
-    if steam_overlay_active || [ "$app" = "$STEAM_CLIENT_ID" ]; then
+    # Overlay is STEAM_OVERLAY / STEAM_INPUT_FOCUS, not merely app 769.
+    # Treating 769 alone as overlay left Big Picture on top (no video).
+    if steam_overlay_active; then
       overlay=1
-    elif [ "$app" = "$STEAM_APP_ID" ]; then
+    elif [ "$app" != "$STEAM_APP_ID" ]; then
+      log "focus stolen (app=$app); reclaiming for video"
+      focus_eden_in_gamescope || true
+      overlay=0
+    else
       overlay=0
       if [ "$F11_SENT" -eq 0 ] && eden_chrome_visible; then
         make_eden_fullscreen || true

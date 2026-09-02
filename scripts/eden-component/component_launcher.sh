@@ -11,6 +11,8 @@ component_path="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 export XDG_CONFIG_HOME="${EDEN_XDG_CONFIG_HOME:-${HOME}/.config}"
 export XDG_DATA_HOME="${EDEN_XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${EDEN_XDG_CACHE_HOME:-${HOME}/.cache}"
+# Extracted AppRun still ships a self-updater that rewrites $APPIMAGE.
+export DISABLE_AUTO_UPDATES=1
 
 # Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
 # injects an Xbox-like pad on those IDs after it tears down Steam's
@@ -25,8 +27,8 @@ unset SDL_GAMECONTROLLER_IGNORE_DEVICES
 # launch from whichever of these is currently present.
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
 
-# Bind player 0 to the pad that is plugged in right now (Sunshine/Xbox
-# over Steam virtual). If none yet, keep the last GUID.
+# Bind player 0 to the pad that is plugged in right now (physical Xbox
+# / Steam virtual over Sunshine). If none yet, keep the last GUID.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then

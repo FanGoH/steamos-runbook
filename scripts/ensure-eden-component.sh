@@ -8,9 +8,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 
-EDEN_APPIMAGE="${EDEN_APPIMAGE:-/home/${STEAMOS_USER}/Applications/Eden.appimage}"
-COMPONENT_DIR="${EDEN_COMPONENT_DIR:-/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/retrodeck/external_components/eden}"
-CUSTOM_SYSTEMS="${EDEN_ES_CUSTOM_DIR:-/home/${STEAMOS_USER}/retrodeck/ES-DE/custom_systems}"
+# Defaults live in common.sh (EDEN_APPIMAGE = ~/AppImages/eden.appimage).
+COMPONENT_DIR="$EDEN_COMPONENT_DIR"
+CUSTOM_SYSTEMS="$EDEN_ES_CUSTOM_DIR"
 LAUNCHER_SRC="$ROOT/scripts/eden-component/component_launcher.sh"
 PATCHER_SRC="$ROOT/scripts/eden-component/patch-eden-input.py"
 SYSTEMS_SRC="$ROOT/scripts/eden-component/es_systems.xml"
@@ -18,7 +18,7 @@ FIND_SRC="$ROOT/scripts/eden-component/es_find_rules.xml"
 
 if [ ! -f "$EDEN_APPIMAGE" ]; then
   echo "Eden AppImage not found: $EDEN_APPIMAGE"
-  record_manual "Place Eden.appimage, then re-run ensure-eden-component" <<EOF
+  record_manual "Place eden.appimage, then re-run ensure-eden-component" <<EOF
 # Copy the AppImage to the default path, then:
 $ROOT/scripts/ensure-eden-component.sh
 EOF
@@ -37,7 +37,8 @@ need_extract=1
 if [ -x "$COMPONENT_DIR/AppRun" ] && [ -x "$COMPONENT_DIR/bin/eden" ] && [ -f "$stamp" ]; then
   img_m="$(stat -c %Y "$EDEN_APPIMAGE" 2>/dev/null || echo 1)"
   st_m="$(stat -c %Y "$stamp" 2>/dev/null || echo 0)"
-  if [ "$img_m" -le "$st_m" ]; then
+  prev_img="$(tail -n 1 "$stamp" 2>/dev/null || true)"
+  if [ "$img_m" -le "$st_m" ] && [ "$prev_img" = "$EDEN_APPIMAGE" ]; then
     need_extract=0
   fi
 fi
@@ -63,10 +64,17 @@ if [ "$need_extract" -eq 1 ]; then
     rm -rf "$tmp"
     exit 1
   fi
-  rm -rf "$COMPONENT_DIR"
+  # Keep the previous tree until the new copy is in place. A wipe-first
+  # extract left RetroDECK with no Eden if anything failed mid-copy.
   mkdir -p "$(dirname "$COMPONENT_DIR")"
-  cp -a "$src" "$COMPONENT_DIR"
+  rm -rf "$COMPONENT_DIR.new" "$COMPONENT_DIR.old"
+  cp -a "$src" "$COMPONENT_DIR.new"
   rm -rf "$tmp"
+  if [ -d "$COMPONENT_DIR" ]; then
+    mv "$COMPONENT_DIR" "$COMPONENT_DIR.old"
+  fi
+  mv "$COMPONENT_DIR.new" "$COMPONENT_DIR"
+  rm -rf "$COMPONENT_DIR.old"
   date -Iseconds >"$stamp"
   echo "$EDEN_APPIMAGE" >>"$stamp"
   echo "Extracted Eden component ($(du -sh "$COMPONENT_DIR" | awk '{print $1}'))."

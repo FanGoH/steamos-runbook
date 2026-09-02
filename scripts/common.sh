@@ -58,6 +58,9 @@ load_env() {
   AUR_HELPER="${AUR_HELPER:-paru}"
   GEARLEVER_FLATPAK_ID="${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}"
   FLATPAK_REMOTE="${FLATPAK_REMOTE:-flathub}"
+  EDEN_APPIMAGE="${EDEN_APPIMAGE:-/home/${STEAMOS_USER}/AppImages/eden.appimage}"
+  EDEN_COMPONENT_DIR="${EDEN_COMPONENT_DIR:-/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/retrodeck/external_components/eden}"
+  EDEN_ES_CUSTOM_DIR="${EDEN_ES_CUSTOM_DIR:-/home/${STEAMOS_USER}/retrodeck/ES-DE/custom_systems}"
 }
 
 setup_user_dbus() {

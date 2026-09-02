@@ -1,0 +1,3 @@
+#!/bin/bash
+# run_game.sh looks up systempath "Cemu-wrapper" before the bundled Cemu launcher.
+exec /var/data/retrodeck/external_components/cemu/component_launcher.sh "$@"

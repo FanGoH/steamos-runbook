@@ -2,8 +2,8 @@
 # User-side RetroDECK component launcher for Eden.
 # Installed to /var/data/retrodeck/external_components/eden/ (Flatpak XDG_DATA_HOME).
 # Small Switch dumps stay in-sandbox (Cemu-style). Dumps over 8GiB (Engage)
-# exec the host AppImage via flatpak-spawn --host — in-sandbox Eden hits
-# SteamOS earlyoom at ~12 GB RSS; standalone Game Mode already works.
+# must not -g at all: that faults the cart until earlyoom. Open host Eden
+# fullscreen instead (same as the Tender wrap); start the game from the list.
 set -euo pipefail
 
 HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"
@@ -129,12 +129,19 @@ host_exec_eden() {
   exec "${spawn[@]}" "$img" "$@"
 }
 
-if [ -n "${FLATPAK_ID:-}" ] \
-  && [ "$eden_rom_bytes" -gt "$HOST_EDEN_MIN_BYTES" ] \
-  && command -v flatpak-spawn >/dev/null \
-  && [ -f "$HOST_EDEN_APPIMAGE" ]; then
-  echo "Eden: dump ${eden_rom_bytes} bytes, exec host AppImage (earlyoom workaround)" >&2
-  host_exec_eden "$HOST_EDEN_APPIMAGE" "${args[@]}"
+if [ "$eden_rom_bytes" -gt "$HOST_EDEN_MIN_BYTES" ]; then
+  echo "Eden: dump ${eden_rom_bytes} bytes, open fullscreen UI (no -g)" >&2
+  if [ -n "${FLATPAK_ID:-}" ] \
+    && command -v flatpak-spawn >/dev/null \
+    && [ -f "$HOST_EDEN_APPIMAGE" ]; then
+    host_exec_eden "$HOST_EDEN_APPIMAGE" -f
+  fi
+  if [ -x "$component_path/AppRun" ]; then
+    exec "$component_path/AppRun" -f
+  fi
+  if [ -x "$component_path/bin/eden" ]; then
+    exec "$component_path/bin/eden" -f
+  fi
 fi
 
 if [ -x "$component_path/AppRun" ]; then

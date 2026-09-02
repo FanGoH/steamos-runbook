@@ -107,6 +107,23 @@ done <<EOF
 /home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
 EOF
 
+# Eden's standalone library scans ~/emulation/switch/games. Tender dumps live
+# under retrodeck/roms/switch — symlink so the same cart shows up without a copy.
+emu_games="/home/${STEAMOS_USER}/emulation/switch/games"
+rd_switch="/home/${STEAMOS_USER}/retrodeck/roms/switch"
+if [ -d "$rd_switch" ]; then
+  mkdir -p "$emu_games"
+  for src in "$rd_switch"/*/; do
+    [ -d "$src" ] || continue
+    name="$(basename "${src%/}")"
+    dest="$emu_games/$name"
+    if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+      ln -sfn "${src%/}" "$dest"
+      echo "Linked $dest -> $src"
+    fi
+  done
+fi
+
 # Bind player 0 to the pad that is present at launch (Sunshine/Xbox, then
 # Steam virtual). Also run from the launcher on every game start.
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"

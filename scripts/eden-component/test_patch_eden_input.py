@@ -16,6 +16,8 @@ def test_borderless_and_async() -> None:
     src = (
         "fullscreen_mode\\default=true\n"
         "fullscreen_mode=1\n"
+        "fullscreen\\default=true\n"
+        "fullscreen=false\n"
         "use_asynchronous_shaders\\default=true\n"
         "use_asynchronous_shaders=false\n"
         "enable_joycon_driver=true\n"
@@ -23,6 +25,8 @@ def test_borderless_and_async() -> None:
     out = mod.patch(src, None)
     assert "fullscreen_mode=0\n" in out
     assert "fullscreen_mode\\default=false\n" in out
+    assert "fullscreen=true\n" in out
+    assert "fullscreen\\default=false\n" in out
     assert "use_asynchronous_shaders=true\n" in out
     assert "enable_joycon_driver=false\n" in out
 

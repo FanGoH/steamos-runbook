@@ -122,6 +122,7 @@ def patch(text: str, guid: str | None) -> str:
             # still fills the nested window. Async shaders let a frame
             # present before the pipeline cache is finished.
             line = _set_kv(line, "fullscreen_mode", "0")
+            line = _set_kv(line, "fullscreen", "true")
             line = _set_kv(line, "use_asynchronous_shaders", "true")
         out.append(line)
     return "".join(out)

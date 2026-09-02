@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Bind Eden player 0 to whichever real pad is plugged in at launch.
 
-Skip motherboard LED and gamescope mouse js nodes. Prefer Sunshine's
-virtual Xbox, then any Xbox, then Steam's virtual pad, then the first
-remaining joystick. SDL GUID is USB bus + vendor/product/version with
-no name-CRC — the form Eden's UI writes for Xbox One.
+Skip motherboard LED and gamescope mouse js nodes. Prefer a physical
+Xbox (not Sunshine), then Switch Pro, then Steam's virtual pad (the
+wrapped held controller), then Sunshine, then the first remaining
+joystick. Sunshine is a fallback — it is injected even during local
+play, and Steam hides that Xbox ID from SDL. SDL GUID is USB bus +
+vendor/product/version with no name-CRC — the form Eden's UI writes
+for Xbox One.
 
 If nothing is present, leave the existing player-0 GUID (last session)
 and only keep the Joy-Con HID driver off.
@@ -47,17 +50,24 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
     return pads
 
 
+def _is_sunshine(pad: dict[str, str]) -> bool:
+    return "sunshine" in pad["name"].lower()
+
+
 def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
     if not pads:
         return None
     for pad in pads:
-        if "sunshine" in pad["name"].lower():
+        if pad["vendor"] == "045e" and not _is_sunshine(pad):
             return pad
     for pad in pads:
-        if pad["vendor"] == "045e":
+        if pad["vendor"] == "057e" and pad["product"] == "2009":
             return pad
     for pad in pads:
         if pad["vendor"] == "28de" and pad["product"] == "11ff":
+            return pad
+    for pad in pads:
+        if _is_sunshine(pad):
             return pad
     return pads[0]
 

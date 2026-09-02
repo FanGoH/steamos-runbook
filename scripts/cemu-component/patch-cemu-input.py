@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Bind Cemu player 0 to whichever real pad is plugged in at launch.
 
-Same pick order as Eden: Sunshine virtual Xbox, then any Xbox, then Steam's
-virtual pad, then the first remaining joystick. Skip motherboard LED and
-gamescope mouse js nodes.
+Same pick order as Eden: physical Xbox (not Sunshine), Switch Pro, then
+Steam's virtual pad (the wrapped held controller), then Sunshine, then
+the first remaining joystick. Skip motherboard LED and gamescope mouse
+js nodes. Sunshine is a fallback — Decky Sunshine injects a ghost Xbox
+even during local play, and Steam's IGNORE_DEVICES list hides that ID.
 
 Cemu stores SDL2 GUIDs with a CRC-16 of the device name (not Eden's CRC-less
 form). uuid is ``{index}_{guid}``; player 0 is always index 0.
@@ -65,17 +67,24 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
     return pads
 
 
+def _is_sunshine(pad: dict[str, str]) -> bool:
+    return "sunshine" in pad["name"].lower()
+
+
 def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
     if not pads:
         return None
     for pad in pads:
-        if "sunshine" in pad["name"].lower():
+        if pad["vendor"] == "045e" and not _is_sunshine(pad):
             return pad
     for pad in pads:
-        if pad["vendor"] == "045e":
+        if pad["vendor"] == "057e" and pad["product"] == "2009":
             return pad
     for pad in pads:
         if pad["vendor"] == "28de" and pad["product"] == "11ff":
+            return pad
+    for pad in pads:
+        if _is_sunshine(pad):
             return pad
     return pads[0]
 
@@ -190,11 +199,30 @@ def _self_test() -> int:
         _write_js(root, "js3", name="Microsoft X-Box 360 pad 0", vendor="28de",
                   product="11ff", version="0001")
         pad = pick_pad(list_joysticks(root))
-        assert pad is not None and "sunshine" in pad["name"].lower(), pad
-        assert sdl_guid(pad) == "03008d205e040000ea02000008040000", sdl_guid(pad)
+        assert pad is not None and pad["vendor"] == "28de", pad
+        assert sdl_guid(pad) == "030079f6de280000ff11000001000000", sdl_guid(pad)
         patched = patch(xml, cemu_uuid(pad), pad["name"])
-        assert "0_03008d205e040000ea02000008040000" in patched
-        assert "Sunshine X-Box One (virtual) pad" in patched
+        assert "0_030079f6de280000ff11000001000000" in patched
+        assert "Microsoft X-Box 360 pad 0" in patched
+
+        sunshine_only = Path(tmp) / "sunshine"
+        _write_js(sunshine_only, "js0", name="ASRock LED Controller", vendor="26ce",
+                  product="01a2", version="0110")
+        _write_js(sunshine_only, "js1", name="Sunshine X-Box One (virtual) pad",
+                  vendor="045e", product="02ea", version="0408")
+        sun = pick_pad(list_joysticks(sunshine_only))
+        assert sun is not None and _is_sunshine(sun), sun
+        assert sdl_guid(sun) == "03008d205e040000ea02000008040000", sdl_guid(sun)
+
+        physical = Path(tmp) / "physical"
+        _write_js(physical, "js0", name="Sunshine X-Box One (virtual) pad",
+                  vendor="045e", product="02ea", version="0408")
+        _write_js(physical, "js1", name="Xbox One S Controller", vendor="045e",
+                  product="02ea", version="0408")
+        _write_js(physical, "js2", name="Microsoft X-Box 360 pad 0", vendor="28de",
+                  product="11ff", version="0001")
+        real = pick_pad(list_joysticks(physical))
+        assert real is not None and real["name"] == "Xbox One S Controller", real
 
         steam_only = Path(tmp) / "steam"
         _write_js(steam_only, "js0", name="ASRock LED Controller", vendor="26ce",

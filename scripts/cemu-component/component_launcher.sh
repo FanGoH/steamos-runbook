@@ -7,6 +7,16 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
+# virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
+# Moonlight-only session can still bind Sunshine when Steam virtual is gone.
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
+export SDL_JOYSTICK_HIDAPI=0
+export SDL_HIDAPI_JOYSTICK=0
+unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
+
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"
 patcher="$here/patch-cemu-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then

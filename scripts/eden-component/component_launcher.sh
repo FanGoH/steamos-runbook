@@ -11,6 +11,8 @@ component_path="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 export XDG_CONFIG_HOME="${EDEN_XDG_CONFIG_HOME:-${HOME}/.config}"
 export XDG_DATA_HOME="${EDEN_XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${EDEN_XDG_CACHE_HOME:-${HOME}/.cache}"
+# Extracted AppRun still ships a self-updater that rewrites $APPIMAGE.
+export DISABLE_AUTO_UPDATES=1
 
 # Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
 # injects an Xbox-like pad on those IDs after it tears down Steam's

@@ -49,8 +49,11 @@ if [ "$is_retrodeck" -eq 1 ] \
     if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
-    echo "rom-launcher: ${bytes} byte Switch dump, exec host Eden (skip RetroDECK)" >&2
-    exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE" -g "$rom"
+    echo "rom-launcher: ${bytes} byte Switch dump, open host Eden UI (skip RetroDECK -g OOM)" >&2
+    # Do not pass -g: booting this cart immediately is what earlyoom kills
+    # even as a host AppImage. Standalone Game Mode works because Eden's
+    # window is up first; start Engage from the list (already in the library).
+    exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE"
   fi
 fi
 

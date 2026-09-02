@@ -34,6 +34,7 @@ git pull
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
 - Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
+- RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
 
 Manual follow-ups (printed when needed):
 
@@ -68,6 +69,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 8GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad (`rpcs3` on RetroDECK PATH; Uncharted Sixaxis) |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |

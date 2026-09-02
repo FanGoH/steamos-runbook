@@ -23,4 +23,23 @@ if [ -f "$ini" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$ini" || true
 fi
 
-exec /app/retrodeck/components/cemu/component_launcher.sh "$@"
+settings="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/settings.xml"
+if [ -f "$settings" ]; then
+  sed -i \
+    -e 's|<fullscreen>false</fullscreen>|<fullscreen>true</fullscreen>|' \
+    -e 's|<fullscreen_menubar>true</fullscreen_menubar>|<fullscreen_menubar>false</fullscreen_menubar>|' \
+    "$settings"
+fi
+
+args=("$@")
+has_fs=0
+for arg in "${args[@]+"${args[@]}"}"; do
+  case "$arg" in
+    -f|--fullscreen) has_fs=1 ;;
+  esac
+done
+if [ "$has_fs" -eq 0 ]; then
+  args+=("-f")
+fi
+
+exec /app/retrodeck/components/cemu/component_launcher.sh "${args[@]}"

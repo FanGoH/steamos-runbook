@@ -24,6 +24,32 @@ pick_switch_rom() {
   printf '%s' "${match:-}"
 }
 
+# Steam Game Mode often wipes shortcut LaunchOptions while it is running, so
+# tiles like Xenoblade / Luigi exec this wrap with an empty argv. Recover the
+# dump from SteamAppId → shortcuts.vdf AppName → ~/retrodeck/roms/switch/.
+if [ "$#" -eq 0 ]; then
+  appid="${SteamAppId:-${SteamGameId:-${SteamOverlayGameId:-}}}"
+  if [ -z "${appid:-}" ]; then
+    echo "rom-launcher: no args and no SteamAppId (empty LaunchOptions)" >&2
+    exit 1
+  fi
+  lo_py="$PLAYBOOK/scripts/eden-component/set-steam-launch-options.py"
+  if [ ! -f "$lo_py" ]; then
+    echo "rom-launcher: missing $lo_py" >&2
+    exit 1
+  fi
+  resolved="$(python3 "$lo_py" --rom-for-appid "$appid")" || {
+    echo "rom-launcher: no Switch dump for SteamAppId=$appid" >&2
+    exit 1
+  }
+  if [ ! -f "$resolved" ]; then
+    echo "rom-launcher: SteamAppId=$appid resolved to missing $resolved" >&2
+    exit 1
+  fi
+  echo "rom-launcher: empty LaunchOptions, SteamAppId=$appid -> $resolved" >&2
+  set -- flatpak run net.retrodeck.retrodeck -e '%EMULATOR_RYUBING% %ROM%' "$resolved"
+fi
+
 rom=""
 for arg in "$@"; do
   case "$arg" in

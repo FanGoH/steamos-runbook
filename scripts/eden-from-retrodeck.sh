@@ -347,9 +347,17 @@ watch_eden_focus() {
       break
     fi
     app="$(focused_app)"
-    # Overlay is STEAM_OVERLAY / STEAM_INPUT_FOCUS, not merely app 769.
-    # Treating 769 alone as overlay left Big Picture on top (no video).
+    # Host Eden is outside Steam's launch tree, so Steam sets
+    # STEAM_INPUT_FOCUS but does not move FOCUSED_APP to 769 (overlay
+    # never paints). Do that split ourselves: input=769, gfx stays Eden.
     if steam_overlay_active; then
+      if [ "$overlay" -eq 0 ]; then
+        DISPLAY="${DISPLAY:-:0}" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
+        DISPLAY="${DISPLAY:-:0}" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_APP_ID" 2>/dev/null || true
+        log "overlay atoms on — FOCUSED_APP=769 gfx=$STEAM_APP_ID"
+        overlay=1
+      fi
+    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
       overlay=1
     elif [ "$app" != "$STEAM_APP_ID" ]; then
       log "focus stolen (app=$app); reclaiming for video"

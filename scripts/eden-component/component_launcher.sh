@@ -51,13 +51,15 @@ prev=""
 for arg in "$@"; do
   if [ "$prev" = "-g" ] || [ "$prev" = "--game" ]; then
     if [ -d "$arg" ]; then
-      # Prefer a cart .xci over tiny DLC .nsp files in the same folder.
-      match="$(find "$arg" -maxdepth 1 -type f -iname '*.xci' -printf '%s %p\n' 2>/dev/null \
+      # Recurse: Luigi/Xenoblade dumps live in subfolders. Skip .rar (Tender
+      # sometimes stores the archive as file_path) and DLC nsps.
+      match="$(find "$arg" -type f -iname '*.xci' -printf '%s %p\n' 2>/dev/null \
         | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
       if [ -z "${match:-}" ]; then
-        match="$(find "$arg" -maxdepth 1 -type f \( \
+        match="$(find "$arg" -type f \( \
           -iname '*.nsp' -o -iname '*.nca' -o -iname '*.nro' -o -iname '*.nso' \
-        \) -printf '%s %p\n' 2>/dev/null \
+        \) ! -iname '*DLC*' ! -iname '*Multiplayer Pack*' \
+          -printf '%s %p\n' 2>/dev/null \
           | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
       fi
       args+=("${match:-$arg}")
@@ -71,18 +73,19 @@ for arg in "$@"; do
 done
 
 has_game=0
+has_fs=0
 filtered=()
 for arg in "${args[@]+"${args[@]}"}"; do
   case "$arg" in
     -g|--game) has_game=1; filtered+=("$arg") ;;
-    # Standalone Eden in Game Mode works without -f. Forcing it here
-    # keeps Steam on Launching until a first frame and is what earlyoom
-    # kills on big dumps. Do not add it; strip it if ES-DE passed one.
-    -f|--fullscreen) ;;
+    -f|--fullscreen) has_fs=1; filtered+=("$arg") ;;
     *) filtered+=("$arg") ;;
   esac
 done
 args=("${filtered[@]+"${filtered[@]}"}")
+if [ "$has_fs" -eq 0 ]; then
+  args=("-f" "${args[@]+"${args[@]}"}")
+fi
 
 # Official ES-DE line is `%EMULATOR_EDEN% %ROM%` with no -g.
 if [ "$has_game" -eq 0 ] && [ "${#args[@]}" -ge 1 ]; then

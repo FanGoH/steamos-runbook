@@ -10,16 +10,40 @@ HOST_EDEN_MIN_BYTES=$((8 * 1024 * 1024 * 1024))
 PLAYBOOK="${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}"
 PATCHER="$PLAYBOOK/scripts/eden-component/patch-eden-input.py"
 
+pick_switch_rom() {
+  local dir="$1"
+  local match
+  match="$(find "$dir" -type f -iname '*.xci' -printf '%s %p\n' 2>/dev/null \
+    | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
+  if [ -z "${match:-}" ]; then
+    match="$(find "$dir" -type f -iname '*.nsp' \
+      ! -iname '*DLC*' ! -iname '*Multiplayer Pack*' \
+      -printf '%s %p\n' 2>/dev/null \
+      | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
+  fi
+  printf '%s' "${match:-}"
+}
+
 rom=""
 for arg in "$@"; do
   case "$arg" in
-    *.xci|*.XCI|*.nsp|*.NSP)
+    *.xci|*.XCI|*.nsp|*.NSP|*.rar|*.RAR)
       if [ -f "$arg" ]; then
         rom="$arg"
+      elif [ -d "$(dirname "$arg")" ]; then
+        rom="$(pick_switch_rom "$(dirname "$arg")")"
+      fi
+      ;;
+    *)
+      if [ -z "$rom" ] && [ -d "$arg" ]; then
+        rom="$(pick_switch_rom "$arg")"
       fi
       ;;
   esac
 done
+if [ -n "$rom" ] && [[ "$rom" == *.rar || "$rom" == *.RAR ]]; then
+  rom="$(pick_switch_rom "$(dirname "$rom")")"
+fi
 
 is_retrodeck=0
 for arg in "$@"; do

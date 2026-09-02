@@ -130,6 +130,7 @@ eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
 if [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"
 fi
+python3 "$PATCHER_SRC" --ensure-fps-mods || true
 engage_custom="/home/${STEAMOS_USER}/.config/eden/custom/0100A6301214E000.ini"
 if [ -f "$engage_custom" ]; then
   python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"

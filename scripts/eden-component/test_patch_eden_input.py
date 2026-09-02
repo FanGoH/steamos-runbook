@@ -46,6 +46,38 @@ def test_pin_4gb_overrides_global() -> None:
     assert "memory_layout_mode=0\n" in out
 
 
+def test_ensure_fps_mods_copies_atmosphere_ips() -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td)
+        game = home / "retrodeck/roms/switch/Luigi's Mansion 3"
+        ips_dir = game / "exefs_patches/LM360FPS"
+        ips_dir.mkdir(parents=True)
+        (game / "Luigi’s Mansion 3[0100DCA0064A6000][US][v0].nsp").write_bytes(
+            b"nsp"
+        )
+        (game / "Luigi’s Mansion 3[0100DCA0064A6800][US][v327680].nsp").write_bytes(
+            b"upd"
+        )
+        ips = (
+            ips_dir
+            / "79E5950FFA85ACF63E28C9AEC051EAC27D6F7F8D000000000000000000000000.ips"
+        )
+        ips.write_bytes(b"IPS32stub")
+        placed = mod.ensure_fps_mods(home)
+        dest = (
+            home
+            / ".local/share/eden/load/0100DCA0064A6000/LM360FPS/exefs"
+            / ips.name
+        )
+        assert dest.is_file()
+        assert dest.read_bytes() == b"IPS32stub"
+        assert any("LM360FPS" in p for p in placed)
+        assert not (home / ".local/share/eden/load/0100DCA0064A6800").exists()
+        assert mod.ensure_fps_mods(home) == []
+
+
 def test_sdl_guid_stable() -> None:
     assert mod.sdl_guid("28de", "11ff", "0001") == (
         "03000000de280000ff11000001000000"
@@ -56,4 +88,5 @@ if __name__ == "__main__":
     test_borderless_and_async()
     test_pin_4gb_overrides_global()
     test_sdl_guid_stable()
+    test_ensure_fps_mods_copies_atmosphere_ips()
     print("ok")

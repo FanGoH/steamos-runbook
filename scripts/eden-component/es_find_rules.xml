@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!--
+  Official RetroDECK already looks here:
+  /var/data/retrodeck/external_components/eden/component_launcher.sh
+  Custom rules override the bundled EDEN entries, so point at that launcher
+  and do not list the host AppImage (FUSE/dwarfs often fails in the sandbox).
+-->
+<ruleList>
+  <emulator name="EDEN">
+    <rule type="staticpath">
+      <entry>/var/data/retrodeck/external_components/eden/component_launcher.sh</entry>
+    </rule>
+  </emulator>
+</ruleList>

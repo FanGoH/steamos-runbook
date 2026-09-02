@@ -21,6 +21,9 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
+- Game Mode: Cemu works because it stays **inside** RetroDECK (`%EMULATOR_CEMU%` → `component_launcher.sh` under `reaper SteamLaunch`). ES-DE stays mapped on DISPLAY=:1; that window is Steam’s game identity. Overlay is `STEAM_OVERLAY=1` with `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>`. Steam Exit kills the reaper tree.
+- Switch on this box: install Eden into RetroDECK’s user slot (`/var/data/retrodeck/external_components/eden/`) via `scripts/ensure-eden-component.sh`. ES-DE must use `%EMULATOR_EDEN%` — **not** `%EMULATOR_FLATPAK-SPAWN% --host`. Host spawn drops Game Mode env and makes overlay/Exit attach to RetroDECK while Eden is a foreign process. `%INJECT%` (old Ponzu/Yuzu “retroinject”) only adds per-game argv from a `.esprefix` file; it does not install an emulator. Ponzu is gone as of RetroDECK 0.10.
+
 ## Automation vs manual
 
 **Auto when possible** (`ensure-*.sh` from `post-update.sh`):

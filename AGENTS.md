@@ -21,6 +21,9 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
+- Game Mode: Cemu works because it stays **inside** RetroDECK (`%EMULATOR_CEMU%` → `component_launcher.sh` under `reaper SteamLaunch`). ES-DE stays mapped on DISPLAY=:1; that window is Steam’s game identity. Overlay is `STEAM_OVERLAY=1` with `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>`. Steam Exit kills the reaper tree.
+- Switch on this box: install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_components/eden/`) via `scripts/ensure-eden-component.sh`, and a shim at `external_components/ryubing/` because bundled linux `es_systems.xml` still lists `%EMULATOR_RYUBING%` first and `run_game.sh` (Steam/Tender shortcuts without `-e`) uses that file, not `custom_systems`. Do **not** use [iAbuser/RetroInjector](https://github.com/iAbuser/RetroInjector). ES-DE UI must use `%EMULATOR_EDEN%` — **not** `%EMULATOR_FLATPAK-SPAWN% --host`. On each Eden launch, bind player 0 to the current joystick (prefer Sunshine/Xbox `045e:*`, then Steam virtual `28de:11ff`; skip ASRock LED). Do **not** inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Use `ALLOW_STEAM_VIRTUAL_GAMEPAD=1`, hidapi off, `IGNORE_DEVICES_EXCEPT` for Steam virtual + Xbox + Switch Pro, `enable_joycon_driver=false`. If no pad is present yet, keep the last GUID.
+
 ## Automation vs manual
 
 **Auto when possible** (`ensure-*.sh` from `post-update.sh`):

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!--
+  Switch via in-sandbox Eden (same launch model as Cemu).
+  Do not use %EMULATOR_FLATPAK-SPAWN% --host here — that drops Game Mode
+  env and leaves Steam overlay/Exit attached to RetroDECK while Eden is
+  a foreign host process.
+
+  Not iAbuser/RetroInjector (that sudo-copies cooker tarballs into the
+  Flatpak files dir and is wiped by Flatpak updates). Official RetroDECK
+  already searches external_components/. %INJECT% is only extra argv from
+  a per-game .esprefix file.
+-->
+<systemList>
+  <system>
+    <name>switch</name>
+    <fullname>Nintendo Switch</fullname>
+    <path>%ROMPATH%/switch</path>
+    <extension>.nca .NCA .nro .NRO .nso .NSO .nsp .NSP .xci .XCI</extension>
+    <command label="Eden (Standalone)">%EMULATOR_EDEN% -g %ROM%</command>
+    <platform>switch</platform>
+    <theme>switch</theme>
+  </system>
+</systemList>

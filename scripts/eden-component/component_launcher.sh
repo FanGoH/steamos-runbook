@@ -63,13 +63,18 @@ for arg in "$@"; do
 done
 
 has_game=0
-has_fs=0
+filtered=()
 for arg in "${args[@]+"${args[@]}"}"; do
   case "$arg" in
-    -g|--game) has_game=1 ;;
-    -f|--fullscreen) has_fs=1 ;;
+    -g|--game) has_game=1; filtered+=("$arg") ;;
+    # Standalone Eden in Game Mode works without -f. Forcing it here
+    # keeps Steam on Launching until a first frame and is what earlyoom
+    # kills on big dumps. Do not add it; strip it if ES-DE passed one.
+    -f|--fullscreen) ;;
+    *) filtered+=("$arg") ;;
   esac
 done
+args=("${filtered[@]+"${filtered[@]}"}")
 
 # Official ES-DE line is `%EMULATOR_EDEN% %ROM%` with no -g.
 if [ "$has_game" -eq 0 ] && [ "${#args[@]}" -ge 1 ]; then
@@ -80,11 +85,6 @@ if [ "$has_game" -eq 0 ] && [ "${#args[@]}" -ge 1 ]; then
       args=("-g" "$rom" "${args[@]:1}")
       ;;
   esac
-fi
-
-# Append, do not prepend: some AppImage stubs treat a leading -f as their own flag.
-if [ "$has_fs" -eq 0 ]; then
-  args+=("-f")
 fi
 
 if [ -x "$component_path/AppRun" ]; then

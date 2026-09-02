@@ -1,8 +1,14 @@
 #!/bin/bash
 # User-side RetroDECK component launcher for Eden.
 # Installed to /var/data/retrodeck/external_components/eden/ (Flatpak XDG_DATA_HOME).
-# Must stay inside the RetroDECK sandbox — do not flatpak-spawn --host.
+# Small Switch dumps stay in-sandbox (Cemu-style). Dumps over 8GiB (Engage)
+# exec the host AppImage via flatpak-spawn --host — in-sandbox Eden hits
+# SteamOS earlyoom at ~12 GB RSS; standalone Game Mode already works.
 set -euo pipefail
+
+HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"
+# 8GiB: 13 Sentinels is ~7.5G (in-sandbox OK); Engage cart is ~15G.
+HOST_EDEN_MIN_BYTES=$((8 * 1024 * 1024 * 1024))
 
 component_path="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
@@ -87,6 +93,48 @@ if [ "$has_game" -eq 0 ] && [ "${#args[@]}" -ge 1 ]; then
       args=("-g" "$rom" "${args[@]:1}")
       ;;
   esac
+fi
+
+eden_rom_path=""
+prev=""
+for arg in "${args[@]+"${args[@]}"}"; do
+  if [ "$prev" = "-g" ] || [ "$prev" = "--game" ]; then
+    eden_rom_path="$arg"
+  fi
+  prev="$arg"
+done
+
+eden_rom_bytes=0
+if [ -n "$eden_rom_path" ] && [ -f "$eden_rom_path" ]; then
+  eden_rom_bytes="$(stat -c%s "$eden_rom_path" 2>/dev/null || echo 0)"
+fi
+
+host_exec_eden() {
+  local img="$1"
+  shift
+  local spawn=(flatpak-spawn --host)
+  local e
+  for e in \
+    DISPLAY XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME \
+    DISABLE_AUTO_UPDATES MALLOC_ARENA_MAX \
+    SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD SDL_JOYSTICK_HIDAPI \
+    SDL_HIDAPI_JOYSTICK SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT \
+    SteamAppId SteamGameId STEAM_OVERLAY GAMESCOPE_WAYLAND_DISPLAY
+  do
+    if [ -n "${!e:-}" ]; then
+      spawn+=(--env="${e}=${!e}")
+    fi
+  done
+  spawn+=(--env=SDL_GAMECONTROLLER_IGNORE_DEVICES=)
+  exec "${spawn[@]}" "$img" "$@"
+}
+
+if [ -n "${FLATPAK_ID:-}" ] \
+  && [ "$eden_rom_bytes" -gt "$HOST_EDEN_MIN_BYTES" ] \
+  && command -v flatpak-spawn >/dev/null \
+  && [ -f "$HOST_EDEN_APPIMAGE" ]; then
+  echo "Eden: dump ${eden_rom_bytes} bytes, exec host AppImage (earlyoom workaround)" >&2
+  host_exec_eden "$HOST_EDEN_APPIMAGE" "${args[@]}"
 fi
 
 if [ -x "$component_path/AppRun" ]; then

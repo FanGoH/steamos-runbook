@@ -1,34 +1,102 @@
 #!/usr/bin/env python3
-"""Persist Eden player 0 on the Xbox One / Sunshine pad and drop Joy-Con HID.
+"""Bind Eden player 0 to whichever real pad is plugged in at launch.
 
-The working device in Game Mode + Moonlight is SDL GUID
-030000005e040000ea02000008040000 (045e:02ea — Xbox One S and Sunshine's
-"X-Box One (virtual) pad"). Do not strip that GUID on launch; Eden then
-falls back to SDL port 0 (ASRock LED or Steam's wrapper) and the UI
-device has to be re-picked every boot.
+Skip motherboard LED and gamescope mouse js nodes. Prefer Sunshine's
+virtual Xbox, then any Xbox, then Steam's virtual pad, then the first
+remaining joystick. SDL GUID is USB bus + vendor/product/version with
+no name-CRC — the form Eden's UI writes for Xbox One.
+
+If nothing is present, leave the existing player-0 GUID (last session)
+and only keep the Joy-Con HID driver off.
 """
+from __future__ import annotations
+
 from pathlib import Path
 import re
+import struct
 import sys
 
-# Eden's SDL GUID for 045e:02ea (no name-CRC). Matches what the UI writes
-# when player 0 is set to Xbox One.
-XBOX_GUID = "030000005e040000ea02000008040000"
+INPUT_ROOT = Path("/sys/class/input")
+SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
 
 
-def patch(text: str) -> str:
+def _read(path: Path) -> str:
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
+def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
+    pads = []
+    for js in sorted(root.glob("js*/device")):
+        vendor = _read(js / "id" / "vendor").lower().zfill(4)[-4:]
+        product = _read(js / "id" / "product").lower().zfill(4)[-4:]
+        version = _read(js / "id" / "version").lower().zfill(4)[-4:]
+        name = _read(js / "name")
+        if not vendor or vendor in SKIP_VENDORS:
+            continue
+        pads.append(
+            {
+                "vendor": vendor,
+                "product": product,
+                "version": version or "0000",
+                "name": name,
+            }
+        )
+    return pads
+
+
+def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
+    if not pads:
+        return None
+    for pad in pads:
+        if "sunshine" in pad["name"].lower():
+            return pad
+    for pad in pads:
+        if pad["vendor"] == "045e":
+            return pad
+    for pad in pads:
+        if pad["vendor"] == "28de" and pad["product"] == "11ff":
+            return pad
+    return pads[0]
+
+
+def sdl_guid(vendor: str, product: str, version: str = "0000") -> str:
+    raw = struct.pack(
+        "<HHHHHHHH",
+        0x0003,
+        0,
+        int(vendor, 16),
+        0,
+        int(product, 16),
+        0,
+        int(version or "0", 16),
+        0,
+    )
+    return raw.hex()
+
+
+def guid_for_current_pad(root: Path = INPUT_ROOT) -> str | None:
+    pad = pick_pad(list_joysticks(root))
+    if pad is None:
+        return None
+    return sdl_guid(pad["vendor"], pad["product"], pad["version"])
+
+
+def patch(text: str, guid: str | None) -> str:
     out = []
     for line in text.splitlines(keepends=True):
         if line.startswith("enable_joycon_driver=") and "true" in line:
             line = "enable_joycon_driver=false\n"
         elif line.startswith("enable_joycon_driver\\default=") and "true" in line:
             line = "enable_joycon_driver\\default=false\n"
-        elif line.startswith("player_0_") and "engine:sdl" in line:
+        elif guid and line.startswith("player_0_") and "engine:sdl" in line:
             line = re.sub(r",guid:[0-9a-fA-F]+", "", line)
-            if f"guid:{XBOX_GUID}" not in line:
+            if f"guid:{guid}" not in line:
                 line = line.replace(
                     "engine:sdl,port:0,",
-                    f"engine:sdl,port:0,guid:{XBOX_GUID},",
+                    f"engine:sdl,port:0,guid:{guid},",
                 )
         out.append(line)
     return "".join(out)
@@ -42,16 +110,20 @@ def main() -> int:
     if not path.is_file():
         print(f"skip: no {path}")
         return 0
+    guid = guid_for_current_pad()
     text = path.read_text()
-    new = patch(text)
+    new = patch(text, guid)
     if new == text:
-        print(f"Eden player 0 already bound to Xbox One in {path}")
+        if guid:
+            print(f"Eden player 0 already bound to {guid} in {path}")
+        else:
+            print(f"No joystick yet; left Eden player 0 as-is in {path}")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-steam-virtual")
     if not bak.exists():
         bak.write_text(text)
     path.write_text(new)
-    print(f"Bound Eden player 0 to Xbox One GUID in {path}")
+    print(f"Bound Eden player 0 to current pad {guid} in {path}")
     return 0
 
 

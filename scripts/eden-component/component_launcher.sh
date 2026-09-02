@@ -21,10 +21,12 @@ export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd"
+# Allow the pads this box actually uses. Player 0's GUID is chosen at
+# launch from whichever of these is currently present.
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
 
-# Eden overwrites qt-config.ini on exit. Re-apply the Xbox One / Sunshine
-# pad GUID every launch so player 0 does not fall back to SDL port 0.
+# Bind player 0 to the pad that is plugged in right now (Sunshine/Xbox
+# over Steam virtual). If none yet, keep the last GUID.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then

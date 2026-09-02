@@ -12,16 +12,29 @@ export XDG_CONFIG_HOME="${EDEN_XDG_CONFIG_HOME:-${HOME}/.config}"
 export XDG_DATA_HOME="${EDEN_XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${EDEN_XDG_CACHE_HOME:-${HOME}/.cache}"
 
-# Cemu's SteamInput-P1 profile uses "Steam Virtual Gamepad". Overlay works
-# because Steam owns the physical Xbox; the game must use the virtual pad.
-# Do not let Eden's SDL hidapi take the Xbox HID (hid_read failure).
-export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
-export SDL_JOYSTICK_HIDAPI="${SDL_JOYSTICK_HIDAPI:-0}"
-export SDL_HIDAPI_JOYSTICK="${SDL_HIDAPI_JOYSTICK:-0}"
-# Keep RetroDECK's ignore-list when Steam set one. Otherwise ignore the
-# physical Xbox One S so port 0 is the virtual pad, not 045e:02ea.
-if [ -z "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
-  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x02EA"
+# Cemu SteamInput-P1 = "Steam Virtual Gamepad". Overlay means Steam owns
+# the physical Xbox; Eden must use the virtual pad. Force this — Steam's
+# IGNORE_DEVICES list hides 045e:02ea, so without ALLOW=1 Eden sees nothing.
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
+export SDL_JOYSTICK_HIDAPI=0
+export SDL_HIDAPI_JOYSTICK=0
+# Motherboard LED enumerates as js0 and can steal SDL port 0.
+extra_ignore="0x26ce/0x01a2"
+if [ -n "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
+  case ",${SDL_GAMECONTROLLER_IGNORE_DEVICES}," in
+    *",${extra_ignore},"*|*",0x26CE/0x01A2,"*) ;;
+    *) export SDL_GAMECONTROLLER_IGNORE_DEVICES="${SDL_GAMECONTROLLER_IGNORE_DEVICES},${extra_ignore}" ;;
+  esac
+else
+  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x02ea,${extra_ignore}"
+fi
+
+# Eden overwrites qt-config.ini on exit. Re-apply every launch so player 0
+# stays on the Steam virtual pad and the Joy-Con HID driver stays off.
+ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
+patcher="$component_path/patch-eden-input.py"
+if [ -f "$ini" ] && [ -f "$patcher" ]; then
+  python3 "$patcher" "$ini" || true
 fi
 
 # AppRun's wayland-is-broken hook forces xcb; keep that for Game Mode.

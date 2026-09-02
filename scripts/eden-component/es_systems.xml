@@ -5,8 +5,10 @@
   env and leaves Steam overlay/Exit attached to RetroDECK while Eden is
   a foreign host process.
 
-  %INJECT% (old Ponzu/Yuzu "retroinject") is only extra argv from a
-  per-game .esprefix file. It does not install an emulator.
+  Not iAbuser/RetroInjector (that sudo-copies cooker tarballs into the
+  Flatpak files dir and is wiped by Flatpak updates). Official RetroDECK
+  already searches external_components/. %INJECT% is only extra argv from
+  a per-game .esprefix file.
 -->
 <systemList>
   <system>

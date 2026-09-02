@@ -12,6 +12,7 @@ EDEN_APPIMAGE="${EDEN_APPIMAGE:-/home/${STEAMOS_USER}/Applications/Eden.appimage
 COMPONENT_DIR="${EDEN_COMPONENT_DIR:-/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/retrodeck/external_components/eden}"
 CUSTOM_SYSTEMS="${EDEN_ES_CUSTOM_DIR:-/home/${STEAMOS_USER}/retrodeck/ES-DE/custom_systems}"
 LAUNCHER_SRC="$ROOT/scripts/eden-component/component_launcher.sh"
+PATCHER_SRC="$ROOT/scripts/eden-component/patch-eden-input.py"
 SYSTEMS_SRC="$ROOT/scripts/eden-component/es_systems.xml"
 FIND_SRC="$ROOT/scripts/eden-component/es_find_rules.xml"
 
@@ -24,8 +25,8 @@ EOF
   exit 2
 fi
 
-if [ ! -f "$LAUNCHER_SRC" ]; then
-  echo "Missing launcher template: $LAUNCHER_SRC"
+if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ]; then
+  echo "Missing Eden component templates under $ROOT/scripts/eden-component/"
   exit 1
 fi
 
@@ -74,34 +75,16 @@ else
 fi
 
 install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
+install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-eden-input.py"
 install -m 0644 "$SYSTEMS_SRC" "$CUSTOM_SYSTEMS/es_systems.xml"
 install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"
 
-# Host Eden was bound to the physical Xbox GUID. Steam keeps that device
-# for overlay and exposes a virtual pad (Cemu SteamInput-P1). Drop the GUID
-# so player 1 follows SDL port 0 (the virtual pad).
+# Same Steam Virtual Gamepad GUID Cemu SteamInput-P1 / Azahar use.
+# Also run from the launcher on every game start (Eden rewrites this file
+# on exit). Doing it here covers a first install before the next launch.
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
-xbox_guid="030000005e040000ea02000008040000"
-if [ -f "$eden_ini" ] && grep -q "$xbox_guid" "$eden_ini"; then
-  python3 - "$eden_ini" "$xbox_guid" <<'PY'
-from pathlib import Path
-import sys
-p, guid = Path(sys.argv[1]), sys.argv[2]
-text = p.read_text()
-needle = f",guid:{guid}"
-if needle not in text:
-    raise SystemExit(0)
-bak = p.with_suffix(p.suffix + ".bak-steam-virtual")
-if not bak.exists():
-    bak.write_text(text)
-out = []
-for line in text.splitlines(keepends=True):
-    if line.startswith("player_0_") and guid in line:
-        line = line.replace(needle, "")
-    out.append(line)
-p.write_text("".join(out))
-print(f"Unbound player 0 from physical Xbox GUID in {p}")
-PY
+if [ -f "$eden_ini" ]; then
+  python3 "$PATCHER_SRC" "$eden_ini"
 fi
 
 if ! flatpak run --command=sh net.retrodeck.retrodeck -c \

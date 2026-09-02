@@ -29,11 +29,6 @@ export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-0}"
-# Cemu (in-Flatpak) only sees Steam's virtual pad. Host Eden must do the same
-# or overlay input keeps driving the game.
-export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
-export SDL_JOYSTICK_HIDAPI_STEAMXBOX="${SDL_JOYSTICK_HIDAPI_STEAMXBOX:-0}"
-export ENABLE_VK_LAYER_VALVE_steam_overlay_1="${ENABLE_VK_LAYER_VALVE_steam_overlay_1:-1}"
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0" ]; then
   export WAYLAND_DISPLAY=gamescope-0
   export GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}"
@@ -41,49 +36,6 @@ fi
 
 log() {
   printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$FOCUS_LOG"
-}
-
-# Copy Steam's pad policy from RetroDECK/es-de (flatpak-spawn --host drops it).
-inherit_steam_input_env() {
-  local snippet
-  snippet="$(python3 - <<'PY'
-import shlex
-from pathlib import Path
-wanted = (
-    "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
-    "SDL_GAMECONTROLLER_IGNORE_DEVICES",
-    "SDL_JOYSTICK_HIDAPI_STEAMXBOX",
-    "ENABLE_VK_LAYER_VALVE_steam_overlay_1",
-)
-markers = ("es-de --home", "reaper SteamLaunch", "/app/bin/retrodeck")
-for p in Path("/proc").glob("[0-9]*"):
-    try:
-        cmd = (p / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
-    except Exception:
-        continue
-    if "eden-from-retrodeck" in cmd or "builtin eval" in cmd:
-        continue
-    if not any(m in cmd for m in markers):
-        continue
-    try:
-        raw = (p / "environ").read_bytes().decode("utf-8", "replace").split("\0")
-        env = dict(e.split("=", 1) for e in raw if "=" in e)
-    except Exception:
-        continue
-    if "SDL_GAMECONTROLLER_IGNORE_DEVICES" not in env:
-        continue
-    for k in wanted:
-        if k in env:
-            print(f"export {k}={shlex.quote(env[k])}")
-    break
-PY
-)"
-  if [ -n "$snippet" ]; then
-    eval "$snippet"
-    log "inherited Steam SDL ignore-list (${#SDL_GAMECONTROLLER_IGNORE_DEVICES} chars)"
-  else
-    log "no RetroDECK SDL ignore-list (virtual-gamepad flags only)"
-  fi
 }
 
 # Steam client (769) is a Valve constant. RetroDECK's non-Steam shortcut id is
@@ -450,7 +402,6 @@ fi
 
 resolve_steam_app_id || exit 1
 : >"$FOCUS_LOG"
-inherit_steam_input_env
 
 # Detached from AppImage exec/HUP so the watcher outlives RetroDECK exiting.
 if command -v setsid >/dev/null 2>&1; then

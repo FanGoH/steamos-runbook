@@ -29,6 +29,8 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 
 # Bind player 0 to the pad that is plugged in right now (physical Xbox
 # / Steam virtual over Sunshine). If none yet, keep the last GUID.
+# Also force borderless + async shaders — Exclusive + gamescope is the
+# Steam "Launching…" hang that ends in earlyoom SIGTERM on big titles.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then
@@ -41,9 +43,15 @@ prev=""
 for arg in "$@"; do
   if [ "$prev" = "-g" ] || [ "$prev" = "--game" ]; then
     if [ -d "$arg" ]; then
-      match="$(find "$arg" -maxdepth 1 -type f \( \
-        -iname '*.xci' -o -iname '*.nsp' -o -iname '*.nca' -o -iname '*.nro' -o -iname '*.nso' \
-      \) | head -n 1 || true)"
+      # Prefer a cart .xci over tiny DLC .nsp files in the same folder.
+      match="$(find "$arg" -maxdepth 1 -type f -iname '*.xci' -printf '%s %p\n' 2>/dev/null \
+        | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
+      if [ -z "${match:-}" ]; then
+        match="$(find "$arg" -maxdepth 1 -type f \( \
+          -iname '*.nsp' -o -iname '*.nca' -o -iname '*.nro' -o -iname '*.nso' \
+        \) -printf '%s %p\n' 2>/dev/null \
+          | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
+      fi
       args+=("${match:-$arg}")
     else
       args+=("$arg")

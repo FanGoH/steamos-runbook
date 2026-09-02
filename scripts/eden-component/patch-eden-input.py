@@ -94,6 +94,14 @@ def guid_for_current_pad(root: Path = INPUT_ROOT) -> str | None:
     return sdl_guid(pad["vendor"], pad["product"], pad["version"])
 
 
+def _set_kv(line: str, key: str, value: str) -> str:
+    if line.startswith(f"{key}=") and not line.startswith(f"{key}\\"):
+        return f"{key}={value}\n"
+    if line.startswith(f"{key}\\default="):
+        return f"{key}\\default=false\n"
+    return line
+
+
 def patch(text: str, guid: str | None) -> str:
     out = []
     for line in text.splitlines(keepends=True):
@@ -108,6 +116,13 @@ def patch(text: str, guid: str | None) -> str:
                     "engine:sdl,port:0,",
                     f"engine:sdl,port:0,guid:{guid},",
                 )
+        else:
+            # Exclusive fullscreen on gamescope leaves Steam on Launching
+            # while RSS climbs until earlyoom SIGTERMs Eden. Borderless
+            # still fills the nested window. Async shaders let a frame
+            # present before the pipeline cache is finished.
+            line = _set_kv(line, "fullscreen_mode", "0")
+            line = _set_kv(line, "use_asynchronous_shaders", "true")
         out.append(line)
     return "".join(out)
 

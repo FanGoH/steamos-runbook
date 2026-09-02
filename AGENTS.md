@@ -21,7 +21,7 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
-- Game Mode: Cemu stays inside RetroDECK (`%EMULATOR_CEMU%`) under `reaper SteamLaunch`. The **ES-DE window stays mapped** — that is Steam’s game identity; Cemu is a child window on DISPLAY=:1. Overlay is `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>`. Steam Exit kills the reaper tree. Do **not** copy RetroDECK’s `SDL_GAMECONTROLLER_IGNORE_DEVICES` onto a host Eden — the Steam virtual pad is not visible there and it bricks controls. Keep `STEAM_GAME` on ES-DE, leave overlay focus alone, and `SIGTERM` host Eden when reaper/ES-DE dies. Live launcher: `~/Applications/eden-from-retrodeck.sh`. Pass Eden `-f` at the **end** of argv.
+- Game Mode: Cemu stays inside RetroDECK (`%EMULATOR_CEMU%`) under `reaper SteamLaunch`. The **ES-DE window stays mapped** — that is Steam’s game identity; Cemu is a child window on DISPLAY=:1. Overlay is `STEAM_OVERLAY=1` with `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>`. Do **not** treat `STEAM_INPUT_FOCUS` as overlay (it stays 1 on Big Picture). Do **not** copy RetroDECK’s `SDL_GAMECONTROLLER_IGNORE_DEVICES` onto a host Eden. Do set `SDL_HIDAPI_JOYSTICK=0` so Eden does not steal the Xbox HID from Steam (`hid_read failure` kills overlay). Keep `STEAM_GAME` on ES-DE, prefer DISPLAY=:1 when RetroDECK is running, and `SIGTERM` host Eden when reaper/ES-DE dies. Live launcher: `~/Applications/eden-from-retrodeck.sh`. Pass Eden `-f` at the **end** of argv.
 
 ## Automation vs manual
 

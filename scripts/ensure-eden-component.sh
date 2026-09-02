@@ -130,6 +130,10 @@ eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
 if [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"
 fi
+engage_custom="/home/${STEAMOS_USER}/.config/eden/custom/0100A6301214E000.ini"
+if [ -f "$engage_custom" ]; then
+  python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"
+fi
 
 if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
   'test -x /var/data/retrodeck/external_components/eden/component_launcher.sh && test -x /var/data/retrodeck/external_components/eden/AppRun && test -x /var/data/retrodeck/external_components/ryubing/component_launcher.sh'; then

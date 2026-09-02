@@ -1,8 +1,8 @@
 #!/bin/bash
 # Steam/Tender calls this as the shortcut exe, then passes the launch command.
 # Huge Switch dumps (Engage) must not start RetroDECK's KDE Flatpak — that
-# plus Eden is what SteamOS earlyoom SIGTERMs. Exec the host AppImage
-# instead, same as standalone Game Mode. Everything else is exec as-is.
+# plus Eden's 8GB guest DRAM is what SteamOS earlyoom SIGTERMs. Exec the
+# host AppImage -f -g after pinning 4GB on the Engage custom ini.
 set -euo pipefail
 
 HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"
@@ -49,11 +49,19 @@ if [ "$is_retrodeck" -eq 1 ] \
     if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
-    echo "rom-launcher: ${bytes} byte Switch dump, open host Eden fullscreen (no -g)" >&2
-    # Do not pass -g: that boots the 15G cart immediately and earlyooms.
-    # Same AppImage as standalone; -f is borderless (patcher sets
-    # fullscreen_mode=0) so Game Mode fills the nested window.
-    exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE" -f
+    echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2
+    # RetroDECK does not copy the cart into RAM. Same inode, bind-mounted.
+    # RSS is Eden: global 8GB guest DRAM + cart working set. Pin 4GB
+    # (Engage's custom 4GB was ignored via use_global=true).
+    # Swap is already 7.3G zram + 1G file; host -g still exhausted it.
+    # -g is the same BootGame as clicking the list; Eden runs it in the
+    # MainWindow constructor before show(), which is why Steam sits on
+    # Launching. No second-instance IPC to delay that.
+    engage_custom="${XDG_CONFIG_HOME}/eden/custom/0100A6301214E000.ini"
+    if [ -f "$engage_custom" ] && [ -f "$PATCHER" ]; then
+      python3 "$PATCHER" --pin-4gb "$engage_custom" || true
+    fi
+    exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE" -f -g "$rom"
   fi
 fi
 

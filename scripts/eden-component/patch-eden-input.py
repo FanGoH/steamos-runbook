@@ -99,7 +99,23 @@ def _set_kv(line: str, key: str, value: str) -> str:
         return f"{key}={value}\n"
     if line.startswith(f"{key}\\default="):
         return f"{key}\\default=false\n"
+    if line.startswith(f"{key}\\use_global="):
+        return f"{key}\\use_global=false\n"
     return line
+
+
+def pin_4gb_layout(text: str) -> str:
+    """Force 4GB guest DRAM so a 15G cart can boot on 14GB hosts.
+
+    Per-game `memory_layout_mode=0` is ignored while use_global=true, and
+    the global default is 8GB — that plus the cart working set is what
+    earlyoom SIGTERMs at ~12–16 GB RSS. 0 = 4GB, 1 = 6GB, 2 = 8GB.
+    """
+    out = []
+    for line in text.splitlines(keepends=True):
+        line = _set_kv(line, "memory_layout_mode", "0")
+        out.append(line)
+    return "".join(out)
 
 
 def patch(text: str, guid: str | None) -> str:
@@ -128,9 +144,35 @@ def patch(text: str, guid: str | None) -> str:
     return "".join(out)
 
 
+def _write_if_changed(path: Path, text: str, new: str, msg: str) -> int:
+    if new == text:
+        print(msg)
+        return 0
+    bak = path.with_suffix(path.suffix + ".bak-steam-virtual")
+    if not bak.exists():
+        bak.write_text(text)
+    path.write_text(new)
+    print(msg)
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--pin-4gb":
+        path = Path(sys.argv[2])
+        if not path.is_file():
+            print(f"skip: no {path}")
+            return 0
+        text = path.read_text()
+        new = pin_4gb_layout(text)
+        return _write_if_changed(
+            path, text, new, f"Pinned 4GB memory layout in {path}"
+        )
     if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} /path/to/qt-config.ini", file=sys.stderr)
+        print(
+            f"usage: {sys.argv[0]} /path/to/qt-config.ini\n"
+            f"       {sys.argv[0]} --pin-4gb /path/to/custom.ini",
+            file=sys.stderr,
+        )
         return 2
     path = Path(sys.argv[1])
     if not path.is_file():
@@ -145,12 +187,9 @@ def main() -> int:
         else:
             print(f"No joystick yet; left Eden player 0 as-is in {path}")
         return 0
-    bak = path.with_suffix(path.suffix + ".bak-steam-virtual")
-    if not bak.exists():
-        bak.write_text(text)
-    path.write_text(new)
-    print(f"Bound Eden player 0 to current pad {guid} in {path}")
-    return 0
+    return _write_if_changed(
+        path, text, new, f"Bound Eden player 0 to current pad {guid} in {path}"
+    )
 
 
 if __name__ == "__main__":

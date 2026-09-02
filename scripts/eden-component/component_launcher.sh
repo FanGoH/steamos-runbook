@@ -2,8 +2,8 @@
 # User-side RetroDECK component launcher for Eden.
 # Installed to /var/data/retrodeck/external_components/eden/ (Flatpak XDG_DATA_HOME).
 # Small Switch dumps stay in-sandbox (Cemu-style). Dumps over 8GiB (Engage)
-# must not -g at all: that faults the cart until earlyoom. Open host Eden
-# fullscreen instead (same as the Tender wrap); start the game from the list.
+# must not -g inside RetroDECK (KDE Flatpak + 8GB guest DRAM earlyooms).
+# Open host Eden fullscreen; the Tender wrap is what actually -g's Engage.
 set -euo pipefail
 
 HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"

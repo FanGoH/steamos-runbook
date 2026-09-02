@@ -31,6 +31,18 @@ def test_borderless_and_async() -> None:
     assert "enable_joycon_driver=false\n" in out
 
 
+def test_pin_4gb_overrides_global() -> None:
+    src = (
+        "memory_layout_mode\\use_global=true\n"
+        "memory_layout_mode\\default=true\n"
+        "memory_layout_mode=2\n"
+    )
+    out = mod.pin_4gb_layout(src)
+    assert "memory_layout_mode\\use_global=false\n" in out
+    assert "memory_layout_mode\\default=false\n" in out
+    assert "memory_layout_mode=0\n" in out
+
+
 def test_sdl_guid_stable() -> None:
     assert mod.sdl_guid("28de", "11ff", "0001") == (
         "03000000de280000ff11000001000000"
@@ -39,5 +51,6 @@ def test_sdl_guid_stable() -> None:
 
 if __name__ == "__main__":
     test_borderless_and_async()
+    test_pin_4gb_overrides_global()
     test_sdl_guid_stable()
     print("ok")

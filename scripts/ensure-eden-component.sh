@@ -25,7 +25,7 @@ EOF
   exit 2
 fi
 
-if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ]; then
+if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ] || [ ! -f "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" ]; then
   echo "Missing Eden component templates under $ROOT/scripts/eden-component/"
   exit 1
 fi
@@ -79,6 +79,14 @@ install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-eden-input.py"
 install -m 0644 "$SYSTEMS_SRC" "$CUSTOM_SYSTEMS/es_systems.xml"
 install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"
 
+# Bundled linux es_systems.xml still lists Ryubing first. run_game.sh (Steam
+# shortcuts without -e) uses that file, not custom_systems. Occupy the
+# official RYUBING user slot with Eden so Switch games boot.
+RYUBING_SLOT="$(dirname "$COMPONENT_DIR")/ryubing"
+mkdir -p "$RYUBING_SLOT"
+install -m 0755 "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" \
+  "$RYUBING_SLOT/component_launcher.sh"
+
 # Bind player 0 to the pad that is present at launch (Sunshine/Xbox, then
 # Steam virtual). Also run from the launcher on every game start.
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
@@ -87,12 +95,13 @@ if [ -f "$eden_ini" ]; then
 fi
 
 if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
-  'test -x /var/data/retrodeck/external_components/eden/component_launcher.sh && test -x /var/data/retrodeck/external_components/eden/AppRun'; then
+  'test -x /var/data/retrodeck/external_components/eden/component_launcher.sh && test -x /var/data/retrodeck/external_components/eden/AppRun && test -x /var/data/retrodeck/external_components/ryubing/component_launcher.sh'; then
   echo "Launcher is not visible inside the RetroDECK sandbox."
   exit 1
 fi
 
 echo "Eden is installed as a RetroDECK external component."
 echo "ES-DE command: %EMULATOR_EDEN% -g %ROM%  (in-sandbox, like Cemu)"
+echo "Steam/Tender Switch shortcuts without -e use the RYUBING slot (Eden)."
 echo "Restart RetroDECK so ES-DE reloads custom_systems."
 exit 0

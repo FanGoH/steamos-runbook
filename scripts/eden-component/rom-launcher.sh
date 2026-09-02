@@ -44,16 +44,13 @@ if [ "$#" -eq 0 ]; then
     echo "rom-launcher: missing $lo_py" >&2
     exit 1
   fi
-  resolved="$(python3 "$lo_py" --rom-for-appid "$appid")" || {
-    echo "rom-launcher: no Switch dump for SteamAppId=$appid" >&2
+  resolved="$(python3 "$lo_py" --launch-options-for-appid "$appid")" || {
+    echo "rom-launcher: no launch command for SteamAppId=$appid" >&2
     exit 1
   }
-  if [ ! -f "$resolved" ]; then
-    echo "rom-launcher: SteamAppId=$appid resolved to missing $resolved" >&2
-    exit 1
-  fi
   echo "rom-launcher: empty LaunchOptions, SteamAppId=$appid -> $resolved" >&2
-  set -- flatpak run net.retrodeck.retrodeck -e '%EMULATOR_RYUBING% %ROM%' "$resolved"
+  # Tender/Steam LaunchOptions are a single shell-quoted command line.
+  eval set -- "$resolved"
 fi
 
 rom=""

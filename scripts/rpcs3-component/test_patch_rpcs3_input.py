@@ -97,14 +97,19 @@ def test_set_player1_keeps_emulated_vid_and_player2() -> None:
         "  Vendor ID: 1356\n"
         "  Product ID: 616\n"
         "Player 2 Input:\n"
+        "  Handler: SDL\n"
         "  Device: Steam Deck Controller 2\n"
         "  Vendor ID: 1356\n"
         "  Product ID: 616\n"
     )
-    out = mod.set_player1_device(sample, "Steam Virtual Gamepad 1")
+    out = mod.null_extra_players(
+        mod.set_player1_device(sample, "Steam Virtual Gamepad 1")
+    )
     assert "  Device: Steam Virtual Gamepad 1\n" in out
     assert "Steam Deck Controller 1" not in out
-    assert "  Device: Steam Deck Controller 2\n" in out
+    assert "Steam Deck Controller 2" not in out
+    assert '  Handler: "Null"' in out
+    assert '  Device: "Null"' in out
     assert "  Vendor ID: 1356\n" in out
     assert "  Product ID: 616\n" in out
     assert "  Handler: SDL\n" in out

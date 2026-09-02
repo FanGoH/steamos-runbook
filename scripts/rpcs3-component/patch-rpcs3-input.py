@@ -169,9 +169,33 @@ def set_player1_device(text: str, device: str) -> str:
     return new_head + "Player 2 Input:" + parts[1]
 
 
+def null_extra_players(text: str) -> str:
+    """Drop fake Steam Deck pads on players 2–7 so Uncharted sees one Sixaxis."""
+
+    def _null_block(match: re.Match[str]) -> str:
+        block = match.group(0)
+        if re.search(r"(?m)^  Handler:", block):
+            block = re.sub(r"(?m)^  Handler:.*$", '  Handler: "Null"', block, count=1)
+        else:
+            block = re.sub(
+                r"(?m)^(Player [2-7] Input:\n)",
+                r'\1  Handler: "Null"\n',
+                block,
+                count=1,
+            )
+        block = re.sub(r"(?m)^  Device:.*$", '  Device: "Null"', block, count=1)
+        return block
+
+    return re.sub(
+        r"(?ms)^Player [2-7] Input:.*?(?=^Player [2-7] Input:|\Z)",
+        _null_block,
+        text,
+    )
+
+
 def patch_file(path: Path, device: str) -> bool:
     text = path.read_text()
-    new = set_player1_device(text, device)
+    new = null_extra_players(set_player1_device(text, device))
     if new == text:
         return False
     bak = path.with_suffix(path.suffix + ".bak-current-pad")
@@ -185,11 +209,15 @@ def main() -> int:
     if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
         sample = (
             "Player 1 Input:\n  Handler: SDL\n  Device: Steam Deck Controller 1\n"
-            "Player 2 Input:\n  Device: Steam Deck Controller 2\n"
+            "Player 2 Input:\n  Handler: SDL\n  Device: Steam Deck Controller 2\n"
         )
-        out = set_player1_device(sample, "Steam Virtual Gamepad 1")
+        out = null_extra_players(
+            set_player1_device(sample, "Steam Virtual Gamepad 1")
+        )
         assert "Device: Steam Virtual Gamepad 1\n" in out
-        assert "Device: Steam Deck Controller 2\n" in out
+        assert 'Handler: "Null"' in out
+        assert 'Device: "Null"' in out
+        assert "Steam Deck Controller 2" not in out
         assert fallback_device(
             {"vendor": "28de", "product": "11ff", "name": "x"}
         ) == "Steam Virtual Gamepad 1"

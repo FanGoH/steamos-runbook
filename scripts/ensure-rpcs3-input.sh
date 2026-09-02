@@ -43,13 +43,23 @@ fi
 
 # Steam/Tender uses run_game.sh, which only reads bundled find-rules. Those
 # list systempath `rpcs3` before the /app RPCS3 launcher. Prepend our bin
-# so command -v rpcs3 hits the pad-binding wrapper.
+# so command -v rpcs3 hits the pad-binding wrapper. SDL3 also needs the
+# Steam-virtual allow env on every RetroDECK process, even if a launch
+# skips this wrapper.
 if command -v flatpak >/dev/null 2>&1; then
   if flatpak override --user --show net.retrodeck.retrodeck 2>/dev/null | grep -q '/var/data/retrodeck/bin'; then
     echo "RetroDECK PATH already includes /var/data/retrodeck/bin"
   else
     flatpak override --user net.retrodeck.retrodeck --env=PATH="$RETRODECK_PATH"
     echo "Set RetroDECK PATH so rpcs3 is found before bundled RPCS3."
+  fi
+  if flatpak override --user --show net.retrodeck.retrodeck 2>/dev/null \
+    | grep -q 'SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1'; then
+    echo "RetroDECK already allows the Steam virtual gamepad"
+  else
+    flatpak override --user net.retrodeck.retrodeck \
+      --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
+    echo "Set RetroDECK SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1"
   fi
 fi
 

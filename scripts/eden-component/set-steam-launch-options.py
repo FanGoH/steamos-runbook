@@ -5,12 +5,13 @@ Tender/decky-romm-sync tiles (Xenoblade, Luigi) often have an empty launch
 line. Steam Game Mode also rewrites shortcuts.vdf while it is running, so
 writing LaunchOptions does not stick until a Steam restart.
 
-`--rom-for-appid` maps SteamAppId → shortcuts.vdf AppName → the Switch dump
-under ~/retrodeck/roms/switch/<name>/ so rom-launcher can recover with no
-args.
+`--rom-for-appid` maps SteamAppId → shortcuts.vdf AppName → a dump (Switch
+folder, or Tender `rom_installs.file_path`). `--launch-options-for-appid`
+prints the Steam LaunchOptions line so empty-argv tiles work for PS2 too.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import sqlite3
 import struct
@@ -173,6 +174,98 @@ def pick_switch_dump(target: Path) -> Path | None:
     return None
 
 
+LAUNCHABLE_EXT = {
+    ".xci",
+    ".nsp",
+    ".iso",
+    ".chd",
+    ".cso",
+    ".zso",
+    ".ciso",
+    ".m3u",
+    ".rvz",
+    ".wux",
+    ".wud",
+    ".gba",
+    ".z64",
+    ".n64",
+    ".3ds",
+}
+ARCHIVE_EXT = {".zip", ".rar", ".7z"}
+TENDER_DB = Path("homebrew/data/romm-tender/romm_sync.db")
+
+
+def pick_launchable_dump(target: Path) -> Path | None:
+    """Largest emulator-readable dump under *target*, or the file itself."""
+    switch = pick_switch_dump(target)
+    if switch is not None:
+        return switch
+    if target.is_file() and target.suffix.lower() in LAUNCHABLE_EXT:
+        return target
+    if not target.is_dir():
+        return None
+    dumps = [
+        path
+        for path in target.rglob("*")
+        if path.is_file() and path.suffix.lower() in LAUNCHABLE_EXT
+    ]
+    if not dumps:
+        return None
+    return max(dumps, key=lambda p: p.stat().st_size)
+
+
+def _tender_launch_options(platform: str, dump: Path) -> str:
+    if platform == "ps2":
+        inner = "%EMULATOR_PCSX2% -batch %ROM%"
+    elif platform == "ps3":
+        inner = "%EMULATOR_RPCS3% --no-gui %ROM%"
+    else:
+        inner = "%EMULATOR_RYUBING% %ROM%"
+    return f'flatpak run net.retrodeck.retrodeck -e "{inner}" "{dump}"'
+
+
+def _tender_row_for_appid(appid: str, home: Path) -> sqlite3.Row | None:
+    db = home / TENDER_DB
+    if not db.is_file():
+        return None
+    try:
+        want = int(normalize_appid(appid))
+    except ValueError:
+        return None
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    try:
+        return con.execute(
+            "SELECT r.rom_id, r.name, r.platform_slug, r.shortcut_app_id, "
+            "r.applied_launch_options, i.file_path, i.rom_dir, i.launchable "
+            "FROM roms r LEFT JOIN rom_installs i ON i.rom_id = r.rom_id "
+            "WHERE r.shortcut_app_id = ?",
+            (want,),
+        ).fetchone()
+    finally:
+        con.close()
+
+
+def launch_options_for_appid(appid: str, home: Path) -> str | None:
+    """Steam LaunchOptions string for an empty-argv rom-launcher recovery."""
+    row = _tender_row_for_appid(appid, home)
+    if row is not None:
+        applied = row["applied_launch_options"] or ""
+        if applied.strip():
+            return applied
+        dump = None
+        if row["file_path"]:
+            dump = pick_launchable_dump(Path(row["file_path"]))
+        if dump is None and row["rom_dir"]:
+            dump = pick_launchable_dump(Path(row["rom_dir"]))
+        if dump is not None:
+            return _tender_launch_options(row["platform_slug"] or "", dump)
+    dump = rom_for_appid(appid, home)
+    if dump is None:
+        return None
+    return _tender_launch_options("switch", dump)
+
+
 def rom_for_appid(appid: str, home: Path) -> Path | None:
     try:
         want = normalize_appid(appid)
@@ -206,6 +299,16 @@ def rom_for_appid(appid: str, home: Path) -> Path | None:
                         dump = pick_switch_dump(child)
                         if dump is not None:
                             return dump
+    row = _tender_row_for_appid(appid, home)
+    if row is not None:
+        if row["file_path"]:
+            dump = pick_launchable_dump(Path(row["file_path"]))
+            if dump is not None:
+                return dump
+        if row["rom_dir"]:
+            dump = pick_launchable_dump(Path(row["rom_dir"]))
+            if dump is not None:
+                return dump
     return None
 
 
@@ -232,6 +335,106 @@ def stash_switch_rars(home: Path) -> int:
             print(f"stashed {rar} -> {dest}")
             moved += 1
     return moved
+
+
+def _ps2_dump_for_archive(ps2: Path, archive: Path) -> Path | None:
+    """Find the extracted ISO for a PS2 zip (folder name may drop the region)."""
+    stem = archive.stem
+    stripped = re.sub(r"\s*\([^)]*\)\s*$", "", stem)
+    for cand in (ps2 / stem, ps2 / stripped):
+        dump = pick_launchable_dump(cand)
+        if dump is not None:
+            return dump
+    folded = stem.casefold()
+    for child in sorted(ps2.iterdir()):
+        if not child.is_dir() or child.name.startswith("_"):
+            continue
+        name = child.name.casefold()
+        if folded.startswith(name) or name in folded:
+            dump = pick_launchable_dump(child)
+            if dump is not None:
+                return dump
+    return None
+
+
+def stash_ps2_archives(home: Path) -> int:
+    """Move leftover .zip sidecars out of PS2 folders that already have an ISO."""
+    ps2 = home / "retrodeck/roms/ps2"
+    if not ps2.is_dir():
+        return 0
+    stash_root = ps2 / "_archives"
+    moved = 0
+    for path in sorted(ps2.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in ARCHIVE_EXT:
+            continue
+        if _ps2_dump_for_archive(ps2, path) is None:
+            continue
+        dest = stash_root / path.name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            dest = dest.with_name(dest.name + ".bak")
+        path.rename(dest)
+        print(f"stashed {path} -> {dest}")
+        moved += 1
+    return moved
+
+
+def repair_tender_ps2_installs(home: Path) -> int:
+    """Tender withholds Play when launchable=0 (Xenosaga was recorded as a .zip)."""
+    db = home / TENDER_DB
+    if not db.is_file():
+        return 0
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    fixed = 0
+    try:
+        rows = list(
+            con.execute(
+                "SELECT rom_id, file_path, rom_dir, launchable FROM rom_installs "
+                "WHERE system = 'ps2' OR platform_slug = 'ps2'"
+            )
+        )
+        ps2 = home / "retrodeck/roms/ps2"
+        for row in rows:
+            current = Path(row["file_path"]) if row["file_path"] else None
+            dump = pick_launchable_dump(current) if current is not None else None
+            if dump is None and current is not None:
+                dump = _ps2_dump_for_archive(ps2, current)
+            if dump is None and row["rom_dir"]:
+                dump = pick_launchable_dump(Path(row["rom_dir"]))
+            if dump is None:
+                continue
+            lo = _tender_launch_options("ps2", dump)
+            fp = row["file_path"] or ""
+            need = (
+                not row["launchable"]
+                or Path(fp) != dump
+                or Path(fp).suffix.lower() in ARCHIVE_EXT
+            )
+            if not need:
+                applied = con.execute(
+                    "SELECT applied_launch_options FROM roms WHERE rom_id = ?",
+                    (row["rom_id"],),
+                ).fetchone()
+                if applied and applied["applied_launch_options"]:
+                    continue
+            con.execute(
+                "UPDATE rom_installs SET file_path = ?, rom_dir = ?, launchable = 1 "
+                "WHERE rom_id = ?",
+                (str(dump), str(dump.parent), row["rom_id"]),
+            )
+            con.execute(
+                "UPDATE roms SET applied_launch_options = ?, fs_size_bytes = ?, "
+                "fs_name = ? WHERE rom_id = ?",
+                (lo, dump.stat().st_size, dump.name, row["rom_id"]),
+            )
+            print(f"tender rom_id={row['rom_id']} launchable {dump}")
+            fixed += 1
+        if fixed:
+            con.commit()
+    finally:
+        con.close()
+    return fixed
 
 
 def repair_tender_switch_installs(home: Path) -> int:
@@ -300,21 +503,40 @@ def main() -> int:
         dump = rom_for_appid(sys.argv[2], Path.home())
         if dump is None:
             print(
-                f"no Switch dump for SteamAppId={sys.argv[2]}",
+                f"no dump for SteamAppId={sys.argv[2]}",
                 file=sys.stderr,
             )
             return 1
         print(dump)
         return 0
+    if len(sys.argv) >= 2 and sys.argv[1] == "--launch-options-for-appid":
+        if len(sys.argv) != 3:
+            print(
+                f"usage: {sys.argv[0]} --launch-options-for-appid APPID",
+                file=sys.stderr,
+            )
+            return 2
+        lo = launch_options_for_appid(sys.argv[2], Path.home())
+        if not lo:
+            print(
+                f"no launch options for SteamAppId={sys.argv[2]}",
+                file=sys.stderr,
+            )
+            return 1
+        print(lo)
+        return 0
     if len(sys.argv) == 2 and sys.argv[1] == "--repair-tender":
         home = Path.home()
         stash_switch_rars(home)
+        stash_ps2_archives(home)
         repair_tender_switch_installs(home)
+        repair_tender_ps2_installs(home)
         return 0
     if len(sys.argv) != 2:
         print(
             f"usage: {sys.argv[0]} /path/to/shortcuts.vdf\n"
             f"       {sys.argv[0]} --rom-for-appid APPID\n"
+            f"       {sys.argv[0]} --launch-options-for-appid APPID\n"
             f"       {sys.argv[0]} --repair-tender",
             file=sys.stderr,
         )
@@ -324,7 +546,9 @@ def main() -> int:
         print(f"skip: no {path}")
         return 0
     stash_switch_rars(Path.home())
+    stash_ps2_archives(Path.home())
     repair_tender_switch_installs(Path.home())
+    repair_tender_ps2_installs(Path.home())
     patch_file(path, updates())
     return 0
 
@@ -379,6 +603,12 @@ def _self_test() -> None:
         assert pick_switch_dump(luigi_dir) == base
         assert rom_for_appid(str(appid), home) == xci
         assert rom_for_appid("999", home) is None
+        ps2_dir = home / "retrodeck/roms/ps2" / "Xenosaga Episode I - Der Wille zur Macht"
+        ps2_dir.mkdir(parents=True)
+        iso = ps2_dir / "Xenosaga Episode I - Der Wille zur Macht (USA).iso"
+        iso.write_bytes(b"i" * 12)
+        assert pick_launchable_dump(ps2_dir) == iso
+        assert "%EMULATOR_PCSX2%" in _tender_launch_options("ps2", iso)
 
 
 if __name__ == "__main__":

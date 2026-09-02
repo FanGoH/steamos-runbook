@@ -21,7 +21,7 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
-- Game Mode: `flatpak-spawn --host` drops gamescope display env. A host-side wrapper must source `$XDG_RUNTIME_DIR/gamescope-environment`, set `ENABLE_GAMESCOPE_WSI=1`, and point `GAMESCOPE_FOCUSED_*` at the emulator (Steam Big Picture is app **769**). While the Steam overlay or Exit menu is up, move **input** to 769 and keep `FOCUSED_APP_GFX` on the game — do **not** `SIGSTOP` the emulator (Steam Exit cannot finish a stopped process) and do **not** steal focus back from 769. Live launcher: `~/Applications/eden-from-retrodeck.sh` (copy: `scripts/eden-from-retrodeck.sh`). Pass Eden `-f` at the **end** of the argv (some AppImages treat a leading `-f` as their own flag).
+- Game Mode: Cemu stays inside RetroDECK (`%EMULATOR_CEMU%`) under `reaper SteamLaunch`. Overlay is `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>` with `STEAM_OVERLAY=1` / `STEAM_INPUT_FOCUS=1`; Steam Exit kills the reaper tree. Host Eden (`flatpak-spawn --host`) must inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES` / virtual-gamepad flags, not rewrite focus during overlay, and the watcher must `SIGTERM` Eden when reaper/ES-DE dies. Live launcher: `~/Applications/eden-from-retrodeck.sh`. Pass Eden `-f` at the **end** of argv.
 
 ## Automation vs manual
 

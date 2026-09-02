@@ -28,8 +28,12 @@ fi
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
-# When gamescope focus is on Steam overlay, Eden must not keep eating the pad.
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-0}"
+# Cemu (in-Flatpak) only sees Steam's virtual pad. Host Eden must do the same
+# or overlay input keeps driving the game.
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
+export SDL_JOYSTICK_HIDAPI_STEAMXBOX="${SDL_JOYSTICK_HIDAPI_STEAMXBOX:-0}"
+export ENABLE_VK_LAYER_VALVE_steam_overlay_1="${ENABLE_VK_LAYER_VALVE_steam_overlay_1:-1}"
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0" ]; then
   export WAYLAND_DISPLAY=gamescope-0
   export GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}"
@@ -37,6 +41,49 @@ fi
 
 log() {
   printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$FOCUS_LOG"
+}
+
+# Copy Steam's pad policy from RetroDECK/es-de (flatpak-spawn --host drops it).
+inherit_steam_input_env() {
+  local snippet
+  snippet="$(python3 - <<'PY'
+import shlex
+from pathlib import Path
+wanted = (
+    "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
+    "SDL_GAMECONTROLLER_IGNORE_DEVICES",
+    "SDL_JOYSTICK_HIDAPI_STEAMXBOX",
+    "ENABLE_VK_LAYER_VALVE_steam_overlay_1",
+)
+markers = ("es-de --home", "reaper SteamLaunch", "/app/bin/retrodeck")
+for p in Path("/proc").glob("[0-9]*"):
+    try:
+        cmd = (p / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    except Exception:
+        continue
+    if "eden-from-retrodeck" in cmd or "builtin eval" in cmd:
+        continue
+    if not any(m in cmd for m in markers):
+        continue
+    try:
+        raw = (p / "environ").read_bytes().decode("utf-8", "replace").split("\0")
+        env = dict(e.split("=", 1) for e in raw if "=" in e)
+    except Exception:
+        continue
+    if "SDL_GAMECONTROLLER_IGNORE_DEVICES" not in env:
+        continue
+    for k in wanted:
+        if k in env:
+            print(f"export {k}={shlex.quote(env[k])}")
+    break
+PY
+)"
+  if [ -n "$snippet" ]; then
+    eval "$snippet"
+    log "inherited Steam SDL ignore-list (${#SDL_GAMECONTROLLER_IGNORE_DEVICES} chars)"
+  else
+    log "no RetroDECK SDL ignore-list (virtual-gamepad flags only)"
+  fi
 }
 
 # Steam client (769) is a Valve constant. RetroDECK's non-Steam shortcut id is
@@ -220,12 +267,53 @@ set_gamescope_focus() {
   DISPLAY="$display" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
 }
 
-# Overlay/exit: only move *input* (FOCUSED_APP). Leave the window/baselayer
-# on Eden so Steam composites overlay and Exit over the game.
-hand_input_to_steam() {
-  local display="${DISPLAY:-:0}"
-  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
-  log "input -> Steam app $STEAM_CLIENT_ID (gfx stays on $STEAM_APP_ID)"
+retrodeck_session_alive() {
+  local pid cmd
+  for pid in /proc/[0-9]*; do
+    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *'reaper SteamLaunch AppId='*|*/app/retrodeck/components/es-de/bin/es-de*|*/bin/bash\ /app/bin/retrodeck*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+eden_main_pids() {
+  local pid cmd
+  for pid in /proc/[0-9]*; do
+    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      /tmp/.mount_Eden*/bin/eden*) printf '%s\n' "${pid##*/}" ;;
+    esac
+  done
+}
+
+kill_our_eden() {
+  local pid
+  for pid in $(eden_main_pids); do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 0.8
+  for pid in $(eden_main_pids); do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+}
+
+esde_window_id() {
+  local display="${DISPLAY:-:0}" id name
+  command -v xdotool >/dev/null 2>&1 || return 1
+  for id in $(DISPLAY="$display" xdotool search --class net.retrodeck.retrodeck 2>/dev/null || true); do
+    name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
+    case "$name" in
+      ES-DE|ES-DE*)
+        printf '%s\n' "$id"
+        return 0
+        ;;
+    esac
+  done
+  return 1
 }
 
 focus_eden_in_gamescope() {
@@ -267,7 +355,6 @@ eden_bin_running() {
 }
 
 watch_eden_focus() {
-  : >"$FOCUS_LOG"
   log "watch start"
   F11_SENT=0
   local waited=0
@@ -279,7 +366,6 @@ watch_eden_focus() {
     fi
     if steam_overlay_active || [ "$(focused_app)" = "$STEAM_CLIENT_ID" ]; then
       log "Steam already has overlay/focus — not stealing Eden"
-      hand_input_to_steam
       break
     fi
     if focus_eden_in_gamescope; then
@@ -299,39 +385,32 @@ watch_eden_focus() {
     make_eden_fullscreen || true
   fi
   while eden_bin_running; do
+    if ! retrodeck_session_alive; then
+      log "RetroDECK/reaper gone (Steam Exit) — stopping host Eden"
+      kill_our_eden
+      break
+    fi
     app="$(focused_app)"
-    if steam_overlay_active; then
-      if [ "$overlay" -eq 0 ]; then
-        log "Steam overlay on — input to Steam (Eden keeps running)"
-        hand_input_to_steam
-        overlay=1
-      fi
-    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      # Overlay atoms often drop in the Exit-game menu. Leave Steam focused.
-      if [ "$overlay" -eq 0 ]; then
-        log "gamescope focus is Steam 769 — leaving input with Steam"
-        overlay=1
-      fi
+    if steam_overlay_active || [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      overlay=1
     elif [ "$app" = "$STEAM_APP_ID" ]; then
-      if [ "$overlay" -eq 1 ]; then
-        log "Steam returned focus to the game — sync Eden window"
-        overlay=0
-        id="$(eden_window_id || true)"
-        if [ -n "${id:-}" ]; then
-          set_gamescope_focus "$id" "$STEAM_APP_ID"
-        fi
-      elif [ "$F11_SENT" -eq 0 ] && eden_chrome_visible; then
-        log "Qt chrome still visible; sending F11"
+      overlay=0
+      if [ "$F11_SENT" -eq 0 ] && eden_chrome_visible; then
         make_eden_fullscreen || true
       fi
-    else
-      log "focus stolen (app=$app); reclaiming"
-      focus_eden_in_gamescope || true
     fi
     sleep 0.2
   done
-  restore_steam_focus
-  log "watch exit (Eden gone)"
+  if retrodeck_session_alive; then
+    id="$(esde_window_id || true)"
+    if [ -n "${id:-}" ]; then
+      set_gamescope_focus "$id" "$STEAM_APP_ID"
+      log "restored ES-DE window=$id"
+    fi
+  else
+    restore_steam_focus
+  fi
+  log "watch exit"
 }
 
 resolve_rom() {
@@ -360,6 +439,8 @@ if [ "${1:-}" = "--watch-focus" ]; then
 fi
 
 resolve_steam_app_id || exit 1
+: >"$FOCUS_LOG"
+inherit_steam_input_env
 
 # Detached from AppImage exec/HUP so the watcher outlives RetroDECK exiting.
 if command -v setsid >/dev/null 2>&1; then

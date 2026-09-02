@@ -77,6 +77,33 @@ install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
 install -m 0644 "$SYSTEMS_SRC" "$CUSTOM_SYSTEMS/es_systems.xml"
 install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"
 
+# Host Eden was bound to the physical Xbox GUID. Steam keeps that device
+# for overlay and exposes a virtual pad (Cemu SteamInput-P1). Drop the GUID
+# so player 1 follows SDL port 0 (the virtual pad).
+eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
+xbox_guid="030000005e040000ea02000008040000"
+if [ -f "$eden_ini" ] && grep -q "$xbox_guid" "$eden_ini"; then
+  python3 - "$eden_ini" "$xbox_guid" <<'PY'
+from pathlib import Path
+import sys
+p, guid = Path(sys.argv[1]), sys.argv[2]
+text = p.read_text()
+needle = f",guid:{guid}"
+if needle not in text:
+    raise SystemExit(0)
+bak = p.with_suffix(p.suffix + ".bak-steam-virtual")
+if not bak.exists():
+    bak.write_text(text)
+out = []
+for line in text.splitlines(keepends=True):
+    if line.startswith("player_0_") and guid in line:
+        line = line.replace(needle, "")
+    out.append(line)
+p.write_text("".join(out))
+print(f"Unbound player 0 from physical Xbox GUID in {p}")
+PY
+fi
+
 if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
   'test -x /var/data/retrodeck/external_components/eden/component_launcher.sh && test -x /var/data/retrodeck/external_components/eden/AppRun'; then
   echo "Launcher is not visible inside the RetroDECK sandbox."

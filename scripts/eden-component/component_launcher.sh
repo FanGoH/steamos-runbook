@@ -12,6 +12,18 @@ export XDG_CONFIG_HOME="${EDEN_XDG_CONFIG_HOME:-${HOME}/.config}"
 export XDG_DATA_HOME="${EDEN_XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${EDEN_XDG_CACHE_HOME:-${HOME}/.cache}"
 
+# Cemu's SteamInput-P1 profile uses "Steam Virtual Gamepad". Overlay works
+# because Steam owns the physical Xbox; the game must use the virtual pad.
+# Do not let Eden's SDL hidapi take the Xbox HID (hid_read failure).
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
+export SDL_JOYSTICK_HIDAPI="${SDL_JOYSTICK_HIDAPI:-0}"
+export SDL_HIDAPI_JOYSTICK="${SDL_HIDAPI_JOYSTICK:-0}"
+# Keep RetroDECK's ignore-list when Steam set one. Otherwise ignore the
+# physical Xbox One S so port 0 is the virtual pad, not 045e:02ea.
+if [ -z "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
+  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x02EA"
+fi
+
 # AppRun's wayland-is-broken hook forces xcb; keep that for Game Mode.
 args=()
 prev=""

@@ -28,7 +28,13 @@ pick_switch_rom() {
 # tiles like Xenoblade / Luigi exec this wrap with an empty argv. Recover the
 # dump from SteamAppId → shortcuts.vdf AppName → ~/retrodeck/roms/switch/.
 if [ "$#" -eq 0 ]; then
-  appid="${SteamAppId:-${SteamGameId:-${SteamOverlayGameId:-}}}"
+  appid=""
+  for cand in "${SteamAppId:-}" "${SteamGameId:-}" "${SteamOverlayGameId:-}"; do
+    if [ -n "$cand" ] && [ "$cand" != "0" ]; then
+      appid="$cand"
+      break
+    fi
+  done
   if [ -z "${appid:-}" ]; then
     echo "rom-launcher: no args and no SteamAppId (empty LaunchOptions)" >&2
     exit 1

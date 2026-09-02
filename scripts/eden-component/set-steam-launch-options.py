@@ -12,6 +12,7 @@ args.
 from __future__ import annotations
 
 import shutil
+import sqlite3
 import struct
 import sys
 import tempfile
@@ -134,7 +135,17 @@ def normalize_appid(value: str) -> str:
     if not text:
         raise ValueError("empty appid")
     n = int(text, 16) if text.lower().startswith("0x") else int(text, 10)
-    return str(n & 0xFFFFFFFF)
+    if n > 0xFFFFFFFF:
+        # Steam GameID: appid in the high 32 bits, type in bits 24-31
+        # (shortcut = 0x02 → low half 0x02000000). Do not treat that flag as
+        # the shortcut appid.
+        hi = n >> 32
+        n = hi if hi else (n & 0xFFFFFFFF)
+    else:
+        n = n & 0xFFFFFFFF
+    if n == 0:
+        raise ValueError("zero appid")
+    return str(n)
 
 
 def pick_switch_dump(target: Path) -> Path | None:
@@ -198,6 +209,89 @@ def rom_for_appid(appid: str, home: Path) -> Path | None:
     return None
 
 
+def stash_switch_rars(home: Path) -> int:
+    """Move leftover .rar sidecars out of Switch folders that already have a dump."""
+    switch = home / "retrodeck/roms/switch"
+    if not switch.is_dir():
+        return 0
+    stash_root = switch / "_archives"
+    moved = 0
+    for game in sorted(switch.iterdir()):
+        if not game.is_dir() or game.name.startswith("_"):
+            continue
+        if pick_switch_dump(game) is None:
+            continue
+        for rar in game.rglob("*"):
+            if not rar.is_file() or rar.suffix.lower() != ".rar":
+                continue
+            dest = stash_root / game.name / rar.relative_to(game)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                dest = dest.with_name(dest.name + ".bak")
+            rar.rename(dest)
+            print(f"stashed {rar} -> {dest}")
+            moved += 1
+    return moved
+
+
+def repair_tender_switch_installs(home: Path) -> int:
+    """Tender withholds Play when launchable=0 (Luigi was recorded as a .rar)."""
+    db = home / "homebrew/data/romm-tender/romm_sync.db"
+    if not db.is_file():
+        return 0
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    fixed = 0
+    try:
+        rows = list(
+            con.execute(
+                "SELECT rom_id, file_path, rom_dir, launchable FROM rom_installs "
+                "WHERE system = 'switch' OR platform_slug = 'switch'"
+            )
+        )
+        for row in rows:
+            rom_dir = Path(row["rom_dir"]) if row["rom_dir"] else None
+            current = Path(row["file_path"]) if row["file_path"] else None
+            dump = None
+            if current is not None:
+                dump = pick_switch_dump(current)
+            if dump is None and rom_dir is not None:
+                dump = pick_switch_dump(rom_dir)
+            if dump is None:
+                continue
+            lo = _rd(dump)
+            fp = row["file_path"] or ""
+            need = (
+                not row["launchable"]
+                or Path(fp) != dump
+                or not fp.lower().endswith((".nsp", ".xci"))
+            )
+            if not need:
+                # Still refresh applied_launch_options if empty.
+                applied = con.execute(
+                    "SELECT applied_launch_options FROM roms WHERE rom_id = ?",
+                    (row["rom_id"],),
+                ).fetchone()
+                if applied and applied["applied_launch_options"]:
+                    continue
+            con.execute(
+                "UPDATE rom_installs SET file_path = ?, launchable = 1 WHERE rom_id = ?",
+                (str(dump), row["rom_id"]),
+            )
+            con.execute(
+                "UPDATE roms SET applied_launch_options = ?, fs_size_bytes = ? "
+                "WHERE rom_id = ?",
+                (lo, dump.stat().st_size, row["rom_id"]),
+            )
+            print(f"tender rom_id={row['rom_id']} launchable {dump}")
+            fixed += 1
+        if fixed:
+            con.commit()
+    finally:
+        con.close()
+    return fixed
+
+
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "--rom-for-appid":
         if len(sys.argv) != 3:
@@ -212,10 +306,16 @@ def main() -> int:
             return 1
         print(dump)
         return 0
+    if len(sys.argv) == 2 and sys.argv[1] == "--repair-tender":
+        home = Path.home()
+        stash_switch_rars(home)
+        repair_tender_switch_installs(home)
+        return 0
     if len(sys.argv) != 2:
         print(
             f"usage: {sys.argv[0]} /path/to/shortcuts.vdf\n"
-            f"       {sys.argv[0]} --rom-for-appid APPID",
+            f"       {sys.argv[0]} --rom-for-appid APPID\n"
+            f"       {sys.argv[0]} --repair-tender",
             file=sys.stderr,
         )
         return 2
@@ -223,6 +323,8 @@ def main() -> int:
     if not path.is_file():
         print(f"skip: no {path}")
         return 0
+    stash_switch_rars(Path.home())
+    repair_tender_switch_installs(Path.home())
     patch_file(path, updates())
     return 0
 
@@ -250,7 +352,8 @@ def _self_test() -> None:
     parsed = iter_shortcuts(vdf)
     assert parsed[0]["appid"] == appid
     assert parsed[0]["AppName"] == name
-    assert normalize_appid(str(appid | (1 << 32))) == str(appid)
+    assert normalize_appid(str(appid << 32)) == str(appid)
+    assert normalize_appid(str((appid << 32) | 0x02000000)) == str(appid)
 
     with tempfile.TemporaryDirectory() as td:
         home = Path(td)

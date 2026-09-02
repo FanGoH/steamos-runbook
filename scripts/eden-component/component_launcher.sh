@@ -12,25 +12,20 @@ export XDG_CONFIG_HOME="${EDEN_XDG_CONFIG_HOME:-${HOME}/.config}"
 export XDG_DATA_HOME="${EDEN_XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${EDEN_XDG_CACHE_HOME:-${HOME}/.cache}"
 
-# Cemu SteamInput-P1 = "Steam Virtual Gamepad". Overlay means Steam owns
-# the physical Xbox; Eden must use the virtual pad. Force this — Steam's
-# IGNORE_DEVICES list hides 045e:02ea, so without ALLOW=1 Eden sees nothing.
+# Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
+# injects an Xbox-like pad on those IDs after it tears down Steam's
+# virtual controller — inheriting the list leaves Eden with nothing.
+# Do not keep Steam's list. Allow Steam virtual + Xbox + Sunshine x360;
+# that also drops the ASRock LED on js0.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
-# Motherboard LED enumerates as js0 and can steal SDL port 0.
-extra_ignore="0x26ce/0x01a2"
-if [ -n "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
-  case ",${SDL_GAMECONTROLLER_IGNORE_DEVICES}," in
-    *",${extra_ignore},"*|*",0x26CE/0x01A2,"*) ;;
-    *) export SDL_GAMECONTROLLER_IGNORE_DEVICES="${SDL_GAMECONTROLLER_IGNORE_DEVICES},${extra_ignore}" ;;
-  esac
-else
-  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x02ea,${extra_ignore}"
-fi
+unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd"
 
-# Eden overwrites qt-config.ini on exit. Re-apply every launch so player 0
-# stays on the Steam virtual pad and the Joy-Con HID driver stays off.
+# Eden overwrites qt-config.ini on exit. Strip any GUID so player 0
+# follows SDL port 0 (Steam virtual or Sunshine's pad) and keep the
+# Joy-Con HID driver off.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then

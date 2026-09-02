@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Point Eden player 0 at Steam Virtual Gamepad and drop native HID drivers.
+"""Keep Eden player 0 on SDL port 0 and drop native Joy-Con HID.
 
-Cemu/Azahar in this RetroDECK install bind SDL to
-guid 030079f6de280000ff11000001000000 ("Steam Virtual Gamepad"). Overlay
-keeps the physical Xbox; Eden's joycon HID driver must not steal it
-(Steam then hits hid_read failure and destroys the virtual pad).
+Do not pin a GUID. Moonlight/Sunshine tears down Steam's virtual pad
+(hid_read / "Destroyed virtual controller") and injects its own Xbox-like
+device with a different GUID. Cemu can retarget; Eden with a stuck GUID
+matches nothing. Port 0 without a GUID follows whichever pad SDL sees.
 """
 from pathlib import Path
 import re
 import sys
-
-STEAM_GUID = "030079f6de280000ff11000001000000"
 
 
 def patch(text: str) -> str:
@@ -22,11 +20,6 @@ def patch(text: str) -> str:
             line = "enable_joycon_driver\\default=false\n"
         elif line.startswith("player_0_") and "engine:sdl" in line:
             line = re.sub(r",guid:[0-9a-fA-F]+", "", line)
-            if f"guid:{STEAM_GUID}" not in line:
-                line = line.replace(
-                    "engine:sdl,port:0,",
-                    f"engine:sdl,port:0,guid:{STEAM_GUID},",
-                )
         out.append(line)
     return "".join(out)
 
@@ -42,13 +35,13 @@ def main() -> int:
     text = path.read_text()
     new = patch(text)
     if new == text:
-        print(f"Eden input already uses Steam Virtual Gamepad in {path}")
+        print(f"Eden player 0 already has no GUID and joycon off in {path}")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-steam-virtual")
     if not bak.exists():
         bak.write_text(text)
     path.write_text(new)
-    print(f"Pointed Eden player 0 at Steam Virtual Gamepad in {path}")
+    print(f"Unbound Eden player 0 GUID (SDL port 0) in {path}")
     return 0
 
 

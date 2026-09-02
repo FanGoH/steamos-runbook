@@ -79,9 +79,8 @@ install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-eden-input.py"
 install -m 0644 "$SYSTEMS_SRC" "$CUSTOM_SYSTEMS/es_systems.xml"
 install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"
 
-# Same Steam Virtual Gamepad GUID Cemu SteamInput-P1 / Azahar use.
-# Also run from the launcher on every game start (Eden rewrites this file
-# on exit). Doing it here covers a first install before the next launch.
+# Strip player-0 GUID + disable Joy-Con HID. Also run from the launcher
+# on every game start (Eden rewrites qt-config.ini on exit).
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
 if [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"

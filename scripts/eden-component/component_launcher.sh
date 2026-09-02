@@ -23,9 +23,8 @@ export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd"
 
-# Eden overwrites qt-config.ini on exit. Strip any GUID so player 0
-# follows SDL port 0 (Steam virtual or Sunshine's pad) and keep the
-# Joy-Con HID driver off.
+# Eden overwrites qt-config.ini on exit. Re-apply the Xbox One / Sunshine
+# pad GUID every launch so player 0 does not fall back to SDL port 0.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
 if [ -f "$ini" ] && [ -f "$patcher" ]; then

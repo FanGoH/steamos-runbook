@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Keep Eden player 0 on SDL port 0 and drop native Joy-Con HID.
+"""Persist Eden player 0 on the Xbox One / Sunshine pad and drop Joy-Con HID.
 
-Do not pin a GUID. Moonlight/Sunshine tears down Steam's virtual pad
-(hid_read / "Destroyed virtual controller") and injects its own Xbox-like
-device with a different GUID. Cemu can retarget; Eden with a stuck GUID
-matches nothing. Port 0 without a GUID follows whichever pad SDL sees.
+The working device in Game Mode + Moonlight is SDL GUID
+030000005e040000ea02000008040000 (045e:02ea — Xbox One S and Sunshine's
+"X-Box One (virtual) pad"). Do not strip that GUID on launch; Eden then
+falls back to SDL port 0 (ASRock LED or Steam's wrapper) and the UI
+device has to be re-picked every boot.
 """
 from pathlib import Path
 import re
 import sys
+
+# Eden's SDL GUID for 045e:02ea (no name-CRC). Matches what the UI writes
+# when player 0 is set to Xbox One.
+XBOX_GUID = "030000005e040000ea02000008040000"
 
 
 def patch(text: str) -> str:
@@ -20,6 +25,11 @@ def patch(text: str) -> str:
             line = "enable_joycon_driver\\default=false\n"
         elif line.startswith("player_0_") and "engine:sdl" in line:
             line = re.sub(r",guid:[0-9a-fA-F]+", "", line)
+            if f"guid:{XBOX_GUID}" not in line:
+                line = line.replace(
+                    "engine:sdl,port:0,",
+                    f"engine:sdl,port:0,guid:{XBOX_GUID},",
+                )
         out.append(line)
     return "".join(out)
 
@@ -35,13 +45,13 @@ def main() -> int:
     text = path.read_text()
     new = patch(text)
     if new == text:
-        print(f"Eden player 0 already has no GUID and joycon off in {path}")
+        print(f"Eden player 0 already bound to Xbox One in {path}")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-steam-virtual")
     if not bak.exists():
         bak.write_text(text)
     path.write_text(new)
-    print(f"Unbound Eden player 0 GUID (SDL port 0) in {path}")
+    print(f"Bound Eden player 0 to Xbox One GUID in {path}")
     return 0
 
 

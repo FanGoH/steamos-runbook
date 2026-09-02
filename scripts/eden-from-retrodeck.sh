@@ -401,7 +401,10 @@ watch_eden_focus() {
         log "STEAM_OVERLAY=1 — FOCUSED_APP=769 gfx=$STEAM_APP_ID"
       fi
       overlay=1
-    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+    elif [ "$app" = "$STEAM_CLIENT_ID" ] && [ "$saw_retrodeck" -eq 1 ]; then
+      # Steam Exit menu: APP=769 without STEAM_OVERLAY. Only trust this
+      # when RetroDECK owns the session. Host-only tests sit on 769/BPM
+      # and must reclaim or the picture stays on Big Picture.
       overlay=1
     elif [ "$app" != "$STEAM_APP_ID" ]; then
       log "focus stolen (app=$app); reclaiming for video"

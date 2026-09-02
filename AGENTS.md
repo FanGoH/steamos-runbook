@@ -21,7 +21,7 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
-- Game Mode: Cemu stays inside RetroDECK (`%EMULATOR_CEMU%`) under `reaper SteamLaunch`. Overlay is `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>` with `STEAM_OVERLAY=1` / `STEAM_INPUT_FOCUS=1`; Steam Exit kills the reaper tree. Host Eden (`flatpak-spawn --host`) must inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES` / virtual-gamepad flags, not rewrite focus during overlay, and the watcher must `SIGTERM` Eden when reaper/ES-DE dies. Live launcher: `~/Applications/eden-from-retrodeck.sh`. Pass Eden `-f` at the **end** of argv.
+- Game Mode: Cemu stays inside RetroDECK (`%EMULATOR_CEMU%`) under `reaper SteamLaunch`. The **ES-DE window stays mapped** — that is Steam’s game identity; Cemu is a child window on DISPLAY=:1. Overlay is `FOCUSED_APP=769` + `FOCUSED_APP_GFX=<game>` with `STEAM_OVERLAY=1` / `STEAM_INPUT_FOCUS=1`; Steam Exit kills the reaper tree. Host Eden must inherit Steam’s SDL virtual-gamepad flags, keep `STEAM_GAME` on ES-DE (not Eden), not rewrite focus during overlay, and `SIGTERM` Eden when reaper/ES-DE dies. Live launcher: `~/Applications/eden-from-retrodeck.sh`. Pass Eden `-f` at the **end** of argv.
 
 ## Automation vs manual
 

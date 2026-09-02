@@ -301,29 +301,39 @@ kill_our_eden() {
   done
 }
 
+# Cemu leaves the ES-DE window mapped on gamescope's game Xwayland (:1).
+# That window is RetroDECK's Steam identity — overlay/Exit attach to it.
 esde_window_id() {
-  local display="${DISPLAY:-:0}" id name
+  local display id name
   command -v xdotool >/dev/null 2>&1 || return 1
-  for id in $(DISPLAY="$display" xdotool search --class net.retrodeck.retrodeck 2>/dev/null || true); do
-    name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
-    case "$name" in
-      ES-DE|ES-DE*)
-        printf '%s\n' "$id"
-        return 0
-        ;;
-    esac
+  for display in :1 "${DISPLAY:-:0}" :0; do
+    [ -S /tmp/.X11-unix/X"${display#:}" ] || continue
+    for id in $(DISPLAY="$display" xdotool search --class net.retrodeck.retrodeck 2>/dev/null || true); do
+      name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        ES-DE|ES-DE*)
+          printf '%s\n' "$id"
+          return 0
+          ;;
+      esac
+    done
   done
   return 1
 }
 
 focus_eden_in_gamescope() {
   local display="${DISPLAY:-:0}"
-  local id
+  local id esde
   id="$(eden_window_id)" || return 1
   DISPLAY="$display" xdotool windowmap "$id" windowmove "$id" 0 0 \
     windowraise "$id" windowactivate "$id" 2>/dev/null || true
   make_eden_fullscreen || true
-  DISPLAY="$display" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
+  # Do not put STEAM_GAME on Eden. Cemu never does — ES-DE stays the Steam app.
+  esde="$(esde_window_id || true)"
+  if [ -n "${esde:-}" ]; then
+    DISPLAY="$display" xprop -id "$esde" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
+    log "Steam identity stays on ES-DE window=$esde"
+  fi
   set_gamescope_focus "$id" "$STEAM_APP_ID"
   log "focused Eden window=$id app=$STEAM_APP_ID"
   return 0

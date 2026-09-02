@@ -169,32 +169,6 @@ steam_overlay_active() {
   return 1
 }
 
-eden_main_pids() {
-  local pid cmd
-  for pid in /proc/[0-9]*; do
-    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
-    case "$cmd" in
-      *'/tmp/.mount_Eden'*/bin/eden*)
-        printf '%s\n' "${pid##*/}"
-        ;;
-    esac
-  done
-}
-
-pause_eden_for_overlay() {
-  local pid
-  for pid in $(eden_main_pids); do
-    kill -STOP "$pid" 2>/dev/null || true
-  done
-}
-
-resume_eden_from_overlay() {
-  local pid
-  for pid in $(eden_main_pids); do
-    kill -CONT "$pid" 2>/dev/null || true
-  done
-}
-
 # Qt title/status bars stay mapped when Eden is windowed (typically 22px / 24px).
 eden_chrome_visible() {
   local display="${DISPLAY:-:0}" id w h mapped
@@ -246,21 +220,12 @@ set_gamescope_focus() {
   DISPLAY="$display" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
 }
 
-# Overlay: Steam gets input (FOCUSED_APP/WINDOW), Eden stays the visible layer.
-hand_input_to_steam_overlay() {
+# Overlay/exit: only move *input* (FOCUSED_APP). Leave the window/baselayer
+# on Eden so Steam composites overlay and Exit over the game.
+hand_input_to_steam() {
   local display="${DISPLAY:-:0}"
-  local bpm eden
-  bpm="$(steam_bpm_window_id || true)"
-  eden="$(eden_window_id || true)"
-  if [ -n "${bpm:-}" ]; then
-    DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$bpm" 2>/dev/null || true
-  fi
   DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
-  if [ -n "${eden:-}" ]; then
-    DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_APP_ID" 2>/dev/null || true
-    DISPLAY="$display" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$eden" 2>/dev/null || true
-  fi
-  log "overlay input -> Steam bpm=${bpm:-none} gfx=$STEAM_APP_ID eden=${eden:-none}"
+  log "input -> Steam app $STEAM_CLIENT_ID (gfx stays on $STEAM_APP_ID)"
 }
 
 focus_eden_in_gamescope() {
@@ -294,9 +259,8 @@ eden_bin_running() {
   for pid in /proc/[0-9]*; do
     cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *'/tmp/.mount_Eden'*/bin/eden*|*/Applications/Eden.appimage*)
-        return 0
-        ;;
+      /tmp/.mount_Eden*/bin/eden*) return 0 ;;
+      /home/deck/Applications/Eden.appimage*) return 0 ;;
     esac
   done
   return 1
@@ -308,6 +272,16 @@ watch_eden_focus() {
   F11_SENT=0
   local waited=0
   while [ "$waited" -lt 120 ]; do
+    if ! eden_window_id >/dev/null; then
+      sleep 0.5
+      waited=$((waited + 1))
+      continue
+    fi
+    if steam_overlay_active || [ "$(focused_app)" = "$STEAM_CLIENT_ID" ]; then
+      log "Steam already has overlay/focus — not stealing Eden"
+      hand_input_to_steam
+      break
+    fi
     if focus_eden_in_gamescope; then
       break
     fi
@@ -318,49 +292,44 @@ watch_eden_focus() {
     log "watch gave up waiting for Eden window"
     exit 1
   fi
-  local overlay=0 overlay_via="" app
-  make_eden_fullscreen || true
+  local overlay=0 app id
+  if steam_overlay_active || [ "$(focused_app)" = "$STEAM_CLIENT_ID" ]; then
+    overlay=1
+  else
+    make_eden_fullscreen || true
+  fi
   while eden_bin_running; do
     app="$(focused_app)"
     if steam_overlay_active; then
       if [ "$overlay" -eq 0 ]; then
-        log "Steam overlay atoms on — pause Eden, hand input to Steam"
-        pause_eden_for_overlay
-        hand_input_to_steam_overlay
+        log "Steam overlay on — input to Steam (Eden keeps running)"
+        hand_input_to_steam
         overlay=1
-        overlay_via=atoms
       fi
-    elif [ "$overlay" -eq 1 ] && [ "$overlay_via" = "atoms" ]; then
-      log "Steam overlay atoms off — resume Eden"
-      resume_eden_from_overlay
-      overlay=0
-      overlay_via=""
-      focus_eden_in_gamescope || true
     elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      # Overlay atoms often drop in the Exit-game menu. Leave Steam focused.
       if [ "$overlay" -eq 0 ]; then
-        log "gamescope focus is Steam 769 — pausing Eden (leave Steam focused)"
-        pause_eden_for_overlay
+        log "gamescope focus is Steam 769 — leaving input with Steam"
         overlay=1
-        overlay_via=focus
       fi
-    else
+    elif [ "$app" = "$STEAM_APP_ID" ]; then
       if [ "$overlay" -eq 1 ]; then
-        log "Steam overlay off — resume Eden"
-        resume_eden_from_overlay
+        log "Steam returned focus to the game — sync Eden window"
         overlay=0
-        overlay_via=""
-        focus_eden_in_gamescope || true
-      elif [ "$app" != "$STEAM_APP_ID" ]; then
-        log "focus stolen (app=$app); reclaiming"
-        focus_eden_in_gamescope || true
+        id="$(eden_window_id || true)"
+        if [ -n "${id:-}" ]; then
+          set_gamescope_focus "$id" "$STEAM_APP_ID"
+        fi
       elif [ "$F11_SENT" -eq 0 ] && eden_chrome_visible; then
         log "Qt chrome still visible; sending F11"
         make_eden_fullscreen || true
       fi
+    else
+      log "focus stolen (app=$app); reclaiming"
+      focus_eden_in_gamescope || true
     fi
     sleep 0.2
   done
-  resume_eden_from_overlay
   restore_steam_focus
   log "watch exit (Eden gone)"
 }

@@ -66,6 +66,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
+| `scripts/eden-from-retrodeck.sh` | Host-side Eden launcher for Game Mode (gamescope focus, overlay input, `-f`) |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |

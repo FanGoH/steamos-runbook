@@ -21,6 +21,8 @@ gitignored `rules_of_the_land.md`, not here.
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
   ```
 
+- Game Mode: `flatpak-spawn --host` drops gamescope display env. A host-side wrapper must source `$XDG_RUNTIME_DIR/gamescope-environment`, set `ENABLE_GAMESCOPE_WSI=1`, and point `GAMESCOPE_FOCUSED_*` at the emulator (Steam Big Picture is app **769**). Do **not** steal focus back while the Steam overlay is up (`STEAM_OVERLAY` / `STEAM_INPUT_FOCUS`, or focused app 769) — pause the emulator instead, or overlay input leaks into the game. Live launcher: `~/Applications/eden-from-retrodeck.sh` (copy: `scripts/eden-from-retrodeck.sh`). Pass Eden `-f` at the **end** of the argv (some AppImages treat a leading `-f` as their own flag).
+
 ## Automation vs manual
 
 **Auto when possible** (`ensure-*.sh` from `post-update.sh`):

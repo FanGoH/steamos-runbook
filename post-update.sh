@@ -73,6 +73,7 @@ run_step "ensure-openrgb" "$ROOT/scripts/ensure-openrgb.sh"
 run_step "ensure-sunshine" "$ROOT/scripts/ensure-sunshine.sh"
 run_step "ensure-gearlever" "$ROOT/scripts/ensure-gearlever.sh"
 run_step "ensure-cemu-input" "$ROOT/scripts/ensure-cemu-input.sh"
+run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn

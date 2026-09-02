@@ -95,11 +95,52 @@ mkdir -p "$RYUBING_SLOT"
 install -m 0755 "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" \
   "$RYUBING_SLOT/component_launcher.sh"
 
+# Tender Steam shortcuts exec this file. Huge Switch dumps skip RetroDECK
+# so they match standalone Game Mode (in-sandbox Eden + Flatpak OOMs).
+wrap_src="$ROOT/scripts/eden-component/rom-launcher.sh"
+while IFS= read -r wrap_dst; do
+  [ -n "$wrap_dst" ] || continue
+  install -m 0755 "$wrap_src" "$wrap_dst"
+  echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
+done <<EOF
+/home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
+/home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
+EOF
+
+# Eden's standalone library scans ~/emulation/switch/games. Tender dumps live
+# under retrodeck/roms/switch — symlink so the same cart shows up without a copy.
+emu_games="/home/${STEAMOS_USER}/emulation/switch/games"
+rd_switch="/home/${STEAMOS_USER}/retrodeck/roms/switch"
+if [ -d "$rd_switch" ]; then
+  mkdir -p "$emu_games"
+  for src in "$rd_switch"/*/; do
+    [ -d "$src" ] || continue
+    name="$(basename "${src%/}")"
+    dest="$emu_games/$name"
+    if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+      ln -sfn "${src%/}" "$dest"
+      echo "Linked $dest -> $src"
+    fi
+  done
+fi
+
 # Bind player 0 to the pad that is present at launch (Sunshine/Xbox, then
 # Steam virtual). Also run from the launcher on every game start.
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
 if [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"
+fi
+python3 "$PATCHER_SRC" --ensure-fps-mods || true
+engage_custom="/home/${STEAMOS_USER}/.config/eden/custom/0100A6301214E000.ini"
+if [ -f "$engage_custom" ]; then
+  python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"
+fi
+shortcuts_script="$ROOT/scripts/eden-component/set-steam-launch-options.py"
+if [ -f "$shortcuts_script" ]; then
+  for shortcuts in /home/${STEAMOS_USER}/.local/share/Steam/userdata/*/config/shortcuts.vdf; do
+    [ -f "$shortcuts" ] || continue
+    python3 "$shortcuts_script" "$shortcuts" || true
+  done
 fi
 
 if ! flatpak run --command=sh net.retrodeck.retrodeck -c \

@@ -95,6 +95,18 @@ mkdir -p "$RYUBING_SLOT"
 install -m 0755 "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" \
   "$RYUBING_SLOT/component_launcher.sh"
 
+# Tender Steam shortcuts exec this file. Huge Switch dumps skip RetroDECK
+# so they match standalone Game Mode (in-sandbox Eden + Flatpak OOMs).
+wrap_src="$ROOT/scripts/eden-component/rom-launcher.sh"
+while IFS= read -r wrap_dst; do
+  [ -n "$wrap_dst" ] || continue
+  install -m 0755 "$wrap_src" "$wrap_dst"
+  echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
+done <<EOF
+/home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
+/home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
+EOF
+
 # Bind player 0 to the pad that is present at launch (Sunshine/Xbox, then
 # Steam virtual). Also run from the launcher on every game start.
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"

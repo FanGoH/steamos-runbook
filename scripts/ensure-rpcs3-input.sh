@@ -16,10 +16,11 @@ DEFAULT_YML="${RPCS3_DEFAULT_YML:-/home/${STEAMOS_USER}/.var/app/net.retrodeck.r
 LAUNCHER_SRC="$ROOT/scripts/rpcs3-component/component_launcher.sh"
 WRAPPER_SRC="$ROOT/scripts/rpcs3-component/rpcs3-wrapper"
 PATCHER_SRC="$ROOT/scripts/rpcs3-component/patch-rpcs3-input.py"
+ALIAS_SRC="$ROOT/scripts/rpcs3-component/alias-rpcs3-saves.py"
 FIND_SRC="$ROOT/scripts/eden-component/es_find_rules.xml"
 RETRODECK_PATH="/var/data/retrodeck/bin:/app/bin:/usr/bin"
 
-if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ] || [ ! -f "$WRAPPER_SRC" ]; then
+if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ] || [ ! -f "$WRAPPER_SRC" ] || [ ! -f "$ALIAS_SRC" ]; then
   echo "Missing RPCS3 input templates under $ROOT/scripts/rpcs3-component/"
   exit 1
 fi
@@ -27,6 +28,7 @@ fi
 mkdir -p "$COMPONENT_DIR" "$BIN_DIR" "$CUSTOM_SYSTEMS"
 install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
 install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-rpcs3-input.py"
+install -m 0644 "$ALIAS_SRC" "$COMPONENT_DIR/alias-rpcs3-saves.py"
 install -m 0755 "$WRAPPER_SRC" "$BIN_DIR/rpcs3"
 
 if [ -f "$FIND_SRC" ]; then
@@ -35,6 +37,10 @@ fi
 
 if ! python3 "$PATCHER_SRC" --self-test; then
   echo "RPCS3 input patcher self-test failed."
+  exit 1
+fi
+if ! python3 "$ALIAS_SRC" --self-test; then
+  echo "RPCS3 save alias self-test failed."
   exit 1
 fi
 if [ -f "$DEFAULT_YML" ]; then
@@ -64,6 +70,8 @@ if [ -d "$STANDALONE_SAVES" ]; then
     fi
   done
 fi
+# USA Uncharted DF disc is BCUS98103; the EBOOT lists BCES00065_NDI_UNCHARTED_DF_*
+python3 "$ALIAS_SRC" "$RD_SAVES"
 
 # Steam/Tender uses run_game.sh, which only reads bundled find-rules. Those
 # list systempath `rpcs3` before the /app RPCS3 launcher. Prepend our bin

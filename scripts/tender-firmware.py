@@ -22,6 +22,7 @@ import re
 import socket
 import struct
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -206,17 +207,73 @@ def _decky_call(
     return msg.get("result")
 
 
+def _ps2_status(loader: str, plugin: str) -> dict:
+    result = _decky_call(loader, plugin, "get_firmware_status", timeout=30)
+    if not isinstance(result, dict):
+        return {}
+    for plat in result.get("platforms") or []:
+        if isinstance(plat, dict) and plat.get("platform_slug") == "ps2":
+            return plat
+    return {}
+
+
+def wait_for_ps2_bios(
+    bios_dir: Path,
+    *,
+    loader: str,
+    plugin: str,
+    timeout: int,
+) -> Path | None:
+    """PluginLoader often closes the caller WS while firmware still downloads."""
+    deadline = time.monotonic() + timeout
+    last = -1
+    while time.monotonic() < deadline:
+        picked = pick_ps2_bios(bios_dir)
+        if picked is not None and picked.name == PREFERRED_PS2_BIOS:
+            return picked
+        n = len(list(bios_dir.glob("ps2-*.bin")))
+        if n != last:
+            print(f"Tender firmware still downloading ({n} ps2-*.bin so far)")
+            last = n
+        try:
+            status = _ps2_status(loader, plugin)
+        except RuntimeError:
+            status = {}
+        if status.get("all_downloaded"):
+            return pick_ps2_bios(bios_dir)
+        time.sleep(2)
+    return pick_ps2_bios(bios_dir)
+
+
 def download_all_firmware(
     platform_slug: str,
     *,
     loader: str,
     plugin: str,
     timeout: int,
+    bios_dir: Path | None = None,
 ) -> dict:
-    result = _decky_call(loader, plugin, "download_all_firmware", platform_slug, timeout=timeout)
-    if not isinstance(result, dict):
-        raise RuntimeError(f"Tender.download_all_firmware returned {type(result).__name__}")
-    return result
+    try:
+        result = _decky_call(
+            loader, plugin, "download_all_firmware", platform_slug, timeout=timeout
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError(f"Tender.download_all_firmware returned {type(result).__name__}")
+        return result
+    except RuntimeError as exc:
+        # Long downloads keep running inside PluginLoader after our WS drops.
+        if platform_slug == "ps2" and bios_dir is not None:
+            print(f"Decky RPC returned early ({exc}); waiting for Tender firmware")
+            picked = wait_for_ps2_bios(
+                bios_dir, loader=loader, plugin=plugin, timeout=timeout
+            )
+            if picked is not None:
+                return {
+                    "success": True,
+                    "downloaded": None,
+                    "message": f"BIOS landed at {picked.name} after RPC disconnect",
+                }
+        raise
 
 
 def self_test() -> None:
@@ -284,6 +341,7 @@ def main() -> int:
                 loader=args.loader,
                 plugin=args.plugin,
                 timeout=args.timeout,
+                bios_dir=Path(args.bios_dir),
             )
         except RuntimeError as exc:
             print(str(exc), file=sys.stderr)

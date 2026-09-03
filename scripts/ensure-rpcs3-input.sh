@@ -38,7 +38,10 @@ if ! python3 "$PATCHER_SRC" --self-test; then
   exit 1
 fi
 if [ -f "$DEFAULT_YML" ]; then
-  python3 "$PATCHER_SRC" "$DEFAULT_YML"
+  if ! python3 "$PATCHER_SRC" "$DEFAULT_YML"; then
+    echo "Failed to patch RPCS3 Default.yml"
+    exit 1
+  fi
 fi
 
 # Steam/Tender uses run_game.sh, which only reads bundled find-rules. Those

@@ -148,6 +148,12 @@ def test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual() -> None:
     assert name == "Xbox One S Controller 1"
 
 
+def test_guid_is_steam_virtual() -> None:
+    assert mod._guid_is_steam_virtual("030079f6de280000ff11000001000000")
+    assert not mod._guid_is_steam_virtual("030000005e040000ea02000000000000")
+    assert not mod._guid_is_steam_virtual("")
+
+
 def test_set_player1_keeps_emulated_vid_and_player2() -> None:
     sample = (
         "Player 1 Input:\n"
@@ -181,5 +187,6 @@ if __name__ == "__main__":
     test_device_for_pad_uses_event_path_not_vidpid()
     test_device_for_pad_uses_steam_virtual_guid()
     test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual()
+    test_guid_is_steam_virtual()
     test_set_player1_keeps_emulated_vid_and_player2()
     print("ok")

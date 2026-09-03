@@ -407,7 +407,8 @@ def main() -> int:
     if not patch_file(path, device):
         print(f"RPCS3 player 1 already bound to {device} in {path}")
         return 0
-    print(f"Bound RPCS3 player 1 to {device} ({pad['name']}) in {path}")
+    src = pad["name"] if pad is not None else "no joystick yet"
+    print(f"Bound RPCS3 player 1 to {device} ({src}) in {path}")
     return 0
 
 

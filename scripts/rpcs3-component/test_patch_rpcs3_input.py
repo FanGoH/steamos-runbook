@@ -129,7 +129,7 @@ def test_device_for_pad_uses_steam_virtual_guid() -> None:
 
 
 def test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual() -> None:
-    pad = {"vendor": "28de", "product": "11ff", "name": "x", "event": ""}
+    pad = {"vendor": "28de", "product": "11ff", "name": "x", "event": "event25"}
     name = mod.device_for_pad(
         pad,
         [
@@ -137,14 +137,14 @@ def test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual() -> None:
                 "name": "Steam Virtual Gamepad",
                 "vendor": "28de",
                 "product": "11ff",
-                "path": "",
-                "guid": "",
+                "path": "/dev/input/event25",
+                "guid": "030079f6de280000ff11000001000000",
                 "rpcs3_device": "Steam Virtual Gamepad 1",
             }
         ],
     )
-    # GUID/path missing: still prefer the SDL3 Xbox One S fallback, not the
-    # empty-device SDL2 name. VID/PID match is only for non-Steam-virtual pads.
+    # Path/GUID match the Steam-virtual node, but that SDL name is an empty
+    # RPCS3 device. Bind the name RetroDECK RPCS3 actually lists.
     assert name == "Xbox One S Controller 1"
 
 

@@ -44,6 +44,27 @@ if [ -f "$DEFAULT_YML" ]; then
   fi
 fi
 
+# Standalone AppImage RPCS3 keeps saves in ~/.config/rpcs3. RetroDECK vfs
+# points /dev_hdd0/home/00000001/savedata at ~/retrodeck/saves/ps3/rpcs3.
+STANDALONE_SAVES="/home/${STEAMOS_USER}/.config/rpcs3/dev_hdd0/home/00000001/savedata"
+RD_SAVES="${RPCS3_SAVES_DIR:-/home/${STEAMOS_USER}/retrodeck/saves/ps3/rpcs3}"
+mkdir -p "$RD_SAVES"
+if [ -d "$STANDALONE_SAVES" ]; then
+  for d in "$STANDALONE_SAVES"/*; do
+    [ -d "$d" ] || continue
+    base="$(basename "$d")"
+    case "$base" in
+      _archives|_moved) continue ;;
+    esac
+    if [ ! -e "$RD_SAVES/$base" ]; then
+      mv "$d" "$RD_SAVES/$base"
+      echo "Moved standalone RPCS3 save $base into $RD_SAVES"
+    else
+      echo "RetroDECK already has save $base; left standalone copy in place"
+    fi
+  done
+fi
+
 # Steam/Tender uses run_game.sh, which only reads bundled find-rules. Those
 # list systempath `rpcs3` before the /app RPCS3 launcher. Prepend our bin
 # so command -v rpcs3 hits the pad-binding wrapper. SDL3 also needs the

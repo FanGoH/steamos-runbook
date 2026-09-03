@@ -107,9 +107,15 @@ def _prepare_sdl_env() -> None:
     os.environ["SDL_HIDAPI_JOYSTICK"] = "0"
     os.environ.pop("SDL_GAMECONTROLLER_IGNORE_DEVICES", None)
     os.environ.pop("SDL_GAMEPAD_IGNORE_DEVICES", None)
-    os.environ["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] = (
-        "0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
-    )
+    # Same list as component_launcher.sh: when Steam virtual is present, omit
+    # Sunshine 045e:02ea so SDL3 names event25 "Xbox One S Controller" (the
+    # name RPCS3 binds). Including Sunshine makes SDL3 keep the Steam-virtual
+    # string, which RPCS3 then loads as an empty device.
+    except_ids = "0x28de/0x11ff,0x045e/0x028e,0x045e/0x02fd,0x045e/0x0b13,0x057e/0x2009"
+    vendors = {p["vendor"] for p in list_joysticks()}
+    if "28de" not in vendors:
+        except_ids += ",0x045e/0x02ea"
+    os.environ["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] = except_ids
 
 
 def _load_sdl() -> tuple[ctypes.CDLL | None, int]:
@@ -267,21 +273,35 @@ def device_for_pad(
         except (OSError, AttributeError):
             controllers = []
     event = pad.get("event", "")
+    chosen = ""
     for ctl in controllers:
         if _path_matches_event(str(ctl.get("path") or ""), event):
-            return str(ctl["rpcs3_device"])
-    if (pad["vendor"], pad["product"]) == STEAM_VIRTUAL:
+            chosen = str(ctl["rpcs3_device"])
+            break
+    if not chosen and (pad["vendor"], pad["product"]) == STEAM_VIRTUAL:
         for ctl in controllers:
             if _guid_is_steam_virtual(str(ctl.get("guid") or "")):
-                return str(ctl["rpcs3_device"])
-        for ctl in controllers:
-            if str(ctl.get("name") or "").startswith("Xbox One S"):
-                return str(ctl["rpcs3_device"])
-    else:
+                chosen = str(ctl["rpcs3_device"])
+                break
+        if not chosen:
+            for ctl in controllers:
+                if str(ctl.get("name") or "").startswith("Xbox One S"):
+                    chosen = str(ctl["rpcs3_device"])
+                    break
+    elif not chosen:
         for ctl in controllers:
             if ctl["vendor"] == pad["vendor"] and ctl["product"] == pad["product"]:
-                return str(ctl["rpcs3_device"])
-    return fallback_device(pad)
+                chosen = str(ctl["rpcs3_device"])
+                break
+    if not chosen:
+        chosen = fallback_device(pad)
+    # RPCS3's own SDL3 pass (Sunshine filtered) lists the Steam-wrapped pad as
+    # Xbox One S Controller. The SDL2 / dual-pad name is an empty Sixaxis.
+    if (pad["vendor"], pad["product"]) == STEAM_VIRTUAL and chosen.startswith(
+        "Steam Virtual"
+    ):
+        return fallback_device(pad)
+    return chosen
 
 
 def set_player1_device(text: str, device: str) -> str:
@@ -373,6 +393,22 @@ def main() -> int:
                         "path": "/dev/input/event26",
                         "guid": "030079f6de280000ff11000001000000",
                         "rpcs3_device": "Xbox One S Controller 1",
+                    }
+                ],
+            )
+            == "Xbox One S Controller 1"
+        )
+        assert (
+            device_for_pad(
+                steam,
+                [
+                    {
+                        "name": "Steam Virtual Gamepad",
+                        "vendor": "28de",
+                        "product": "11ff",
+                        "path": "/dev/input/event26",
+                        "guid": "030079f6de280000ff11000001000000",
+                        "rpcs3_device": "Steam Virtual Gamepad 1",
                     }
                 ],
             )

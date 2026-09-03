@@ -29,5 +29,9 @@ patcher="$here/patch-rpcs3-input.py"
 if [ -f "$yml" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$yml" || true
 fi
+# So a skipped wrapper vs a bad Device string is obvious in the next log.
+if [ -f "$yml" ]; then
+  grep -E '^  Device:' "$yml" | head -1 >&2 || true
+fi
 
 exec /app/retrodeck/components/rpcs3/bin/rpcs3 "$@"

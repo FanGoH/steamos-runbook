@@ -8,8 +8,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # SDL3 (RetroDECK RPCS3) ignores 28de:11ff unless this is in the *environment*,
-# not only SDL_SetHint. Without it, only Sunshine's ghost Xbox is visible and
-# Uncharted reports no Sixaxis.
+# not only SDL_SetHint. With it, that pad is named Xbox One S Controller (not
+# Steam Virtual Gamepad). Binding the SDL2 name creates an empty Sixaxis.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0

@@ -61,7 +61,7 @@ def test_fallback_device_names() -> None:
         mod.fallback_device(
             {"vendor": "28de", "product": "11ff", "name": "x"}
         )
-        == "Steam Virtual Gamepad 1"
+        == "Xbox One S Controller 1"
     )
     assert (
         mod.fallback_device({"vendor": "045e", "product": "02ea", "name": "x"})
@@ -73,8 +73,63 @@ def test_fallback_device_names() -> None:
     )
 
 
-def test_device_for_pad_uses_sdl_name() -> None:
-    pad = {"vendor": "28de", "product": "11ff", "name": "Microsoft X-Box 360 pad 0"}
+def test_device_for_pad_uses_event_path_not_vidpid() -> None:
+    """SDL3 reports Steam virtual as 045e:02ea; match event26, not VID/PID."""
+    pad = {
+        "vendor": "28de",
+        "product": "11ff",
+        "name": "Microsoft X-Box 360 pad 0",
+        "event": "event26",
+    }
+    name = mod.device_for_pad(
+        pad,
+        [
+            {
+                "name": "Xbox One S Controller",
+                "vendor": "045e",
+                "product": "02ea",
+                "path": "/dev/input/event25",
+                "guid": "030000005e040000ea02000000000000",
+                "rpcs3_device": "Xbox One S Controller 1",
+            },
+            {
+                "name": "Xbox One S Controller",
+                "vendor": "045e",
+                "product": "02ea",
+                "path": "/dev/input/event26",
+                "guid": "030079f6de280000ff11000001000000",
+                "rpcs3_device": "Xbox One S Controller 2",
+            },
+        ],
+    )
+    assert name == "Xbox One S Controller 2"
+
+
+def test_device_for_pad_uses_steam_virtual_guid() -> None:
+    pad = {
+        "vendor": "28de",
+        "product": "11ff",
+        "name": "Microsoft X-Box 360 pad 0",
+        "event": "",
+    }
+    name = mod.device_for_pad(
+        pad,
+        [
+            {
+                "name": "Xbox One S Controller",
+                "vendor": "045e",
+                "product": "02ea",
+                "path": "",
+                "guid": "030079f6de280000ff11000001000000",
+                "rpcs3_device": "Xbox One S Controller 1",
+            }
+        ],
+    )
+    assert name == "Xbox One S Controller 1"
+
+
+def test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual() -> None:
+    pad = {"vendor": "28de", "product": "11ff", "name": "x", "event": ""}
     name = mod.device_for_pad(
         pad,
         [
@@ -82,11 +137,15 @@ def test_device_for_pad_uses_sdl_name() -> None:
                 "name": "Steam Virtual Gamepad",
                 "vendor": "28de",
                 "product": "11ff",
+                "path": "",
+                "guid": "",
                 "rpcs3_device": "Steam Virtual Gamepad 1",
             }
         ],
     )
-    assert name == "Steam Virtual Gamepad 1"
+    # GUID/path missing: still prefer the SDL3 Xbox One S fallback, not the
+    # empty-device SDL2 name. VID/PID match is only for non-Steam-virtual pads.
+    assert name == "Xbox One S Controller 1"
 
 
 def test_set_player1_keeps_emulated_vid_and_player2() -> None:
@@ -103,9 +162,9 @@ def test_set_player1_keeps_emulated_vid_and_player2() -> None:
         "  Product ID: 616\n"
     )
     out = mod.null_extra_players(
-        mod.set_player1_device(sample, "Steam Virtual Gamepad 1")
+        mod.set_player1_device(sample, "Xbox One S Controller 1")
     )
-    assert "  Device: Steam Virtual Gamepad 1\n" in out
+    assert "  Device: Xbox One S Controller 1\n" in out
     assert "Steam Deck Controller 1" not in out
     assert "Steam Deck Controller 2" not in out
     assert '  Handler: "Null"' in out
@@ -119,6 +178,8 @@ if __name__ == "__main__":
     test_pick_prefers_steam_virtual_over_sunshine()
     test_pick_prefers_physical_xbox()
     test_fallback_device_names()
-    test_device_for_pad_uses_sdl_name()
+    test_device_for_pad_uses_event_path_not_vidpid()
+    test_device_for_pad_uses_steam_virtual_guid()
+    test_device_for_pad_sdl2_name_is_not_used_for_steam_virtual()
     test_set_player1_keeps_emulated_vid_and_player2()
     print("ok")

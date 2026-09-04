@@ -5,10 +5,14 @@ Native output is 1280x720. Resolution Scale 150 is 1920x1080. Write Color /
 Write Depth plus MSAA Disabled is the flicker/smoke fix. Do not write these
 into global config.yml — other PS3 titles keep RetroDECK defaults.
 
+`--no-gui ISO` (Tender/ES-DE) often never loads custom_configs/ by title ID.
+The wrapper must pass `--config` and this script writes `<iso>.yml` next to
+the dump (RPCS3 tries `m_path + ".yml"` first).
+
 Official Unlock FPS / Disable Motion Blur / Disable Depth of Field patches
 are PPU-hashed to disc 01.10 (USA) / 01.01 (EU). A 01.00 ISO will not match;
-do not invent 01.00 memory patches, and do not raise Vblank (that speeds the
-game up). Enable the 01.10 patches so they apply if the update is installed.
+Frame limit 60 does not unlock the engine cap. Do not invent 01.00 memory
+patches, and do not raise Vblank (that speeds the game up).
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ import sys
 
 SERIAL = "BCUS98103"
 PPU_HASH = "PPU-8363904e0b8fc276380a8f0e158dd81d7a9cefc5"
+UNCHARTED_MARKERS = ("uncharted", "bcus98103", "bces00065")
 
 # Longer keys first so "VSync" cannot eat "VSync Mode".
 VIDEO_SETTINGS: list[tuple[str, str]] = [
@@ -64,6 +69,27 @@ PATCH_BLOCK = f"""\
 """
 
 
+def is_uncharted_launch(argv: list[str]) -> bool:
+    return any(any(m in arg.lower() for m in UNCHARTED_MARKERS) for arg in argv)
+
+
+def with_config_arg(argv: list[str], config_path: str) -> list[str]:
+    if "--config" in argv or not is_uncharted_launch(argv):
+        return list(argv)
+    return ["--config", config_path, *argv]
+
+
+def set_overlay_enabled(text: str, enabled: bool = True) -> str:
+    flag = "true" if enabled else "false"
+    pat = re.compile(
+        r"(^  Performance Overlay:\n(?:    .*\n)*?    Enabled: )(true|false)",
+        re.M,
+    )
+    if pat.search(text):
+        return pat.sub(rf"\g<1>{flag}", text, count=1)
+    return text
+
+
 def set_key(text: str, key: str, value: str) -> str:
     pat = re.compile(rf"^(  {re.escape(key)}: ).*$", re.M)
     if pat.search(text):
@@ -82,7 +108,7 @@ def set_key(text: str, key: str, value: str) -> str:
 def apply_video_settings(text: str) -> str:
     for key, value in VIDEO_SETTINGS:
         text = set_key(text, key, value)
-    return text
+    return set_overlay_enabled(text, True)
 
 
 def video_settings_applied(text: str) -> bool:
@@ -91,6 +117,12 @@ def video_settings_applied(text: str) -> bool:
             if key == "VSync" and "VSync:" not in text:
                 continue
             return False
+    if "Performance Overlay:" in text and not re.search(
+        r"^  Performance Overlay:\n(?:    .*\n)*?    Enabled: true",
+        text,
+        re.M,
+    ):
+        return False
     return True
 
 
@@ -113,6 +145,41 @@ def patches_enabled(text: str) -> bool:
         if not re.search(rf"^  {re.escape(name)}:", text, re.M):
             return False
     return bool(re.search(r"BCUS98103:\s*\n\s*01\.10:\s*\n\s*Enabled: true", text))
+
+
+def games_yml_roms(config_dir: Path) -> list[Path]:
+    games = config_dir / "games.yml"
+    roms: list[Path] = []
+    if not games.is_file():
+        return roms
+    for line in games.read_text(encoding="utf-8").splitlines():
+        if ":" not in line:
+            continue
+        serial, path = line.split(":", 1)
+        if serial.strip() != SERIAL:
+            continue
+        rom = Path(path.strip())
+        if str(rom):
+            roms.append(rom)
+    return roms
+
+
+def sidecar_paths(config_dir: Path) -> list[Path]:
+    paths = [config_dir / "data" / SERIAL / "config.yml"]
+    for rom in games_yml_roms(config_dir):
+        paths.append(Path(str(rom) + ".yml"))
+    return paths
+
+
+def write_copies(src: Path, dests: list[Path]) -> list[Path]:
+    written: list[Path] = []
+    text = src.read_text(encoding="utf-8")
+    for dest in dests:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.is_file() or dest.read_text(encoding="utf-8") != text:
+            dest.write_text(text, encoding="utf-8")
+        written.append(dest)
+    return written
 
 
 def ensure_custom_config(config_dir: Path, serial: str = SERIAL) -> Path:
@@ -162,6 +229,8 @@ def apply(config_dir: Path, fallback: Path, source: Path | None) -> list[str]:
     done: list[str] = []
     custom = ensure_custom_config(config_dir)
     done.append(str(custom))
+    for extra in write_copies(custom, sidecar_paths(config_dir)):
+        done.append(str(extra))
     patch_yml = ensure_patch_yml(config_dir, fallback, source)
     done.append(str(patch_yml))
     patch_cfg = ensure_patch_config(config_dir)
@@ -185,6 +254,9 @@ def self_test() -> None:
         "Video:\n"
         "  Frame limit: Auto\n"
         "  MSAA: Auto\n"
+        "  Performance Overlay:\n"
+        "    Enabled: false\n"
+        "    Detail level: Medium\n"
         "  Resolution: 1280x720\n"
         "  Resolution Scale: 100\n"
         "  VSync: false\n"
@@ -204,8 +276,26 @@ def self_test() -> None:
     assert "  VSync Mode: Full\n" in out
     assert "  VSync: true\n" in out
     assert "  Anisotropic Filter Override: 16\n" in out
+    assert "    Enabled: true\n" in out
     assert video_settings_applied(out)
     assert not video_settings_applied(sample)
+    iso = "/roms/Uncharted Drake's Fortune/game.iso"
+    assert is_uncharted_launch(["--no-gui", iso])
+    assert with_config_arg(["--no-gui", iso], "/cfg.yml") == [
+        "--config",
+        "/cfg.yml",
+        "--no-gui",
+        iso,
+    ]
+    assert with_config_arg(["--config", "/x", iso], "/cfg.yml") == [
+        "--config",
+        "/x",
+        iso,
+    ]
+    assert with_config_arg(["--no-gui", "/other.iso"], "/cfg.yml") == [
+        "--no-gui",
+        "/other.iso",
+    ]
 
     merged = upsert_ppu_block("PPU-deadbeef:\n  Other: true\n", PATCH_BLOCK)
     assert patches_enabled(merged)
@@ -218,12 +308,21 @@ def self_test() -> None:
         cfg = root / "rpcs3"
         (cfg / "config.yml").parent.mkdir(parents=True)
         (cfg / "config.yml").write_text(sample, encoding="utf-8")
+        iso = root / "Uncharted.iso"
+        iso.write_bytes(b"")
+        (cfg / "games.yml").write_text(f"{SERIAL}: {iso}\n", encoding="utf-8")
         fallback = Path(__file__).with_name("uncharted-patch.yml")
         apply(cfg, fallback, None)
         custom = (cfg / "custom_configs" / f"config_{SERIAL}.yml").read_text(
             encoding="utf-8"
         )
         assert video_settings_applied(custom)
+        sidecar = Path(str(iso) + ".yml")
+        assert sidecar.is_file()
+        assert video_settings_applied(sidecar.read_text(encoding="utf-8"))
+        assert video_settings_applied(
+            (cfg / "data" / SERIAL / "config.yml").read_text(encoding="utf-8")
+        )
         assert "  PPU Decoder: Recompiler (LLVM)\n" in custom
         global_text = (cfg / "config.yml").read_text(encoding="utf-8")
         assert "  Resolution Scale: 100\n" in global_text
@@ -245,10 +344,20 @@ def main() -> int:
         default=Path(__file__).with_name("uncharted-patch.yml"),
     )
     parser.add_argument("--patch-source", type=Path, default=None)
+    parser.add_argument("--rewrite-args", action="store_true")
+    parser.add_argument("rest", nargs="*")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         print("ok")
+        return 0
+    if args.rewrite_args:
+        if args.config_dir is None:
+            print(f"usage: {sys.argv[0]} --rewrite-args --config-dir DIR -- [rpcs3 args]", file=sys.stderr)
+            return 2
+        cfg = args.config_dir / "custom_configs" / f"config_{SERIAL}.yml"
+        for arg in with_config_arg(args.rest, str(cfg)):
+            print(arg)
         return 0
     if args.config_dir is None:
         print(f"usage: {sys.argv[0]} --config-dir /path/to/rpcs3", file=sys.stderr)

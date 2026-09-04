@@ -39,4 +39,20 @@ if [ -f "$yml" ]; then
   grep -E '^  Device:' "$yml" | head -1 >&2 || true
 fi
 
+# --no-gui does not reliably pick custom_configs/ by title ID on ISO boot.
+# Force the Uncharted yml so 1080p / WCB actually attach.
+uncharted_cfg="$rpcs3_cfg/custom_configs/config_BCUS98103.yml"
+have_config=0
+is_uncharted=0
+for a in "$@"; do
+  [ "$a" = --config ] && have_config=1
+  alower=$(printf '%s' "$a" | tr '[:upper:]' '[:lower:]')
+  case "$alower" in
+    *uncharted*|*bcus98103*|*bces00065*) is_uncharted=1 ;;
+  esac
+done
+if [ "$is_uncharted" = 1 ] && [ "$have_config" = 0 ] && [ -f "$uncharted_cfg" ]; then
+  echo "RPCS3 --config $uncharted_cfg" >&2
+  exec /app/retrodeck/components/rpcs3/bin/rpcs3 --config "$uncharted_cfg" "$@"
+fi
 exec /app/retrodeck/components/rpcs3/bin/rpcs3 "$@"

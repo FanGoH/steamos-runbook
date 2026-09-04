@@ -69,7 +69,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 8GiB (host AppImage `-f -g`, Engage 4GB pin) |
-| `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad (`rpcs3` on RetroDECK PATH; Uncharted Sixaxis) |
+| `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad (`rpcs3` on RetroDECK PATH; Uncharted Sixaxis); per-game Uncharted 1080p / flicker / 60fps cap |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |

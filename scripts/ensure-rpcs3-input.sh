@@ -17,10 +17,14 @@ LAUNCHER_SRC="$ROOT/scripts/rpcs3-component/component_launcher.sh"
 WRAPPER_SRC="$ROOT/scripts/rpcs3-component/rpcs3-wrapper"
 PATCHER_SRC="$ROOT/scripts/rpcs3-component/patch-rpcs3-input.py"
 ALIAS_SRC="$ROOT/scripts/rpcs3-component/alias-rpcs3-saves.py"
+GRAPHICS_SRC="$ROOT/scripts/rpcs3-component/apply-uncharted-graphics.py"
+UNCHARTED_PATCH_SRC="$ROOT/scripts/rpcs3-component/uncharted-patch.yml"
 FIND_SRC="$ROOT/scripts/eden-component/es_find_rules.xml"
 RETRODECK_PATH="/var/data/retrodeck/bin:/app/bin:/usr/bin"
+RD_RPCS3_CONFIG="${RPCS3_CONFIG_DIR:-/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/rpcs3}"
+STANDALONE_RPCS3_CONFIG="/home/${STEAMOS_USER}/.config/rpcs3"
 
-if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ] || [ ! -f "$WRAPPER_SRC" ] || [ ! -f "$ALIAS_SRC" ]; then
+if [ ! -f "$LAUNCHER_SRC" ] || [ ! -f "$PATCHER_SRC" ] || [ ! -f "$WRAPPER_SRC" ] || [ ! -f "$ALIAS_SRC" ] || [ ! -f "$GRAPHICS_SRC" ] || [ ! -f "$UNCHARTED_PATCH_SRC" ]; then
   echo "Missing RPCS3 input templates under $ROOT/scripts/rpcs3-component/"
   exit 1
 fi
@@ -29,6 +33,8 @@ mkdir -p "$COMPONENT_DIR" "$BIN_DIR" "$CUSTOM_SYSTEMS"
 install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
 install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-rpcs3-input.py"
 install -m 0644 "$ALIAS_SRC" "$COMPONENT_DIR/alias-rpcs3-saves.py"
+install -m 0644 "$GRAPHICS_SRC" "$COMPONENT_DIR/apply-uncharted-graphics.py"
+install -m 0644 "$UNCHARTED_PATCH_SRC" "$COMPONENT_DIR/uncharted-patch.yml"
 install -m 0755 "$WRAPPER_SRC" "$BIN_DIR/rpcs3"
 
 if [ -f "$FIND_SRC" ]; then
@@ -41,6 +47,10 @@ if ! python3 "$PATCHER_SRC" --self-test; then
 fi
 if ! python3 "$ALIAS_SRC" --self-test; then
   echo "RPCS3 save alias self-test failed."
+  exit 1
+fi
+if ! python3 "$GRAPHICS_SRC" --self-test; then
+  echo "RPCS3 Uncharted graphics self-test failed."
   exit 1
 fi
 if [ -f "$DEFAULT_YML" ]; then
@@ -73,6 +83,16 @@ fi
 # USA Uncharted DF disc is BCUS98103; the EBOOT lists BCES00065_NDI_UNCHARTED_DF_*
 python3 "$ALIAS_SRC" "$RD_SAVES"
 
+# Per-game 1080p / flicker / 60fps cap. Does not touch global config.yml.
+if [ -d "$RD_RPCS3_CONFIG" ]; then
+  python3 "$GRAPHICS_SRC" --config-dir "$RD_RPCS3_CONFIG" \
+    --fallback-patch "$UNCHARTED_PATCH_SRC"
+fi
+if [ -d "$STANDALONE_RPCS3_CONFIG" ]; then
+  python3 "$GRAPHICS_SRC" --config-dir "$STANDALONE_RPCS3_CONFIG" \
+    --fallback-patch "$UNCHARTED_PATCH_SRC"
+fi
+
 # Steam/Tender uses run_game.sh, which only reads bundled find-rules. Those
 # list systempath `rpcs3` before the /app RPCS3 launcher. Prepend our bin
 # so command -v rpcs3 hits the pad-binding wrapper. SDL3 also needs the
@@ -102,4 +122,5 @@ if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
 fi
 
 echo "RPCS3 player 1 is rebound to the current pad on each launch."
+echo "Uncharted uses per-game 1080p / Write Color Buffers / MSAA off / 60 fps cap."
 exit 0

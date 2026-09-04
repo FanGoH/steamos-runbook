@@ -24,10 +24,15 @@ if ! grep -qx 28de /sys/class/input/js*/device/id/vendor 2>/dev/null; then
 fi
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$except"
 
-yml="${XDG_CONFIG_HOME:-${HOME}/.config}/rpcs3/input_configs/global/Default.yml"
+rpcs3_cfg="${XDG_CONFIG_HOME:-${HOME}/.config}/rpcs3"
+yml="$rpcs3_cfg/input_configs/global/Default.yml"
 patcher="$here/patch-rpcs3-input.py"
 if [ -f "$yml" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$yml" || true
+fi
+graphics="$here/apply-uncharted-graphics.py"
+if [ -f "$graphics" ]; then
+  python3 "$graphics" --config-dir "$rpcs3_cfg" || true
 fi
 # So a skipped wrapper vs a bad Device string is obvious in the next log.
 if [ -f "$yml" ]; then

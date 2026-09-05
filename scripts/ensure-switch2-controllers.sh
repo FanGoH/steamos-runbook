@@ -69,12 +69,22 @@ elif [ -f "$PLUGIN_DEST/main.py" ]; then
 fi
 
 CFG="/home/$STEAMOS_USER/.config/nso-gc/config.json"
-if [ ! -f "$CFG" ]; then
+paired=0
+if [ -f "$CFG" ]; then
+  paired="$(python3 - "$CFG" <<'PY' 2>/dev/null || echo 0
+import json, sys
+from pathlib import Path
+data = json.loads(Path(sys.argv[1]).read_text())
+print(len(data.get("controllers") or []))
+PY
+)"
+fi
+if [ "${paired:-0}" -eq 0 ]; then
   echo "No paired Switch 2 controllers yet."
   record_manual "Pair each Switch 2 controller once (hold Sync)" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 cd $DIR
-.venv312/bin/python -m ngc pair
+$DIR/.venv/bin/python -m ngc pair || $DIR/.venv312/bin/python -m ngc pair
 # Repeat for a second pad. Then: systemctl --user status nso-gc.service
 EOF
   exit 2

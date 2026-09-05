@@ -359,7 +359,13 @@ echo
 
 echo "[Switch 2 controllers]"
 S2_DIR="${SWITCH2_CONTROLLERS_DIR:-/home/$STEAMOS_USER/code/switch2-controllers-linux}"
-S2_PY="$S2_DIR/.venv312/bin/python"
+S2_PY=""
+for cand in "$S2_DIR/.venv312/bin/python" "$S2_DIR/.venv/bin/python"; do
+  if [ -x "$cand" ]; then
+    S2_PY="$cand"
+    break
+  fi
+done
 if [ -f "$S2_DIR/ngc/__main__.py" ]; then
   ok "checkout $S2_DIR"
 else
@@ -428,13 +434,20 @@ if busctl get-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered 2>/d
 else
   warn "BlueZ adapter powered=false (bridge ExecStartPre should turn it on)"
 fi
-if [ -f "/home/$STEAMOS_USER/.config/nso-gc/config.json" ]; then
+if [ -f "/home/$STEAMOS_USER/.config/nso-gc/config.json" ] \
+  && python3 - "/home/$STEAMOS_USER/.config/nso-gc/config.json" <<'PY' 2>/dev/null
+import json, sys
+from pathlib import Path
+data = json.loads(Path(sys.argv[1]).read_text())
+raise SystemExit(0 if (data.get("controllers") or []) else 1)
+PY
+then
   ok "paired controller config present"
 else
   warn "no Switch 2 pads paired yet"
   record_manual "Pair each Switch 2 controller once (hold Sync)" <<EOF
 cd $S2_DIR
-.venv312/bin/python -m ngc pair
+$S2_DIR/.venv/bin/python -m ngc pair || $S2_DIR/.venv312/bin/python -m ngc pair
 EOF
 fi
 if [ -f "$HOMEBREW_DIR/plugins/Switch2Controllers/main.py" ]; then

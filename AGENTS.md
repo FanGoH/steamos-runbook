@@ -31,11 +31,13 @@ gitignored `rules_of_the_land.md`, not here.
 - Sunshine: disable Flatpak user-unit autostart; Decky Sunshine is the only starter (same Flatpak install). Make `$XDG_RUNTIME_DIR/pulse` mode 755 so Decky's setuid bwrap can bind-mount the socket (the boot EACCES). `steamos-sunshine-watch.path` runs that chmod when Pulse appears and starts Sunshine via Decky if GameStream is still down. Wait for PluginLoader on `:1337` before `startSunshine` so a Pulse-ready oneshot does not fail in milliseconds and hit systemd start-limit. `Restart=on-failure` on the oneshot covers leftover races. Do **not** enable the Flatpak systemd user unit; do **not** `/api/restart`; do **not** poll every N minutes. Clear stale `SUNSHINE_SERVER_BUSY` with `POST /api/apps/close`. Logs: `logs/sunshine-watch.log`.
 - Gear Lever Flatpak (AppImage manager on `/home`)
 - Cursor Agent worker user service (`agent worker start` on `CURSOR_WORKER_DIR` plus `CURSOR_WORKER_EXTRA_DIRS`; login is manual). Separate data dir so it does not fight an on-demand session worker.
+- Switch 2 controllers (`ensure-switch2-controllers.sh`): user-space BLE → uinput bridge from `SWITCH2_CONTROLLERS_DIR` (default `~/code/switch2-controllers-linux`). Python 3.12 venv via uv (Steam OS 3.9 is 3.14). Steam Bluetooth.Enabled stays off; BlueZ adapter is powered. Game Mode hook is `gamescope-session.service`. Pairing is manual. Do **not** install the Bazzite Eden reorder hooks (playbook owns Eden/Cemu/RPCS3 binds).
 
 **Manual only** (detect + print exact commands via `record_manual`):
 
 - Tailscale / Headscale re-login (do **not** auto-login; do **not** add `--ssh` unless explicitly requested)
 - Cursor `agent login` if the worker CLI is signed out (do **not** put API keys in the repo)
+- Switch 2 controller pairing (`python -m ngc pair` / Decky plugin; hold Sync). Decky plugin copy into `~/homebrew/plugins` needs sudo when that dir is root-owned.
 
 **Light checks** (no reinstall nag):
 

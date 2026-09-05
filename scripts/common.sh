@@ -58,6 +58,8 @@ load_env() {
   AUR_HELPER="${AUR_HELPER:-paru}"
   GEARLEVER_FLATPAK_ID="${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}"
   FLATPAK_REMOTE="${FLATPAK_REMOTE:-flathub}"
+  SWITCH2_CONTROLLERS_DIR="${SWITCH2_CONTROLLERS_DIR:-/home/${STEAMOS_USER}/code/switch2-controllers-linux}"
+  SWITCH2_CONTROLLERS_REPO="${SWITCH2_CONTROLLERS_REPO:-https://github.com/trevlars/switch2-controllers-linux.git}"
 }
 
 setup_user_dbus() {

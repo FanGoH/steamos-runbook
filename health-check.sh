@@ -357,6 +357,96 @@ else
 fi
 echo
 
+echo "[Switch 2 controllers]"
+S2_DIR="${SWITCH2_CONTROLLERS_DIR:-/home/$STEAMOS_USER/code/switch2-controllers-linux}"
+S2_PY="$S2_DIR/.venv312/bin/python"
+if [ -f "$S2_DIR/ngc/__main__.py" ]; then
+  ok "checkout $S2_DIR"
+else
+  fail "Switch 2 controllers checkout missing ($S2_DIR)"
+  record_manual "Install Switch 2 controller bridge" <<EOF
+./scripts/ensure-switch2-controllers.sh
+EOF
+fi
+if [ -x "$S2_PY" ] && "$S2_PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2]==(3,12) else 1)'; then
+  ok "venv CPython 3.12 (bleak 0.22.2)"
+elif [ -x "$S2_PY" ]; then
+  fail "venv is not CPython 3.12 ($("$S2_PY" -V 2>/dev/null || echo unknown))"
+  record_manual "Recreate the 3.12 venv" <<EOF
+./scripts/ensure-switch2-controllers.sh
+EOF
+else
+  warn "Switch 2 venv not created yet"
+fi
+if systemctl --user is-enabled nso-gc.service >/dev/null 2>&1; then
+  ok "nso-gc.service enabled"
+else
+  fail "nso-gc.service not enabled"
+  record_manual "Enable nso-gc user service" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-switch2-controllers.sh
+EOF
+fi
+if systemctl --user is-active nso-gc.service >/dev/null 2>&1; then
+  ok "nso-gc.service active"
+else
+  warn "nso-gc.service not active"
+fi
+if systemctl --user cat nso-gc-after-gamescope.service 2>/dev/null | grep -q 'After=gamescope-session.service'; then
+  ok "after-gamescope hooked to gamescope-session.service"
+else
+  warn "nso-gc-after-gamescope.service not tied to gamescope-session.service"
+fi
+if python3 - <<'PY' 2>/dev/null
+from pathlib import Path
+import re, sys
+home = Path.home()
+paths = [
+    home / ".steam/steam/config/config.vdf",
+    home / ".local/share/Steam/config/config.vdf",
+]
+ok = False
+for p in paths:
+    if not p.is_file():
+        continue
+    text = p.read_text(errors="replace")
+    m = re.search(r'"Bluetooth"\s*\{\s*"Enabled"\s*"([01])"', text)
+    if m and m.group(1) == "0":
+        ok = True
+sys.exit(0 if ok else 1)
+PY
+then
+  ok "Steam Bluetooth.Enabled is off (needed for Switch 2 L2CAP)"
+else
+  warn "Steam Bluetooth.Enabled is on or missing — Switch 2 connects may fail"
+  record_manual "Disable Steam Bluetooth scan" <<EOF
+python3 $S2_DIR/scripts/disable-steam-bluetooth.py
+EOF
+fi
+if busctl get-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered 2>/dev/null | grep -q 'true'; then
+  ok "BlueZ adapter powered"
+else
+  warn "BlueZ adapter powered=false (bridge ExecStartPre should turn it on)"
+fi
+if [ -f "/home/$STEAMOS_USER/.config/nso-gc/config.json" ]; then
+  ok "paired controller config present"
+else
+  warn "no Switch 2 pads paired yet"
+  record_manual "Pair each Switch 2 controller once (hold Sync)" <<EOF
+cd $S2_DIR
+.venv312/bin/python -m ngc pair
+EOF
+fi
+if [ -f "$HOMEBREW_DIR/plugins/Switch2Controllers/main.py" ]; then
+  ok "Decky Switch2Controllers plugin installed"
+else
+  warn "Decky Switch2Controllers plugin not installed"
+  record_manual "Install Switch 2 Controllers Decky plugin" <<EOF
+sudo bash $S2_DIR/scripts/install-decky.sh --install-only \$HOME/homebrew/plugins
+EOF
+fi
+echo
+
 print_manual_summary "$MANUAL_ACTIONS_FILE"
 echo
 

@@ -1,0 +1,167 @@
+From e266995b989c01e7cf935fc8c6b603b864057f02 Mon Sep 17 00:00:00 2001
+From: Joecorrell <joecorrell03@gmail.com>
+Date: Fri, 14 Aug 2026 21:01:45 -0400
+Subject: [PATCH 4/7] fix(cmake): do not link the ARM64 MinHook on an x64 host
+
+CMAKE_SYSTEM_PROCESSOR is empty under MSYS2/MinGW with Ninja -- project()
+recomputes it and finds nothing to set it from -- so the exact "AMD64" match
+failed on an ordinary x64 host and quietly took the ARM64 branch. Setting it on
+the command line does not help: the value lands in the cache but project()
+overwrites the variable before this check runs.
+
+The failure surfaces much later, at link:
+
+  minhook-detours.ARM64.Release.lib: file format not recognized
+
+which points at MinHook rather than at the empty variable that chose it.
+
+Testing for ARM64 instead, and defaulting to the installed MinHook, makes the
+fallback the common case rather than the exotic one -- an unknown processor now
+links the library matching the compiler instead of one that cannot. The
+packaging side already keys off _MINHOOK_DLL, which only the ARM64 branch
+defines, so it needs no change.
+---
+ cmake/dependencies/windows.cmake | 15 ++++++-
+ src/dual_display.cpp             | 67 +++++++++++++++++++++++++-------
+ src/video.cpp                    |  2 +-
+ 3 files changed, 67 insertions(+), 17 deletions(-)
+
+diff --git a/cmake/dependencies/windows.cmake b/cmake/dependencies/windows.cmake
+index a9e5630d..a488bd78 100644
+--- a/cmake/dependencies/windows.cmake
++++ b/cmake/dependencies/windows.cmake
+@@ -1,7 +1,20 @@
+ # windows specific dependencies
+ 
+ # MinHook setup - use installed minhook for AMD64, otherwise download minhook-detours for ARM64
+-if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64")
++#
++# Tested for ARM64 rather than for AMD64, and defaulting to the installed
++# MinHook. `CMAKE_SYSTEM_PROCESSOR` is empty under MSYS2/MinGW with Ninja --
++# `project()` recomputes it and finds nothing to set it from -- so an exact
++# "AMD64" match fails on a perfectly ordinary x64 host and quietly takes the
++# ARM64 branch. The failure surfaces much later, at link, as
++#
++#   minhook-detours.ARM64.Release.lib: file format not recognized
++#
++# which points at MinHook rather than at the empty variable that chose it.
++# Inverting the test means the fallback is the common case rather than the
++# exotic one, so an unknown processor links the library that matches the
++# compiler instead of one that cannot.
++if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+     # Make sure MinHook is installed for x86/x64
+     find_library(MINHOOK_LIBRARY libMinHook.a REQUIRED)
+     find_path(MINHOOK_INCLUDE_DIR MinHook.h PATH_SUFFIXES include REQUIRED)
+diff --git a/src/dual_display.cpp b/src/dual_display.cpp
+index 7ceec895..37786da5 100644
+--- a/src/dual_display.cpp
++++ b/src/dual_display.cpp
+@@ -6,6 +6,7 @@
+ #include "dual_display.h"
+ 
+ #include "config.h"
++#include "display_device.h"
+ #include "logging.h"
+ #include "platform/common.h"
+ 
+@@ -59,22 +60,53 @@ namespace dual_display {
+     };
+ 
+     /**
+-     * @brief Whether an indirect display driver is installed and usable.
++     * @brief The display the game is being streamed from.
+      *
+-     * Windows has no API to create a monitor. A virtual display is an IddCx
+-     * driver — signed, installed by the user, and outside this program — so all
+-     * that can be done here is find one and ask it.
++     * The second display is defined as "not this one", so this is what it is
++     * measured against. Empty means the platform default, which is also what an
++     * empty `output_name` means to the capture backend.
++     */
++    [[nodiscard]] std::string primary_output() {
++      return display_device::map_output_name(config::video.output_name);
++    }
++
++    /**
++     * @brief A display to stream that is not the one carrying the game.
+      *
+-     * Unimplemented, and reporting false is therefore correct rather than a
+-     * placeholder: with no driver bound, `supported()` says no, `/serverinfo`
+-     * advertises one video stream, `SETUP` for `video/1/0` is refused, and every
+-     * client behaves exactly as it does against stock Sunshine. The feature is
+-     * off, not broken.
++     * Windows has no API to *create* a monitor -- a virtual display is an IddCx
++     * driver, signed and installed by the user, outside this program entirely.
++     * What this does instead is find one that is already attached.
+      *
+-     * @todo Bind to an installed IddCx driver. See `docs/virtual_display.md`.
++     * That is deliberately not the same as "create on demand", and the
++     * difference is worth stating: the monitor has to already exist, which for a
++     * virtual display driver means its monitor is switched on. In exchange it
++     * needs no driver-specific control channel, works with any IddCx driver
++     * rather than one this fork was written against, and needs no elevation --
++     * a driver-specific implementation would need all three.
++     *
++     * Returns empty when there is nothing but the game's own display, which is
++     * the ordinary single-monitor case.
++     */
++    [[nodiscard]] std::string find_spare_output() {
++      const auto primary = primary_output();
++      const auto outputs = platf::display_names(platf::mem_type_e::system);
++
++      for (const auto &output : outputs) {
++        if (output != primary) {
++          return output;
++        }
++      }
++
++      // A single display, or the only other one is the game's. Either way there
++      // is nothing here to give.
++      return {};
++    }
++
++    /**
++     * @brief Whether a second display can be provided without being named.
+      */
+     [[nodiscard]] bool virtual_display_available() {
+-      return false;
++      return !find_spare_output().empty();
+     }
+ 
+   }  // namespace
+@@ -107,10 +139,15 @@ namespace dual_display {
+     const auto &source = config::video.dual_display_source;
+ 
+     if (source == VIRTUAL) {
+-      // Unreachable while `virtual_display_available()` reports false; kept so
+-      // that binding a driver is a change in one place.
+-      BOOST_LOG(warning) << "Virtual display requested but no driver is bound"sv;
+-      return nullptr;
++      const auto spare = find_spare_output();
++      if (spare.empty()) {
++        BOOST_LOG(warning) << "No spare display to serve as a second display"sv;
++        return nullptr;
++      }
++
++      BOOST_LOG(info) << "Second display: capturing spare output "sv << spare << " at "sv
++                      << request.width << 'x' << request.height << '@' << request.framerate;
++      return std::make_unique<physical_lease_t>(spare, request);
+     }
+ 
+     BOOST_LOG(info) << "Second display: capturing "sv << source << " at "sv
+diff --git a/src/video.cpp b/src/video.cpp
+index 6a3795e5..230cfb35 100644
+--- a/src/video.cpp
++++ b/src/video.cpp
+@@ -2875,7 +2875,7 @@ namespace video {
+    * per-context; only the reference was hard-coded.
+    */
+   void captureThreadSyncFor(
+-    const std::shared_ptr<safe::shared_t<capture_thread_sync_ctx_t>::element_type> &ref,
++    safe::shared_t<capture_thread_sync_ctx_t>::ptr_t ref,
+     const char *thread_name
+   ) {
+     std::vector<std::unique_ptr<sync_session_ctx_t>> synced_session_ctxs;
+-- 
+2.55.0
+

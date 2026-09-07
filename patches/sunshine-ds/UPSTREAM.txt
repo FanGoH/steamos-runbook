@@ -1,0 +1,14 @@
+# Sunshine DS port — apply onto LizardByte/Sunshine
+
+Base: c53f97ecdd1643f9628b61f7fe5e107f3919a3c0  (LizardByte/Sunshine master, 2026-09)
+Source series: JoeCorrell/sunshine-ds dual-display @ 25be3eba
+Linux provider: local commit on sunshine-ds-linux
+
+Apply:
+
+    git clone --recurse-submodules https://github.com/LizardByte/Sunshine.git
+    git checkout c53f97ecdd1643f9628b61f7fe5e107f3919a3c0
+    git am /path/to/patches/sunshine-ds/000*.patch
+
+Working tree used on this machine: ~/code/sunshine-ds (branch sunshine-ds-linux)
+Binary is installed as sunshine-ds so Decky's production `sunshine` is not replaced.

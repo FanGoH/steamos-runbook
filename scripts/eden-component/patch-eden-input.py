@@ -111,12 +111,27 @@ def pin_4gb_layout(text: str) -> str:
     Per-game `memory_layout_mode=0` is ignored while use_global=true, and
     the global default is 8GB — that plus the cart working set is what
     earlyoom SIGTERMs at ~12–16 GB RSS. 0 = 4GB, 1 = 6GB, 2 = 8GB.
+
+    Some custom inis only have ``memory_layout_mode\\use_global`` and no
+    value line (MK8). Rewrite existing keys, then append the value if it
+    is still missing.
     """
     out = []
     for line in text.splitlines(keepends=True):
         line = _set_kv(line, "memory_layout_mode", "0")
         out.append(line)
-    return "".join(out)
+    new = "".join(out)
+    if re.search(r"(?m)^memory_layout_mode=0\s*$", new):
+        return new
+    core = "[Core]\n"
+    inject = (
+        "memory_layout_mode\\use_global=false\n"
+        "memory_layout_mode\\default=false\n"
+        "memory_layout_mode=0\n"
+    )
+    if core in new:
+        return new.replace(core, core + inject, 1)
+    return new + "\n" + core + inject
 
 
 def patch(text: str, guid: str | None) -> str:

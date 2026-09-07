@@ -6,7 +6,9 @@
 set -euo pipefail
 
 HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"
-HOST_EDEN_MIN_BYTES=$((8 * 1024 * 1024 * 1024))
+# 6GiB: MK8 (6.77G) sat in RetroDECK's KDE Flatpak, crashed at PC=0, and
+# Steam stayed on Launching. 8GiB only caught Engage/Xenoblade (~15G).
+HOST_EDEN_MIN_BYTES=$((6 * 1024 * 1024 * 1024))
 PLAYBOOK="${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}"
 PATCHER="$PLAYBOOK/scripts/eden-component/patch-eden-input.py"
 
@@ -110,6 +112,8 @@ if [ "$is_retrodeck" -eq 1 ] \
     # -g is the same BootGame as clicking the list; Eden runs it in the
     # MainWindow constructor before show(), which is why Steam sits on
     # Launching. No second-instance IPC to delay that.
+    # Pin 4GB only for Engage. MK8 (0100152000022000) must stay 8GB /
+    # 64-bit; --pin-4gb forced 32-bit and ExceptionRaised at 0x0.
     engage_custom="${XDG_CONFIG_HOME}/eden/custom/0100A6301214E000.ini"
     if [ -f "$engage_custom" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" --pin-4gb "$engage_custom" || true

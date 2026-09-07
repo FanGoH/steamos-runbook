@@ -7,8 +7,9 @@
 set -euo pipefail
 
 HOST_EDEN_APPIMAGE="${EDEN_APPIMAGE:-${HOME}/AppImages/eden.appimage}"
-# 8GiB: 13 Sentinels is ~7.5G (in-sandbox OK); Engage cart is ~15G.
-HOST_EDEN_MIN_BYTES=$((8 * 1024 * 1024 * 1024))
+# 6GiB: MK8 is 6.77G and OOMs/hangs Steam Launching in the KDE Flatpak.
+# Engage/Xenoblade are ~15G. 13 Sentinels (~7.5G) also takes the host path.
+HOST_EDEN_MIN_BYTES=$((6 * 1024 * 1024 * 1024))
 
 component_path="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
@@ -88,14 +89,20 @@ if [ "$has_fs" -eq 0 ]; then
 fi
 
 # Official ES-DE line is `%EMULATOR_EDEN% %ROM%` with no -g.
-if [ "$has_game" -eq 0 ] && [ "${#args[@]}" -ge 1 ]; then
-  case "${args[0]}" in
-    -*) ;;
-    *)
-      rom="${args[0]}"
-      args=("-g" "$rom" "${args[@]:1}")
-      ;;
-  esac
+# Insert -g before the first non-flag arg. Prepending -f first used to
+# make args[0]=-f, so the old check never added -g (MK8: `eden -f dump`).
+if [ "$has_game" -eq 0 ]; then
+  new_args=()
+  inserted=0
+  for arg in "${args[@]+"${args[@]}"}"; do
+    if [ "$inserted" -eq 0 ] && [[ "$arg" != -* ]]; then
+      new_args+=("-g" "$arg")
+      inserted=1
+    else
+      new_args+=("$arg")
+    fi
+  done
+  args=("${new_args[@]+"${new_args[@]}"}")
 fi
 
 eden_rom_path=""

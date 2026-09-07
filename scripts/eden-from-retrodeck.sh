@@ -1,0 +1,492 @@
+#!/usr/bin/env bash
+# Launch Eden so Game Mode / gamescope actually presents the window.
+#
+# RetroDECK starts this via `flatpak-spawn --host`, which drops Game Mode
+# display env. Even with a visible X window, gamescope keeps compositing
+# Steam Big Picture (app 769) until GAMESCOPE_FOCUSED_* points at Eden.
+set -euo pipefail
+
+EDEN_BIN="${EDEN_BIN:-/home/deck/Applications/Eden.appimage}"
+GAMESCOPE_ENV="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-environment"
+STEAM_CLIENT_ID=769
+FOCUS_LOG="${EDEN_FOCUS_LOG:-/tmp/eden-gamescope-focus.log}"
+SELF="$(readlink -f "$0")"
+STEAM_HOME="${STEAM_HOME:-/home/deck/.local/share/Steam}"
+
+if [ -f "$GAMESCOPE_ENV" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$GAMESCOPE_ENV"
+  set +a
+fi
+
+if [ -z "${DISPLAY:-}" ] || [ ! -S /tmp/.X11-unix/X"${DISPLAY#:}" ]; then
+  if [ -S /tmp/.X11-unix/X0 ]; then
+    export DISPLAY=:0
+  fi
+fi
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
+export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-0}"
+# Do not let Eden's SDL hidapi take the Xbox HID. Steam needs that for the
+# Guide button / overlay; two hidapi openers end in hid_read failure and a
+# disconnected pad. Kernel evdev + Steam's virtual pad stay usable.
+export SDL_HIDAPI_JOYSTICK="${SDL_HIDAPI_JOYSTICK:-0}"
+export SDL_JOYSTICK_HIDAPI="${SDL_JOYSTICK_HIDAPI:-0}"
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0" ]; then
+  export WAYLAND_DISPLAY=gamescope-0
+  export GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}"
+fi
+
+log() {
+  printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$FOCUS_LOG"
+}
+
+# Steam client (769) is a Valve constant. RetroDECK's non-Steam shortcut id is
+# not: it lives in shortcuts.vdf and can change if the shortcut is re-added.
+# Prefer the env Steam already set, then the currently focused gamescope app,
+# then parse shortcuts.vdf for AppName=RetroDECK.
+is_game_app_id() {
+  local id="${1:-}"
+  [ -n "$id" ] && [ "$id" != "0" ] && [ "$id" != "$STEAM_CLIENT_ID" ]
+}
+
+shortcut_app_id_from_vdf() {
+  local name="${1:-RetroDECK}"
+  python3 - "$STEAM_HOME" "$name" <<'PY'
+import sys
+from pathlib import Path
+steam, name = sys.argv[1], sys.argv[2].encode()
+needle = b"\x01AppName\x00" + name + b"\x00"
+for p in Path(steam, "userdata").glob("*/config/shortcuts.vdf"):
+    data = p.read_bytes()
+    i = 0
+    while True:
+        j = data.find(needle, i)
+        if j < 0:
+            break
+        k = data.rfind(b"\x02appid\x00", max(0, j - 160), j)
+        if k >= 0:
+            appid = int.from_bytes(data[k + 7 : k + 11], "little")
+            if appid:
+                print(appid)
+                sys.exit(0)
+        i = j + 1
+sys.exit(1)
+PY
+}
+
+resolve_steam_app_id() {
+  local id=""
+  if is_game_app_id "${STEAM_APP_ID:-}"; then
+    log "SteamAppId already set: $STEAM_APP_ID"
+    export SteamAppId="$STEAM_APP_ID"
+    export SteamGameId="${SteamGameId:-$STEAM_APP_ID}"
+    return 0
+  fi
+  if is_game_app_id "${SteamAppId:-}"; then
+    id="$SteamAppId"
+    log "SteamAppId from env: $id"
+  else
+    id="$(DISPLAY="$(atom_display)" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}')"
+    if is_game_app_id "$id"; then
+      log "SteamAppId from gamescope focus: $id"
+    else
+      id="$(shortcut_app_id_from_vdf RetroDECK 2>/dev/null || true)"
+      if is_game_app_id "$id"; then
+        log "SteamAppId from shortcuts.vdf: $id"
+      else
+        id="$(DISPLAY="$(atom_display)" xprop -root GAMESCOPECTRL_BASELAYER_APPID 2>/dev/null \
+          | tr -d ' ' | awk -F'= ' '{print $2}' | tr ',' '\n' | grep -Ex '[0-9]+' \
+          | grep -vx "$STEAM_CLIENT_ID" | grep -vx '413091' | head -n 1 || true)"
+        if is_game_app_id "$id"; then
+          log "SteamAppId from gamescope baselayer: $id"
+        else
+          log "ERROR: could not resolve RetroDECK Steam shortcut id"
+          return 1
+        fi
+      fi
+    fi
+  fi
+  STEAM_APP_ID="$id"
+  export STEAM_APP_ID
+  export SteamAppId="$STEAM_APP_ID"
+  export SteamGameId="${SteamGameId:-$STEAM_APP_ID}"
+}
+
+# Gamescope focus atoms live on the Steam UI xwayland (:0), even when the
+# game window is on :1.
+atom_display() {
+  local d
+  for d in :0 :1 "${DISPLAY:-:0}"; do
+    [ -S /tmp/.X11-unix/X"${d#:}" ] || continue
+    if DISPLAY="$d" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | grep -q '='; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+  done
+  printf '%s\n' "${DISPLAY:-:0}"
+}
+
+eden_window_id() {
+  local display id name
+  command -v xdotool >/dev/null 2>&1 || return 1
+  for display in :1 :0 "${DISPLAY:-:0}"; do
+    [ -S /tmp/.X11-unix/X"${display#:}" ] || continue
+    for id in $(DISPLAY="$display" xdotool search --class eden 2>/dev/null || true); do
+      name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        "Eden |"*)
+          EDEN_WIN_DISPLAY="$display"
+          printf '%s\n' "$id"
+          return 0
+          ;;
+      esac
+    done
+  done
+  return 1
+}
+
+steam_bpm_window_id() {
+  local display id name
+  command -v xdotool >/dev/null 2>&1 || return 1
+  display="$(atom_display)"
+  for id in $(DISPLAY="$display" xdotool search --class steam 2>/dev/null || true) \
+            $(DISPLAY="$display" xdotool search --class steamwebhelper 2>/dev/null || true); do
+    name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
+    case "$name" in
+      "Steam Big Picture Mode")
+        printf '%s\n' "$id"
+        return 0
+        ;;
+    esac
+  done
+  DISPLAY="$display" xdotool search --name 'Steam Big Picture Mode' 2>/dev/null | head -n 1
+}
+
+focused_app() {
+  DISPLAY="$(atom_display)" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
+}
+
+window_cardinal() {
+  local wid="$1" atom="$2" display="${3:-}"
+  [ -n "$display" ] || display="$(atom_display)"
+  DISPLAY="$display" xprop -id "$wid" "$atom" 2>/dev/null | awk -F'= ' '{print $2}'
+}
+
+# True only when Steam is actually painting the overlay. STEAM_INPUT_FOCUS
+# stays 1 on Big Picture even while a game is up — treating that as overlay
+# made us set FOCUSED_APP=769 immediately, hid the overlay, and made Steam
+# fight Eden for the Xbox HID (hid_read failure / pad disconnect).
+steam_overlay_active() {
+  local display wid val
+  command -v xdotool >/dev/null 2>&1 || return 1
+  command -v xprop >/dev/null 2>&1 || return 1
+  display="$(atom_display)"
+  for wid in $(DISPLAY="$display" xdotool search --class steam 2>/dev/null || true) \
+             $(DISPLAY="$display" xdotool search --class steamwebhelper 2>/dev/null || true); do
+    val="$(window_cardinal "$wid" STEAM_OVERLAY)"
+    if [ "${val:-0}" = "1" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Qt title/status bars stay mapped when Eden is windowed (typically 22px / 24px).
+eden_chrome_visible() {
+  local display id w h mapped
+  command -v xdotool >/dev/null 2>&1 || return 1
+  command -v xwininfo >/dev/null 2>&1 || return 1
+  for display in :1 :0 "${DISPLAY:-:0}"; do
+    [ -S /tmp/.X11-unix/X"${display#:}" ] || continue
+    for id in $(DISPLAY="$display" xdotool search --class eden 2>/dev/null || true); do
+      mapped="$(DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk -F': ' '/Map State/ {print $2; exit}')"
+      [ "$mapped" = "IsViewable" ] || continue
+      w="$(DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/Width:/ {print $2; exit}')"
+      h="$(DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/Height:/ {print $2; exit}')"
+      if [ "${w:-0}" -ge 1000 ] && [ "${h:-0}" -ge 16 ] && [ "${h:-0}" -le 40 ]; then
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+make_eden_fullscreen() {
+  local display="${EDEN_WIN_DISPLAY:-${DISPLAY:-:0}}"
+  local id sw sh
+  id="$(eden_window_id)" || return 1
+  display="${EDEN_WIN_DISPLAY:-$display}"
+  sw=1920
+  sh=1080
+  if read -r sw sh < <(DISPLAY="$display" xdotool getdisplaygeometry 2>/dev/null); then
+    :
+  fi
+  DISPLAY="$display" xdotool windowmap "$id" windowmove "$id" 0 0 2>/dev/null || true
+  DISPLAY="$display" xdotool windowsize "$id" "$sw" "$sh" 2>/dev/null || true
+  DISPLAY="$display" xdotool windowstate --add FULLSCREEN "$id" 2>/dev/null || true
+  DISPLAY="$display" xdotool windowstate --add ABOVE "$id" 2>/dev/null || true
+  # F11 is Eden's real toggle; gamescope ignores EWMH fullscreen.
+  # `xdotool key --window` is dropped under gamescope — focus the X window first.
+  if [ "${F11_SENT:-0}" -eq 0 ] && eden_chrome_visible; then
+    DISPLAY="$display" xdotool windowfocus "$id" windowactivate "$id" 2>/dev/null || true
+    sleep 0.1
+    DISPLAY="$display" xdotool key F11 2>/dev/null || true
+    F11_SENT=1
+    log "sent F11 to hide Qt chrome window=$id ${sw}x${sh}"
+  fi
+}
+
+set_gamescope_focus() {
+  local id="$1"
+  local app="$2"
+  local display
+  display="$(atom_display)"
+  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+  DISPLAY="$display" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+}
+
+# Cemu stays on :1. Host spawn only switches there when RetroDECK is the
+# Steam-launched app, so overlay/Exit share ES-DE's layer.
+prefer_game_xwayland() {
+  if retrodeck_session_alive && [ -S /tmp/.X11-unix/X1 ]; then
+    export DISPLAY=:1
+    log "using game xwayland DISPLAY=:1 (RetroDECK session)"
+  fi
+}
+
+retrodeck_session_alive() {
+  local pid cmd
+  for pid in /proc/[0-9]*; do
+    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *'reaper SteamLaunch AppId='*|*/app/retrodeck/components/es-de/bin/es-de*|*/bin/bash\ /app/bin/retrodeck*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+eden_main_pids() {
+  local pid cmd
+  for pid in /proc/[0-9]*; do
+    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      /tmp/.mount_Eden*/bin/eden*) printf '%s\n' "${pid##*/}" ;;
+    esac
+  done
+}
+
+kill_our_eden() {
+  local pid
+  for pid in $(eden_main_pids); do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 0.8
+  for pid in $(eden_main_pids); do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+}
+
+# Cemu leaves the ES-DE window mapped on gamescope's game Xwayland (:1).
+# That window is RetroDECK's Steam identity — overlay/Exit attach to it.
+esde_window_id() {
+  local display id name
+  command -v xdotool >/dev/null 2>&1 || return 1
+  for display in :1 "${DISPLAY:-:0}" :0; do
+    [ -S /tmp/.X11-unix/X"${display#:}" ] || continue
+    for id in $(DISPLAY="$display" xdotool search --class net.retrodeck.retrodeck 2>/dev/null || true); do
+      name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        ES-DE|ES-DE*)
+          ESDE_WIN_DISPLAY="$display"
+          printf '%s\n' "$id"
+          return 0
+          ;;
+      esac
+    done
+  done
+  return 1
+}
+
+focus_eden_in_gamescope() {
+  local display id esde esde_display
+  id="$(eden_window_id)" || return 1
+  display="${EDEN_WIN_DISPLAY:-${DISPLAY:-:0}}"
+  DISPLAY="$display" xdotool windowmap "$id" windowmove "$id" 0 0 \
+    windowraise "$id" windowactivate "$id" 2>/dev/null || true
+  make_eden_fullscreen || true
+  # Picture: gamescope must tag the Eden window as this Steam app.
+  # Session: ES-DE keeps the same id so overlay/Exit still see RetroDECK.
+  DISPLAY="$display" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
+  esde="$(esde_window_id || true)"
+  if [ -n "${esde:-}" ]; then
+    esde_display="${ESDE_WIN_DISPLAY:-$display}"
+    DISPLAY="$esde_display" xprop -id "$esde" -f STEAM_GAME 32c -set STEAM_GAME "$STEAM_APP_ID" 2>/dev/null || true
+    log "ES-DE window=$esde also tagged STEAM_GAME=$STEAM_APP_ID"
+  fi
+  set_gamescope_focus "$id" "$STEAM_APP_ID"
+  log "focused Eden window=$id display=$display app=$STEAM_APP_ID"
+  return 0
+}
+
+restore_steam_focus() {
+  local id
+  id="$(steam_bpm_window_id || true)"
+  if [ -n "${id:-}" ]; then
+    set_gamescope_focus "$id" "$STEAM_CLIENT_ID"
+    log "restored Steam BPM window=$id"
+  else
+    DISPLAY="$(atom_display)" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
+    DISPLAY="$(atom_display)" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_CLIENT_ID" 2>/dev/null || true
+    log "restored Steam app id only (no BPM window)"
+  fi
+}
+
+eden_bin_running() {
+  local pid cmd
+  for pid in /proc/[0-9]*; do
+    cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      /tmp/.mount_Eden*/bin/eden*) return 0 ;;
+      /home/deck/Applications/Eden.appimage*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+watch_eden_focus() {
+  prefer_game_xwayland
+  log "watch start display=${DISPLAY:-} atom=$(atom_display)"
+  F11_SENT=0
+  local waited=0 presented=0 saw_retrodeck=0 overlay=0 app id
+  if retrodeck_session_alive; then
+    saw_retrodeck=1
+    log "RetroDECK/reaper present — will stop Eden if that session dies"
+  fi
+  # Always present Eden once. Skipping this when Steam is on 769 leaves a
+  # black screen (gamescope keeps compositing Big Picture).
+  while [ "$waited" -lt 120 ]; do
+    if focus_eden_in_gamescope; then
+      presented=1
+      break
+    fi
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+  if [ "$presented" -eq 0 ]; then
+    log "watch gave up waiting for Eden window"
+    exit 1
+  fi
+  while eden_bin_running; do
+    if [ "$saw_retrodeck" -eq 1 ] && ! retrodeck_session_alive; then
+      log "RetroDECK/reaper gone (Steam Exit) — stopping host Eden"
+      kill_our_eden
+      break
+    fi
+    app="$(focused_app)"
+    # Only STEAM_OVERLAY means the overlay is up. If Steam already moved
+    # FOCUSED_APP to 769 (Cemu / in-tree), leave it. If it did not (host
+    # Eden), apply the Cemu split: APP=769, GFX stays the game.
+    if steam_overlay_active; then
+      if [ "$overlay" -eq 0 ] && [ "$app" != "$STEAM_CLIENT_ID" ]; then
+        DISPLAY="$(atom_display)" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
+        DISPLAY="$(atom_display)" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_APP_ID" 2>/dev/null || true
+        log "STEAM_OVERLAY=1 — FOCUSED_APP=769 gfx=$STEAM_APP_ID"
+      fi
+      overlay=1
+    elif [ "$app" = "$STEAM_CLIENT_ID" ] && [ "$saw_retrodeck" -eq 1 ]; then
+      # Steam Exit menu: APP=769 without STEAM_OVERLAY. Only trust this
+      # when RetroDECK owns the session. Host-only tests sit on 769/BPM
+      # and must reclaim or the picture stays on Big Picture.
+      overlay=1
+    elif [ "$app" != "$STEAM_APP_ID" ]; then
+      log "focus stolen (app=$app); reclaiming for video"
+      focus_eden_in_gamescope || true
+      overlay=0
+    else
+      overlay=0
+      if [ "$F11_SENT" -eq 0 ] && eden_chrome_visible; then
+        make_eden_fullscreen || true
+      fi
+    fi
+    sleep 0.2
+  done
+  if retrodeck_session_alive; then
+    id="$(esde_window_id || true)"
+    if [ -n "${id:-}" ]; then
+      set_gamescope_focus "$id" "$STEAM_APP_ID"
+      log "restored ES-DE window=$id"
+    fi
+  else
+    restore_steam_focus
+  fi
+  log "watch exit"
+}
+
+resolve_rom() {
+  local path="$1"
+  if [ -f "$path" ]; then
+    printf '%s\n' "$path"
+    return 0
+  fi
+  if [ -d "$path" ]; then
+    local match
+    match="$(find "$path" -maxdepth 1 -type f \( \
+      -iname '*.xci' -o -iname '*.nsp' -o -iname '*.nca' -o -iname '*.nro' -o -iname '*.nso' \
+    \) | head -n 1)"
+    if [ -n "$match" ]; then
+      printf '%s\n' "$match"
+      return 0
+    fi
+  fi
+  printf '%s\n' "$path"
+}
+
+if [ "${1:-}" = "--watch-focus" ]; then
+  resolve_steam_app_id || exit 1
+  watch_eden_focus
+  exit 0
+fi
+
+resolve_steam_app_id || exit 1
+prefer_game_xwayland
+: >"$FOCUS_LOG"
+
+# Detached from AppImage exec/HUP so the watcher outlives RetroDECK exiting.
+if command -v setsid >/dev/null 2>&1; then
+  setsid -f "$SELF" --watch-focus >/dev/null 2>&1
+else
+  nohup "$SELF" --watch-focus >/dev/null 2>&1 &
+  disown || true
+fi
+
+args=()
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-g" ] || [ "$prev" = "--game" ]; then
+    args+=("$(resolve_rom "$arg")")
+  else
+    args+=("$arg")
+  fi
+  prev="$arg"
+done
+
+has_fs=0
+for arg in "${args[@]+"${args[@]}"}"; do
+  case "$arg" in
+    -f|--fullscreen) has_fs=1 ;;
+  esac
+done
+# Append, do not prepend: some AppImage runtimes treat a leading -f as their own flag.
+if [ "$has_fs" -eq 0 ]; then
+  args+=("-f")
+fi
+
+exec "$EDEN_BIN" "${args[@]}"

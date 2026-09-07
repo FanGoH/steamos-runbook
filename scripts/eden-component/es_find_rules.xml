@@ -2,9 +2,9 @@
 <!--
   Official RetroDECK already looks here:
   /var/data/retrodeck/external_components/eden/component_launcher.sh
-  Custom rules override the bundled EDEN/CEMU entries, so point at the
+  Custom rules override the bundled EDEN/CEMU/RPCS3 entries, so point at the
   user-slot launchers and do not list the host AppImage (FUSE/dwarfs often
-  fails in the sandbox). CEMU also keeps the bundled launcher as fallback.
+  fails in the sandbox). CEMU/RPCS3 also keep the bundled launcher as fallback.
 -->
 <ruleList>
   <emulator name="EDEN">
@@ -16,6 +16,12 @@
     <rule type="staticpath">
       <entry>/var/data/retrodeck/external_components/cemu/component_launcher.sh</entry>
       <entry>/app/retrodeck/components/cemu/component_launcher.sh</entry>
+    </rule>
+  </emulator>
+  <emulator name="RPCS3">
+    <rule type="staticpath">
+      <entry>/var/data/retrodeck/external_components/rpcs3/component_launcher.sh</entry>
+      <entry>/app/retrodeck/components/rpcs3/component_launcher.sh</entry>
     </rule>
   </emulator>
 </ruleList>

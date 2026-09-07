@@ -219,6 +219,28 @@ if systemctl --user is-enabled "${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.t
   warn "old polling ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} still enabled — re-run ensure-sunshine.sh"
 fi
 
+if systemctl --user is-enabled "${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}" >/dev/null 2>&1; then
+  ok "Game Mode KMS rebind ${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service} enabled"
+else
+  fail "Game Mode Sunshine rebind unit not enabled"
+  record_manual "Enable Sunshine restart after gamescope-session" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+systemctl --user is-enabled ${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}
+EOF
+fi
+
+if systemctl --user is-active plasma-plasmashell.service >/dev/null 2>&1 \
+  && ! systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
+  warn "Desktop (KWin) session — Moonlight hangs/503 until Game Mode"
+  record_manual "Switch to Game Mode so Sunshine can KMS-capture" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+steamosctl switch-to-game-mode
+# Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
+# Do not: curl .../api/restart
+EOF
+fi
+
 gs_state="$(sunshine_serverinfo_state 2>/dev/null || true)"
 if [ "$gs_state" = "FREE" ]; then
   ok "GameStream SUNSHINE_SERVER_FREE"

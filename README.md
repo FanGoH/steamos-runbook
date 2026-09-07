@@ -33,6 +33,8 @@ git pull
 - Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
+- Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
+- RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
 
 Manual follow-ups (printed when needed):
 
@@ -66,6 +68,10 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
+| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 8GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
+| `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
+| `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |

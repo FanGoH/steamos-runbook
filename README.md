@@ -33,6 +33,7 @@ git pull
 - Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
+- Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
 - Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
 - RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
 
@@ -40,6 +41,7 @@ Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
+- Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
@@ -69,7 +71,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
-| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 8GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
+| `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
+| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
@@ -98,6 +102,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `CURSOR_WORKER_EXTRA_DIRS` | Extra workspace roots, **space-separated** (paths with spaces are not supported). These are additional folders on the same worker, not extra repo registrations. |
 | `CURSOR_WORKER_MGMT_ADDR` | Worker healthz listen address (default `127.0.0.1:18789`) |
 | `CURSOR_WORKER_DATA_DIR` | Worker data dir (separate from the Cursor app's default lock) |
+| `SWITCH2_CONTROLLERS_DIR` | Checkout of switch2-controllers-linux (default `~/code/switch2-controllers-linux`) |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 
@@ -126,6 +131,7 @@ systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
 systemctl --user is-enabled steamos-sunshine-watch.path
 systemctl --user is-enabled steamos-sunshine-after-gamescope.service
 systemctl --user status cursor-agent-worker.service --no-pager
+systemctl --user status nso-gc.service --no-pager
 curl -s http://127.0.0.1:47989/serverinfo
 # Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)
 ```

@@ -64,6 +64,7 @@ run_step "ensure-rpcs3-input" "$ROOT/scripts/ensure-rpcs3-input.sh"
 run_step "ensure-pcsx2-bios" "$ROOT/scripts/ensure-pcsx2-bios.sh" warn
 run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
+run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn
 

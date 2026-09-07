@@ -49,11 +49,13 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - PS2 BIOS via Tender (`ensure-pcsx2-bios.sh`: Decky `download_all_firmware("ps2")` + pin USA 230 in `PCSX2.ini`)
 - Eden user slot + Tender `rom-launcher` wrap (`ensure-eden-component.sh`: host AppImage `-f -g` for Switch dumps over 8GiB, 4GB pin on Engage, library symlinks)
 - Cursor Agent worker user service (`agent worker start` on `CURSOR_WORKER_DIR` plus `CURSOR_WORKER_EXTRA_DIRS`; login is manual). Separate data dir so it does not fight an on-demand session worker.
+- Switch 2 controllers (`ensure-switch2-controllers.sh`): user-space BLE → uinput bridge from `SWITCH2_CONTROLLERS_DIR` (default `~/code/switch2-controllers-linux`). Python 3.12 venv via uv (Steam OS 3.9 is 3.14). Steam Bluetooth.Enabled stays off; BlueZ adapter is powered. Game Mode hook is `gamescope-session.service`. Pairing is manual. Do **not** install the Bazzite Eden reorder hooks (playbook owns Eden/Cemu/RPCS3 binds).
 
 **Manual only** (detect + print exact commands via `record_manual`):
 
 - Tailscale / Headscale re-login (do **not** auto-login; do **not** add `--ssh` unless explicitly requested)
 - Cursor `agent login` if the worker CLI is signed out (do **not** put API keys in the repo)
+- Switch 2 controller pairing (`python -m ngc pair` / Decky plugin; hold Sync). Decky plugin copy into `~/homebrew/plugins` needs sudo when that dir is root-owned.
 
 **Light checks** (no reinstall nag):
 

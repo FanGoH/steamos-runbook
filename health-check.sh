@@ -219,6 +219,28 @@ if systemctl --user is-enabled "${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.t
   warn "old polling ${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer} still enabled — re-run ensure-sunshine.sh"
 fi
 
+if systemctl --user is-enabled "${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}" >/dev/null 2>&1; then
+  ok "Game Mode KMS rebind ${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service} enabled"
+else
+  fail "Game Mode Sunshine rebind unit not enabled"
+  record_manual "Enable Sunshine restart after gamescope-session" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine.sh
+systemctl --user is-enabled ${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}
+EOF
+fi
+
+if systemctl --user is-active plasma-plasmashell.service >/dev/null 2>&1 \
+  && ! systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
+  warn "Desktop (KWin) session — Moonlight hangs/503 until Game Mode"
+  record_manual "Switch to Game Mode so Sunshine can KMS-capture" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+steamosctl switch-to-game-mode
+# Do not: systemctl --user enable --now $SUNSHINE_USER_SERVICE
+# Do not: curl .../api/restart
+EOF
+fi
+
 gs_state="$(sunshine_serverinfo_state 2>/dev/null || true)"
 if [ "$gs_state" = "FREE" ]; then
   ok "GameStream SUNSHINE_SERVER_FREE"
@@ -457,6 +479,24 @@ else
   record_manual "Install Switch 2 Controllers Decky plugin" <<EOF
 sudo bash $S2_DIR/scripts/install-decky.sh --install-only \$HOME/homebrew/plugins
 EOF
+fi
+echo
+
+echo "[PCSX2 BIOS]"
+PCSX2_INI="${PCSX2_INI:-/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/config/PCSX2/inis/PCSX2.ini}"
+BIOS_DIR="${RETRODECK_BIOS_DIR:-/home/$STEAMOS_USER/retrodeck/bios}"
+if [ -f "$PCSX2_INI" ]; then
+  pcsx2_bios="$(awk -F' = ' '/^BIOS =/{print $2; exit}' "$PCSX2_INI")"
+  if [ -n "$pcsx2_bios" ] && [ -f "$BIOS_DIR/$pcsx2_bios" ]; then
+    ok "PCSX2 BIOS pinned ($pcsx2_bios)"
+  else
+    warn "PCSX2.ini BIOS is empty or missing under $BIOS_DIR"
+    record_manual "Download PS2 BIOS via Tender" <<EOF
+$ROOT/scripts/ensure-pcsx2-bios.sh
+EOF
+  fi
+else
+  warn "PCSX2.ini not found (RetroDECK has not created it yet)"
 fi
 echo
 

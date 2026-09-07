@@ -1,0 +1,38 @@
+# Official RPCS3 Uncharted: Drake's Fortune patches (subset).
+# Unlock FPS / Disable Motion Blur / Disable Depth of Field match disc 01.10
+# (USA BCUS98103) and 01.01 (EU BCES00065). Do not invent 01.00 hashes.
+Anchors:
+  uc1_disc101title: &uc1_disc101title
+    "Uncharted: Drake's Fortune":
+      BCES00065: [ 01.01 ]
+      BCJS30015: [ 01.01 ]
+      BCUS98103: [ 01.10 ]
+  uc1_unlockfps_101_disc: &uc1_unlockfps_101_disc
+    - [ be16, 0x000e515c, 0x901d ]
+  uc1_mb_101_disc: &uc1_mb_101_disc
+    - [ be16, 0x000e527c, 0x981d ]
+  uc1_ddof_101_disc: &uc1_ddof_101_disc
+    - [ be16, 0x000e5284, 0x981d ]
+
+PPU-8363904e0b8fc276380a8f0e158dd81d7a9cefc5:
+  "Disable Motion Blur":
+    Games: *uc1_disc101title
+    Author: "illusion"
+    Notes:
+    Patch Version: 2.0
+    Patch:
+      - [ load, *uc1_mb_101_disc ]
+  "Disable Depth of Field":
+    Games: *uc1_disc101title
+    Author: "illusion"
+    Notes:
+    Patch Version: 2.0
+    Patch:
+      - [ load, *uc1_ddof_101_disc ]
+  "Unlock FPS":
+    Games: *uc1_disc101title
+    Author: "FlexBy"
+    Notes:
+    Patch Version: 2.0
+    Patch:
+      - [ load, *uc1_unlockfps_101_disc ]

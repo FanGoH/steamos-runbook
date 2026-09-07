@@ -19,8 +19,10 @@ UNIT_PATH="/home/$STEAMOS_USER/.config/systemd/user/$SUNSHINE_USER_SERVICE"
 WATCH_SERVICE="${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}"
 WATCH_TIMER="${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}"
 WATCH_PATH="${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}"
+AFTER_GAMESCOPE_SERVICE="${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}"
 WATCH_DIR="/home/$STEAMOS_USER/.config/systemd/user"
 WATCH_SCRIPT="$ROOT/scripts/sunshine-watch.sh"
+AFTER_GAMESCOPE_SCRIPT="$ROOT/scripts/sunshine-after-gamescope.sh"
 WATCH_LOG="$ROOT/logs/sunshine-watch.log"
 
 manual_start_decky() {
@@ -171,8 +173,59 @@ EOS
   fi
 }
 
+# Desktop (KWin) steals DRM; the boot Sunshine instance then cannot find
+# monitor 0 and Moonlight hangs on 503. Restart via Decky after gamescope.
+install_after_gamescope_unit() {
+  mkdir -p "$WATCH_DIR" "$ROOT/logs"
+  chmod +x "$AFTER_GAMESCOPE_SCRIPT" 2>/dev/null || true
+
+  local desired
+  desired="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook Sunshine KMS rebind after Game Mode
+After=gamescope-session.service
+PartOf=gamescope-session.service
+StartLimitIntervalSec=600
+StartLimitBurst=12
+
+[Service]
+Type=oneshot
+Nice=10
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=15
+RemainAfterExit=yes
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$AFTER_GAMESCOPE_SCRIPT
+StandardOutput=append:$WATCH_LOG
+StandardError=append:$WATCH_LOG
+
+[Install]
+WantedBy=gamescope-session.target
+EOS
+)"
+
+  local unit_path="$WATCH_DIR/$AFTER_GAMESCOPE_SERVICE"
+  local changed=0
+  if [ ! -f "$unit_path" ] || [ "$(cat "$unit_path")" != "$desired" ]; then
+    printf '%s\n' "$desired" >"$unit_path"
+    changed=1
+  fi
+  if [ "$changed" -eq 1 ]; then
+    systemctl --user daemon-reload
+    echo "Updated $AFTER_GAMESCOPE_SERVICE (Decky restart after Game Mode)."
+  fi
+  if ! systemctl --user is-enabled "$AFTER_GAMESCOPE_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$AFTER_GAMESCOPE_SERVICE"
+    echo "Enabled $AFTER_GAMESCOPE_SERVICE for gamescope-session.target."
+  else
+    echo "$AFTER_GAMESCOPE_SERVICE already enabled."
+  fi
+}
+
 disable_systemd_autostart
 install_watch_units
+install_after_gamescope_unit
 sunshine_open_pulse_dir >/dev/null 2>&1 || true
 
 # A second user-owned sunshine (Flatpak/systemd) next to Decky's root instance.

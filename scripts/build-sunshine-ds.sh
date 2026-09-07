@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build sunshine-ds in Distrobox. Does not install over the Decky Flatpak.
+# Build sunshine-ds from the FanGoH Sunshine fork. Does not install over the
+# Decky Flatpak.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,14 +9,15 @@ source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 
 SRC="${SUNSHINE_DS_SRC:-/home/${STEAMOS_USER}/code/sunshine-ds}"
+REPO="${SUNSHINE_DS_REPO:-https://github.com/FanGoH/Sunshine.git}"
+BRANCH="${SUNSHINE_DS_BRANCH:-sunshine-ds-linux}"
 BOX="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
 BIN_DIR="${SUNSHINE_DS_BIN_DIR:-/home/${STEAMOS_USER}/.local/bin}"
 BUILD_DIR="${SUNSHINE_DS_BUILD_DIR:-$SRC/build}"
 
 if [ ! -d "$SRC/.git" ]; then
-  echo "Missing Sunshine DS tree at $SRC"
-  echo "Clone LizardByte/Sunshine and apply patches/sunshine-ds/000*.patch"
-  exit 1
+  echo "Cloning $REPO ($BRANCH) into $SRC"
+  git clone --recurse-submodules -b "$BRANCH" "$REPO" "$SRC"
 fi
 
 mkdir -p "$BIN_DIR" "$BUILD_DIR"
@@ -41,16 +43,10 @@ ninja -C $(printf %q "$BUILD_DIR") sunshine
 
 install -m 0755 "$BUILD_DIR/sunshine" "$BIN_DIR/sunshine-ds"
 
-HELPER_SRC="$ROOT/tools/kwin-virtual-output"
-GEN="$(mktemp -d /tmp/sunshine-ds-wayland-proto.XXXXXX)"
 distrobox enter "$BOX" -- bash -lc "
 set -euo pipefail
-wayland-scanner client-header $(printf %q "$HELPER_SRC/zkde-screencast-unstable-v1.xml") $(printf %q "$GEN/zkde-screencast-unstable-v1.h")
-wayland-scanner private-code $(printf %q "$HELPER_SRC/zkde-screencast-unstable-v1.xml") $(printf %q "$GEN/zkde-screencast-unstable-v1.c")
-gcc -O2 -Wall -Wextra -o $(printf %q "$BIN_DIR/sunshine-ds-virtual-output") \\
-  $(printf %q "$HELPER_SRC/kwin-virtual-output.c") $(printf %q "$GEN/zkde-screencast-unstable-v1.c") \\
-  -I$(printf %q "$GEN") -lwayland-client -lm
+$(printf %q "$SRC/tools/kwin-virtual-output/build.sh") $(printf %q "$BIN_DIR/sunshine-ds-virtual-output")
 "
-rm -rf "$GEN"
 chmod 0755 "$BIN_DIR/sunshine-ds-virtual-output"
-echo "Installed $BIN_DIR/sunshine-ds and $BIN_DIR/sunshine-ds-virtual-output (production Flatpak Sunshine is unchanged)."
+echo "Installed $BIN_DIR/sunshine-ds and $BIN_DIR/sunshine-ds-virtual-output from $REPO ($BRANCH)."
+echo "Production Flatpak Sunshine is unchanged."

@@ -112,14 +112,12 @@ if [ "$is_retrodeck" -eq 1 ] \
     # -g is the same BootGame as clicking the list; Eden runs it in the
     # MainWindow constructor before show(), which is why Steam sits on
     # Launching. No second-instance IPC to delay that.
-    for title_ini in \
-      "${XDG_CONFIG_HOME}/eden/custom/0100A6301214E000.ini" \
-      "${XDG_CONFIG_HOME}/eden/custom/0100152000022000.ini"
-    do
-      if [ -f "$title_ini" ] && [ -f "$PATCHER" ]; then
-        python3 "$PATCHER" --pin-4gb "$title_ini" || true
-      fi
-    done
+    # Pin 4GB only for Engage. MK8 (0100152000022000) must stay 8GB /
+    # 64-bit; --pin-4gb forced 32-bit and ExceptionRaised at 0x0.
+    engage_custom="${XDG_CONFIG_HOME}/eden/custom/0100A6301214E000.ini"
+    if [ -f "$engage_custom" ] && [ -f "$PATCHER" ]; then
+      python3 "$PATCHER" --pin-4gb "$engage_custom" || true
+    fi
     exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE" -f -g "$rom"
   fi
 fi

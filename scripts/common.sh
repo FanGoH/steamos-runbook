@@ -44,6 +44,7 @@ load_env() {
   SUNSHINE_WATCH_SERVICE="${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}"
   SUNSHINE_WATCH_TIMER="${SUNSHINE_WATCH_TIMER:-steamos-sunshine-watch.timer}"
   SUNSHINE_WATCH_PATH="${SUNSHINE_WATCH_PATH:-steamos-sunshine-watch.path}"
+  SUNSHINE_AFTER_GAMESCOPE_SERVICE="${SUNSHINE_AFTER_GAMESCOPE_SERVICE:-steamos-sunshine-after-gamescope.service}"
   SUNSHINE_WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
   SUNSHINE_WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
   SUNSHINE_PLUGINLOADER_WAIT_SECS="${SUNSHINE_PLUGINLOADER_WAIT_SECS:-60}"
@@ -295,18 +296,22 @@ print("empty" if state in (None, "") else str(state))
 PY
 }
 
-# Ask PluginLoader to call Decky Sunshine startSunshine (same as the UI button).
-# Uses the legacy kwargs call — decky-sunshine ships api_version 0.
+# Ask PluginLoader to call a Decky Sunshine backend method (same as the UI).
+# Decky Sunshine ships api_version 1 — use loader/call_plugin_method with the
+# snake_case Python names (start_sunshine / restart_sunshine). The legacy
+# kwargs route returns "Legacy methods may not be used on api_version > 0"
+# and leaves GameStream stuck until Decky's own _main starts it.
 # Briefly replaces Decky's frontend websocket; we close after the reply so
 # Steam reconnects. Never prints the CSRF token. Do not enable systemd.
 # Do not POST /api/restart (kills Decky's setuid instance).
-sunshine_start_via_decky() {
+sunshine_decky_call() {
+  local method="${1:?decky method required}"
   local loader="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
   local plugin="${DECKY_SUNSHINE_PLUGIN_NAME:-Decky Sunshine}"
-  python3 - "$loader" "$plugin" <<'PY'
+  python3 - "$loader" "$plugin" "$method" <<'PY'
 import base64, json, os, socket, struct, sys, urllib.error, urllib.parse, urllib.request
 
-loader, plugin = sys.argv[1], sys.argv[2]
+loader, plugin, method = sys.argv[1], sys.argv[2], sys.argv[3]
 
 
 def die(msg, code=1):
@@ -418,8 +423,8 @@ def main():
         send_text(json.dumps({
             "type": 0,
             "id": call_id,
-            "route": "loader/call_legacy_plugin_method",
-            "args": [plugin, "startSunshine", {}],
+            "route": "loader/call_plugin_method",
+            "args": [plugin, method],
         }))
         msg = recv_message()
         try:
@@ -433,12 +438,12 @@ def main():
             pass
 
     if not msg:
-        die("PluginLoader closed the websocket before startSunshine replied")
+        die(f"PluginLoader closed the websocket before {method} replied")
     if msg.get("id") != call_id:
         die("PluginLoader reply id mismatch")
     if msg.get("type") == -1:
         err = (msg.get("error") or {}).get("message") or "unknown error"
-        die(f"Decky startSunshine failed: {err}")
+        die(f"Decky {method} failed: {err}")
     if msg.get("type") != 1:
         die(f"Unexpected PluginLoader message type {msg.get('type')}")
     result = msg.get("result")
@@ -452,6 +457,16 @@ def main():
 
 main()
 PY
+}
+
+sunshine_start_via_decky() {
+  sunshine_decky_call start_sunshine
+}
+
+# Stop+start through Decky so KMS rebinds after Game Mode starts. Do not
+# POST /api/restart on the setuid instance.
+sunshine_restart_via_decky() {
+  sunshine_decky_call restart_sunshine
 }
 
 # POST a Sunshine Web UI path using Decky's stored Basic auth. Never prints the header.

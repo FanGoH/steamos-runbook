@@ -153,9 +153,9 @@ Wayland still ignores those coordinates sometimes. After launch, KWin-place:
 
 - `<type>Wii U GamePad</type>` — required for GamePad screen / game input. Pro Controller is the failure mode.
 - Copy mappings from RetroDECK `SteamInput-P1.xml` (includes mapping 25).
-- Player 0 uuid `0_030079f6de280000ff11000001000000` (`Microsoft X-Box 360 pad 0`, Steam Input wrap `28de:11ff`). Cemu SDL CRC is of the **device name**.
-- Fallback uuid `0_050017945e0400008e02000014010000` (`Sunshine (libvirtualhid) X-Box 360 Controller`, bus `0005`, `045e:028e`, version `0114`). Only present while Moonlight is streaming.
-- `patch-cemu-input.py` pick order is physical Xbox → Switch Pro → Steam virtual → Sunshine. On a Thor stream there is no physical Xbox, so Steam virtual wins. Do not bind `libvirtualhid Mouse` (`1209:0003`).
+- Player 0 uuid `0_050017945e0400008e02000014010000` (`Sunshine (libvirtualhid) X-Box 360 Controller`, bus `0005`, `045e:028e`, version `0114`). This is the Thor/Odin Moonlight pad. Only present while Moonlight is streaming.
+- Fallback uuid `0_030079f6de280000ff11000001000000` (`Microsoft X-Box 360 pad 0`, Steam Input wrap `28de:11ff`). Cemu SDL CRC is of the **device name**. Steam-first steals input from Thor during GameStream.
+- Game Mode `patch-cemu-input.py` pick order is still physical Xbox → Switch Pro → Steam virtual → Sunshine. Dual-screen desktop Cemu prefers Sunshine first. Do not bind `libvirtualhid Mouse` (`1209:0003`).
 - Changing type in the XML while Cemu is running does nothing. Stop Cemu, write the file, start again.
 
 sunshine-ds must stay `gamepad = x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`.

@@ -26,7 +26,7 @@ Read live sizes from `kscreen-doctor`. Do **not** kill `sunshine-ds-virtual-outp
 - TV `window_position` / `window_size` = HDMI
 - `pad_position` / `pad_size` = virtual output
 
-`controllerProfiles/controller0.xml`: `<type>Wii U GamePad</type>`. Player 0 uuid `0_030079f6de280000ff11000001000000` (Steam wrap `28de:11ff`), fallback Sunshine x360 `0_050017945e0400008e02000014010000`. Pro Controller is the failure mode.
+`controllerProfiles/controller0.xml`: `<type>Wii U GamePad</type>`. Player 0 uuid `0_050017945e0400008e02000014010000` (`Sunshine (libvirtualhid) X-Box 360 Controller` — Thor/Odin Moonlight pad). Steam wrap `0_030079f6de280000ff11000001000000` is fallback only. Pro Controller is the failure mode. Cemu must be restarted after changing uuid/order.
 
 ## Launch env
 

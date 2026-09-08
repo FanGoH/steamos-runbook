@@ -90,6 +90,25 @@ if [ -f "$CEMU_CONTROLLER" ]; then
     echo "controller0.xml is not Wii U GamePad. Stop Cemu, set <type>Wii U GamePad</type>, start again."
     exit 2
   fi
+  python3 - "$CEMU_CONTROLLER" <<'PY'
+import re, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text()
+blocks = list(re.finditer(r"[ \t]*<controller>.*?</controller>\n", text, re.S))
+if len(blocks) < 2:
+    sys.exit(0)
+def name(block):
+    m = re.search(r"<display_name>([^<]+)</display_name>", block)
+    return m.group(1) if m else ""
+names = [name(b.group(0)) for b in blocks]
+sun = next((i for i, n in enumerate(names) if "Sunshine" in n), None)
+if sun is None or sun == 0:
+    sys.exit(0)
+ordered = [blocks[sun].group(0)] + [b.group(0) for i, b in enumerate(blocks) if i != sun]
+path.write_text(text[: blocks[0].start()] + "".join(ordered) + text[blocks[-1].end() :])
+print("Bound Cemu player 0 to Sunshine (Thor/Odin GameStream pad) in", path)
+PY
 fi
 
 RULE_ID="$(kreadconfig6 --file kwinrulesrc --group General --key rules 2>/dev/null || true)"

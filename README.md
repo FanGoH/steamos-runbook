@@ -77,6 +77,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | Bind standalone Cemu player 0 to a named pad (`cemu --match Thor`); last-write-wins mappings |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
+| `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
@@ -108,6 +109,8 @@ Copy `.env.example` to `.env`. Important variables:
 | `SWITCH2_CONTROLLERS_DIR` | Checkout of switch2-controllers-linux (default `~/code/switch2-controllers-linux`) |
 | `CEMU_PAD_MATCH` | Desktop GameStream Cemu pad substring (default `Thor`) |
 | `CEMU_ROM` | Optional standalone Cemu ROM path for `ensure-cemu-dual-screen.sh` |
+| `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`) |
+| `AZAHAR_ROM` | Optional standalone Azahar ROM path for `ensure-azahar-dual-screen.sh` |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 

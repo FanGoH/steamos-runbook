@@ -39,6 +39,7 @@ This is the working GameStream baseline. Do not “improve” it unless the user
 - Thor mouse checkpoint: top-panel touches must stay on HDMI. `getLocationOnScreen()` is per-display (both origin 0,0); the landscape 1920-wide top activity used to hit-test the 1080-wide bottom Presentation and send display index 1. Dual-panel routes by the view’s display; stacked mode still hit-tests. Moonlight branch `cursor/top-touch-hit-test-f15e`.
 - Thor dual-panel restore: Back can dismiss the bottom Presentation while the top stream stays up. Tapping Moonlight DS on the bottom panel should re-show that Presentation and keep Game on the top display, not move the primary stream. Moonlight branch `cursor/restore-bottom-presentation-f15e`.
 - Thor Cemu dual-screen: standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Type **Wii U GamePad**. Bind with `scripts/bind-gamepad.py`; place with `scripts/ensure-cemu-dual-screen.sh`. Recipe in **Cemu dual-screen (Thor)** below.
+- Thor Azahar dual-screen: standalone Flatpak `org.azahar_emu.Azahar`, Separate Windows, `QT_QPA_PLATFORM=xcb`. Primary Window → HDMI, Secondary Window → Virtual-sunshine-ds. Recipe in **Azahar dual-screen (Thor)** below.
 - Odin stacked checkpoint (user: “fixed!”): Portal only exposes Android `Display id=0`, so Auto is **STACKED** (TV + GamePad on that one screen), not Thor dual-panel. STACKED streams both GameStream videos. Dual-panel and stacked are alternate layouts, not a mix; Portal cannot target the other LCD until Android advertises a Presentation display. Moonlight `f4eca72d` (`cursor/stacked-secondary-surface-f15e`, tag `checkpoint-odin-stacked-dual-stream`) binds the in-layout `surfaceViewSecondary`. Settings: Dual display **Auto** or **Stack both**. Quit Thor first (`ControllerNumber already allocated [0]` / `/resume` of Thor’s `881448767`). GamePad only is the single-stream option. Do not rebuild sunshine-ds to “fix” the spinner.
 - Start env: Distrobox `steamos-tools`, `CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev`, `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`, `WAYLAND_DISPLAY=wayland-0`, `unset DISPLAY`.
 - After `/launch` the log must contain `Skipping encoder re-probe; using [software]` (not a vulkan/vaapi walk).
@@ -188,6 +189,17 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 
 `back_button_timeout = 500` alone is not enough. Hold Select 0.5s pulses Guide on the **virtual pad**. Steam only honors that on uinput x360. Silent autostart (`steam -silent -steamdeck`) swallows `steam://open/*` with no window; start `/usr/bin/steam` without `-silent` if you need a visible client.
 
+## Azahar dual-screen (Thor)
+
+Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
+
+- Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
+- `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly.
+- Caption `Primary Window` → HDMI-A-1 (top screen). `Secondary Window` → Virtual-sunshine-ds (touch). Minimize the library window.
+- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor`.
+- Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).
+- Process `comm` is `azahar`. `resourceClass` is `Azahar`.
+
 ## Do not
 
 - Treat probe I-frame size as capture health
@@ -196,6 +208,8 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 - Hardcode Headscale URLs or print `.auth` / certs / passwords
 - Install Bazzite Eden reorder hooks
 - Use RetroDECK Cemu (`-f` / fullscreen) for Thor dual-screen GamePad
+- Use RetroDECK Azahar (`azahar-launcher` / fullscreen) for Thor dual-screen 3DS
+- Launch Azahar on Qt Wayland (`--socket=wayland`) — drm_syncobj protocol error
 - Emulate Wii U Pro Controller when the bottom stream should be the GamePad
 - Hand-edit `controller0.xml` or copy mappings onto every `<controller>`
 - Reorder Sunshine first while Steam still has mappings

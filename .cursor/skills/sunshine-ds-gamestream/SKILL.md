@@ -1,6 +1,6 @@
 ---
 name: sunshine-ds-gamestream
-description: Diagnose SteamOS GameStream on sunshine-ds vs Decky Sunshine (black screen, Moonlight 503, Starting Desktop hang, reconnect after drop, Thor/Moonlight DS, KWin screencast, Cemu GamePad dual-screen). Use when the user mentions Sunshine, sunshine-ds, GameStream, Moonlight, 503, black capture, Starting Desktop, encoder probe, KWin PipeWire, dual-stream HDMI/virtual, or Cemu GamePad on the bottom screen.
+description: Diagnose SteamOS GameStream on sunshine-ds vs Decky Sunshine (black screen, Moonlight 503, Starting Desktop hang, Starting connection spinner, reconnect after drop, Thor/Odin Moonlight DS, KWin screencast, Cemu GamePad dual-screen). Use when the user mentions Sunshine, sunshine-ds, GameStream, Moonlight, 503, black capture, Starting Desktop, Starting connection, encoder probe, KWin PipeWire, dual-stream HDMI/virtual, stacked dual-display, Odin Portal, or Cemu GamePad on the bottom screen.
 ---
 
 # sunshine-ds GameStream debug
@@ -16,7 +16,7 @@ curl -s --max-time 3 http://127.0.0.1:48100/serverinfo | grep -E 'uniqueid|curre
 curl -s --max-time 3 http://127.0.0.1:47989/serverinfo | grep -E 'uniqueid|currentgame|state'
 ```
 
-Thor must use the **dev** uniqueid / `:48100`. `:47989` is Decky KMS and is black on Plasma desktop.
+Thor and Odin must use the **dev** uniqueid / `:48100`. `:47989` is Decky KMS and is black on Plasma desktop.
 
 2. Confirm the **running** pid is the installed binary (`pgrep -x sunshine-ds` only — never `pgrep -f` / `pkill -f`):
 
@@ -39,6 +39,7 @@ This is the working GameStream baseline. Do not “improve” it unless the user
 - Thor mouse checkpoint: top-panel touches must stay on HDMI. `getLocationOnScreen()` is per-display (both origin 0,0); the landscape 1920-wide top activity used to hit-test the 1080-wide bottom Presentation and send display index 1. Dual-panel routes by the view’s display; stacked mode still hit-tests. Moonlight branch `cursor/top-touch-hit-test-f15e`.
 - Thor dual-panel restore: Back can dismiss the bottom Presentation while the top stream stays up. Tapping Moonlight DS on the bottom panel should re-show that Presentation and keep Game on the top display, not move the primary stream. Moonlight branch `cursor/restore-bottom-presentation-f15e`.
 - Thor Cemu dual-screen (user: “THIS IS AMAZING, Exactly what I wanted”): standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Emulated type **must** be `Wii U GamePad`. Pro Controller is wrong. Restart Cemu after changing type. Recipe in **Cemu dual-screen (Thor)** below.
+- Odin stacked checkpoint (user: “fixed!”): Portal only exposes Android `Display id=0`, so Auto is **STACKED** (TV + GamePad on that one screen), not Thor dual-panel. STACKED streams both GameStream videos. Dual-panel and stacked are alternate layouts, not a mix; Portal cannot target the other LCD until Android advertises a Presentation display. Moonlight `f4eca72d` (`cursor/stacked-secondary-surface-f15e`, tag `checkpoint-odin-stacked-dual-stream`) binds the in-layout `surfaceViewSecondary`. Settings: Dual display **Auto** or **Stack both**. Quit Thor first (`ControllerNumber already allocated [0]` / `/resume` of Thor’s `881448767`). GamePad only is the single-stream option. Do not rebuild sunshine-ds to “fix” the spinner.
 - Start env: Distrobox `steamos-tools`, `CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev`, `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`, `WAYLAND_DISPLAY=wayland-0`, `unset DISPLAY`.
 - After `/launch` the log must contain `Skipping encoder re-probe; using [software]` (not a vulkan/vaapi walk).
 - Capture health: `cpu frame type=2` + high `pixel_diffs`. Probe I-frame ~1KB / 0% coded is `dummy_img()`, ignore it.
@@ -74,6 +75,10 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 
+### Odin stuck on “Starting connection”
+
+Moonlight `Game` spinner stays until `connectionStarted` / `stageFailed`. AUTO on a one-display device is STACKED, which waits for `secondarySurfaceReady`. Before `f4eca72d` only the dual-panel Presentation bound that surface, so `conn.start()` never ran. After that commit, LimeLog should show `Secondary stream surface ready` then RTSP. If the spinner still never moves, Thor still owns the session — quit Thor; do not rebuild DS.
+
 ### Ghost BUSY / wrong app
 
 Desktop placebo app stays BUSY until `POST /api/apps/close`. HTTPS `/cancel` needs client cert. Use Decky `lastAuthHeader`; CSRF skipped if no Origin/Referer. Playbook helper: `sunshine_close_app_via_api`. Do not tap a Low Res Desktop app unless asked.
@@ -97,7 +102,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Client / protocol
 
-- Moonlight DS package and Thor ADB: `rules_of_the_land.md` / `host.md`. Do not `adb kill-server`.
+- Moonlight DS package and Thor/Odin ADB: `rules_of_the_land.md` / `host.md`. Do not `adb kill-server`. Portal stacked APK: `com.fangoh.moonlight.debug` at `f4eca72d` / `checkpoint-odin-stacked-dual-stream`.
 - `/serverinfo` must advertise `<MaxVideoStreams>2</MaxVideoStreams>`.
 - SETUP `streamid=video/1/0` before ANNOUNCE.
 - Distrobox Pulse often `Access denied` — video can work without DS audio.
@@ -178,3 +183,5 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 - Emulate Wii U Pro Controller when the bottom stream should be the GamePad
 - Leave sunshine-ds on `gamepad = auto` / `xseries` if Select-hold must open Steam Big Picture
 - Kill `sunshine-ds-virtual-output` while dual-stream is the checkpoint
+- Rebuild sunshine-ds to “fix” Odin “Starting connection” (that was Moonlight STACKED never binding the in-layout second surface)
+- Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once

@@ -321,6 +321,13 @@ capture = kwin
 output_name = ${primary}
 dual_display_source = ${virtual}
 min_log_level = info
+# Absolute so a restart without CONFIGURATION_DIRECTORY keeps the paired identity.
+file_state = ${CONF_DIR}/sunshine/sunshine_state.json
+log_path = ${CONF_DIR}/sunshine/sunshine.log
+file_apps = ${CONF_DIR}/sunshine/apps.json
+pkey = ${CONF_DIR}/sunshine/credentials/cakey.pem
+cert = ${CONF_DIR}/sunshine/credentials/cacert.pem
+credentials_file = ${CONF_DIR}/sunshine/sunshine_state.json
 EOF
   echo "Wrote $CONF_DIR/sunshine/sunshine.conf (primary=$primary second=$virtual port=$PORT)"
 }

@@ -416,23 +416,30 @@ def cmd_azahar(args: argparse.Namespace) -> int:
         print(f"Missing {path}", file=sys.stderr)
         return 1
     pad = _pick_for_cemu(args)
-    if pad is None:
-        return 2
-    guid = pad["guid"]
     text = path.read_text()
+    if pad is None:
+        existing = azahar_guids(text)
+        if not existing:
+            return 2
+        guid = existing[0]
+        name = "existing qt-config.ini guid"
+        print(f"No live pad matched; rewriting libvirtualhid map on {guid}", file=sys.stderr)
+    else:
+        guid = pad["guid"]
+        name = pad["name"]
     try:
         new = patch_azahar_ini(text, guid)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if new == text:
-        print(f"Azahar already bound to {guid} ({pad['name']}) with libvirtualhid x360 map")
+        print(f"Azahar already bound to {guid} ({name}) with libvirtualhid x360 map")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
     if not bak.exists():
         bak.write_text(text)
     path.write_text(new)
-    print(f"Bound Azahar to {guid} ({pad['name']}) in {path}")
+    print(f"Bound Azahar to {guid} ({name}) in {path}")
     if azahar_running() and not args.force:
         print("Azahar is running; restart it for the bind to apply.", file=sys.stderr)
         return 2

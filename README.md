@@ -31,6 +31,7 @@ git pull
 - `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
 - OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
 - Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
+- KWin screencast FBO (`ensure-kwin-screencast.sh`: reinitialize compositor if desktop screenshots are all black)
 - Gear Lever Flatpak (AppImage manager; installs to `/home`)
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
 - Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
@@ -70,6 +71,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
+| `scripts/ensure-kwin-screencast.sh` | Reinitialize KWin if desktop screenshots/screencast are all black |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |

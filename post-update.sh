@@ -71,6 +71,7 @@ run_step "ensure-sshd" "$ROOT/scripts/ensure-sshd.sh"
 run_step "ensure-wol" "$ROOT/scripts/ensure-wol.sh"
 run_step "ensure-openrgb" "$ROOT/scripts/ensure-openrgb.sh"
 run_step "ensure-sunshine" "$ROOT/scripts/ensure-sunshine.sh"
+run_step "ensure-kwin-screencast" "$ROOT/scripts/ensure-kwin-screencast.sh" warn
 run_step "ensure-gearlever" "$ROOT/scripts/ensure-gearlever.sh"
 run_step "ensure-cemu-input" "$ROOT/scripts/ensure-cemu-input.sh"
 run_step "ensure-rpcs3-input" "$ROOT/scripts/ensure-rpcs3-input.sh"

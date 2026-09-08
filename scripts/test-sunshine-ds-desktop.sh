@@ -107,29 +107,19 @@ write_pages() {
   cat >"$WORK/primary.html" <<'EOF'
 <!doctype html><html><head><title>SUNSHINE-DS PRIMARY</title>
 <style>
-html,body{margin:0;height:100%;background:#c41e3a;color:#fff;font:56px/1.2 sans-serif;overflow:hidden}
-#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none}
-#box{position:absolute;width:160px;height:160px;background:#fff;color:#c41e3a;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700}
+html,body{margin:0;height:100%;overflow:hidden;background:#c41e3a;color:#fff;font:56px/1.2 sans-serif}
+#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none;z-index:0}
 #t{font:24px/1.2 monospace;margin-top:12px}
+#box{position:absolute;width:160px;height:160px;background:#fff;color:#c41e3a;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700;z-index:1;animation:bounce 1.6s linear infinite alternate;will-change:left,top}
+@keyframes bounce{from{left:0;top:0}to{left:calc(100vw - 160px);top:calc(100vh - 160px)}}
 </style></head>
 <body>
-<div id="label"><div>PRIMARY TV</div><div id="t"></div></div>
+<div id="label"><div>PRIMARY TV 1920x1080</div><div id="t"></div></div>
 <div id="box">MOVE</div>
 <script>
-const box=document.getElementById('box');
-let x=40,y=40,dx=5,dy=7;
-function tick(){
-  const w=innerWidth-160,h=innerHeight-160;
-  x+=dx; y+=dy;
-  if(x<=0||x>=w) dx=-dx;
-  if(y<=0||y>=h) dy=-dy;
-  x=Math.max(0,Math.min(w,x));
-  y=Math.max(0,Math.min(h,y));
-  box.style.left=x+'px';
-  box.style.top=y+'px';
-  document.getElementById('t').textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight;
-}
-setInterval(tick,16);
+const t=document.getElementById('t');
+function tick(){ t.textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight; }
+setInterval(tick,200);
 tick();
 </script>
 </body></html>
@@ -137,30 +127,21 @@ EOF
   cat >"$WORK/gamepad.html" <<'EOF'
 <!doctype html><html><head><title>SUNSHINE-DS GAMEPAD</title>
 <style>
-html,body{margin:0;height:100%;background:#1e4cc4;color:#fff;font:56px/1.2 sans-serif;overflow:hidden}
-#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none}
-#box{position:absolute;width:160px;height:160px;background:#fff;color:#1e4cc4;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700}
+html,body{margin:0;height:100%;overflow:hidden;background:#1e4cc4;color:#fff;font:56px/1.2 sans-serif}
+#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none;z-index:0}
 #t{font:24px/1.2 monospace;margin-top:12px}
+#box{position:absolute;width:160px;height:160px;background:#fff;color:#1e4cc4;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700;z-index:1;animation:bounce 1.6s linear infinite alternate;will-change:left,top}
+@keyframes bounce{from{left:0;top:0}to{left:calc(100vw - 160px);top:calc(100vh - 160px)}}
+body{animation:pulse 1s linear infinite alternate}
+@keyframes pulse{from{background:#1e4cc4}to{background:#7cff6b}}
 </style></head>
 <body>
 <div id="label"><div>GAMEPAD</div><div id="t"></div></div>
 <div id="box">MOVE</div>
 <script>
-const box=document.getElementById('box');
-let x=80,y=20,dx=6,dy=8;
-function tick(){
-  const w=innerWidth-160,h=innerHeight-160;
-  x+=dx; y+=dy;
-  if(x<=0||x>=w) dx=-dx;
-  if(y<=0||y>=h) dy=-dy;
-  x=Math.max(0,Math.min(w,x));
-  y=Math.max(0,Math.min(h,y));
-  box.style.left=x+'px';
-  box.style.top=y+'px';
-  document.getElementById('t').textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight;
-}
-// setInterval survives Chrome throttling requestAnimationFrame on an unfocused virtual output.
-setInterval(tick,16);
+const t=document.getElementById('t');
+function tick(){ t.textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight; }
+setInterval(tick,200);
 tick();
 </script>
 </body></html>
@@ -300,6 +281,7 @@ for (const w of clients) {{
         w.frameGeometry = {{ x: {px}, y: {py}, width: {pw}, height: {ph} }};
     }} else if (cap.indexOf("GAMEPAD") >= 0) {{
         w.frameGeometry = {{ x: {vx}, y: {vy}, width: {vw}, height: {vh} }};
+        w.keepAbove = true;
     }}
 }}
 """

@@ -127,7 +127,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-Proven 2026-09-08 with Wind Waker HD. Do not “simplify” to RetroDECK fullscreen or to Wii U Pro Controller.
+Proven layout. Recipe and restore script: **`.cursor/skills/cemu-dual-screen/SKILL.md`** and `scripts/ensure-cemu-dual-screen.sh`. Do not “simplify” to RetroDECK fullscreen or to Wii U Pro Controller.
 
 Layout (`kscreen-doctor`): HDMI-A-1 **1920×1080** at `0,0` (TV / top Moonlight panel) + Virtual-sunshine-ds **1080×1240** at `1920,0` (GamePad / bottom). Helper must stay running.
 

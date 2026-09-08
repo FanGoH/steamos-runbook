@@ -45,6 +45,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - Sunshine: disable Flatpak user-unit autostart; Decky Sunshine is the only starter (same Flatpak install). Make `$XDG_RUNTIME_DIR/pulse` mode 755 so Decky's setuid bwrap can bind-mount the socket (the boot EACCES). `steamos-sunshine-watch.path` runs that chmod when Pulse appears and starts Sunshine via Decky if GameStream is still down. Wait for PluginLoader on `:1337` before `start_sunshine` so a Pulse-ready oneshot does not fail in milliseconds and hit systemd start-limit. `Restart=on-failure` on the oneshot covers leftover races. Call Decky with `loader/call_plugin_method` and snake_case names (`api_version` 1); the legacy kwargs route is rejected. `steamos-sunshine-after-gamescope.service` Decky-restarts Sunshine when `gamescope-session` starts so KMS rebinds after Desktop (KWin leaves Moonlight hanging on 503 / no monitor 0). Do **not** enable the Flatpak systemd user unit; do **not** `/api/restart`; do **not** poll every N minutes. Clear stale `SUNSHINE_SERVER_BUSY` with `POST /api/apps/close`. Logs: `logs/sunshine-watch.log`.
 - Gear Lever Flatpak (AppImage manager on `/home`)
 - Cemu player 0 → current pad (`ensure-cemu-input.sh`: user-slot wrapper + `Cemu-wrapper` on RetroDECK PATH)
+- Desktop/GameStream Cemu pad bind: `scripts/bind-gamepad.py` (`list` / `cemu --match Thor` / `cemu --wait`). Skill `.cursor/skills/bind-controller/SKILL.md`. Do not hand-edit `controller0.xml`.
 - RPCS3 player 1 → current pad (`ensure-rpcs3-input.sh`: user-slot wrapper + `rpcs3` on RetroDECK PATH; Device is the **SDL3** name, emulated Sixaxis VID/PID stays). RetroDECK RPCS3 hides Steam virtual `28de:11ff` unless `SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1` is in the environment (SetHint is not enough). Bind `Xbox One S Controller 1`, not `Steam Virtual Gamepad 1`. Null players 2–7. Do not bind Sunshine’s ghost Xbox as player 1 during local play. Same script writes Uncharted’s per-game `custom_configs/config_BCUS98103.yml` (1080p scale, Write Color/Depth Buffers, MSAA off, 60 fps cap), an `<iso>.yml` sidecar, and `--config` on `--no-gui` ISO boots. Official 01.10 patches are enabled; this dump is 01.00 so the game stays 30 fps until that update.
 - PS2 BIOS via Tender (`ensure-pcsx2-bios.sh`: Decky `download_all_firmware("ps2")` + pin USA 230 in `PCSX2.ini`)
 - Eden user slot + Tender `rom-launcher` wrap (`ensure-eden-component.sh`: host AppImage `-f -g` for Switch dumps over 6GiB, 4GB pin on Engage only, library symlinks)
@@ -64,6 +65,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 ## Script conventions
 
 - Small focused scripts; orchestrators collect `MANUAL_ACTIONS_FILE` and print a summary
+- Repetitive host tasks get a script; agent skills and slash commands point at that script instead of hand-editing config
 - Exit `0` OK, `2` for “needs manual / warn”, other non-zero for hard failure
 - NIC, Headscale URL, hostname, Flatpak IDs come from `.env` — no personal URLs or hostnames as code defaults
 - `TAILSCALE_LOGIN_SERVER` must be set in `.env` (no hardcoded Headscale URL in repo)

@@ -1,6 +1,6 @@
 ---
 name: sunshine-ds-gamestream
-description: Diagnose SteamOS GameStream on sunshine-ds vs Decky Sunshine (black screen, Moonlight 503, Starting Desktop hang, reconnect after drop, Thor/Moonlight DS, KWin screencast). Use when the user mentions Sunshine, sunshine-ds, GameStream, Moonlight, 503, black capture, Starting Desktop, encoder probe, KWin PipeWire, or dual-stream HDMI/virtual.
+description: Diagnose SteamOS GameStream on sunshine-ds vs Decky Sunshine (black screen, Moonlight 503, Starting Desktop hang, reconnect after drop, Thor/Moonlight DS, KWin screencast, Cemu GamePad dual-screen). Use when the user mentions Sunshine, sunshine-ds, GameStream, Moonlight, 503, black capture, Starting Desktop, encoder probe, KWin PipeWire, dual-stream HDMI/virtual, or Cemu GamePad on the bottom screen.
 ---
 
 # sunshine-ds GameStream debug
@@ -38,6 +38,7 @@ This is the working GameStream baseline. Do not “improve” it unless the user
 - Dual-stream checkpoint (Thor): HDMI-A-1 1920×1080 primary + Virtual-sunshine-ds 1080×1240 second stream. Log: `Second display: capturing Virtual-sunshine-ds` and `Screencasting output name Virtual-sunshine-ds`. Mouse can move between streams. sunshine-ds binary is still the reconnect checkpoint (`ad60bc52` + skip-reprobe / async PW teardown / no cap drop). Do not rebuild it to “fix” dual-stream.
 - Thor mouse checkpoint: top-panel touches must stay on HDMI. `getLocationOnScreen()` is per-display (both origin 0,0); the landscape 1920-wide top activity used to hit-test the 1080-wide bottom Presentation and send display index 1. Dual-panel routes by the view’s display; stacked mode still hit-tests. Moonlight branch `cursor/top-touch-hit-test-f15e`.
 - Thor dual-panel restore: Back can dismiss the bottom Presentation while the top stream stays up. Tapping Moonlight DS on the bottom panel should re-show that Presentation and keep Game on the top display, not move the primary stream. Moonlight branch `cursor/restore-bottom-presentation-f15e`.
+- Thor Cemu dual-screen (user: “THIS IS AMAZING, Exactly what I wanted”): standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Emulated type **must** be `Wii U GamePad`. Pro Controller is wrong. Restart Cemu after changing type. Recipe in **Cemu dual-screen (Thor)** below.
 - Start env: Distrobox `steamos-tools`, `CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev`, `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`, `WAYLAND_DISPLAY=wayland-0`, `unset DISPLAY`.
 - After `/launch` the log must contain `Skipping encoder re-probe; using [software]` (not a vulkan/vaapi walk).
 - Capture health: `cpu frame type=2` + high `pixel_diffs`. Probe I-frame ~1KB / 0% coded is `dummy_img()`, ignore it.
@@ -107,7 +108,64 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 - `primary.html` — HDMI, red, bouncing box + Gamepad API HUD
 - `gamepad.html` — second stream, blue; left stick moves the box
+- Live HUDs (close these before Cemu): `python3 /tmp/sunshine-ds-smoke/primary_hud.py` and `gamepad_hud.py`
 - Chrome Gamepad API is empty until a button press
+
+## Cemu dual-screen (Thor)
+
+Proven 2026-09-08 with Wind Waker HD. Do not “simplify” to RetroDECK fullscreen or to Wii U Pro Controller.
+
+Layout (`kscreen-doctor`): HDMI-A-1 **1920×1080** at `0,0` (TV / top Moonlight panel) + Virtual-sunshine-ds **1080×1240** at `1920,0` (GamePad / bottom). Helper must stay running.
+
+Use standalone Flatpak **`info.cemu.Cemu`**. RetroDECK `component_launcher.sh` forces `-f` / `<fullscreen>true</fullscreen>` and cannot keep a second GamePad window on the virtual output.
+
+### Settings
+
+`~/.var/app/info.cemu.Cemu/config/Cemu/settings.xml`:
+
+- `fullscreen` false, `open_pad` true
+- `window_position` 0,0 and `window_size` 1920×1080
+- `pad_position` 1920,0 and `pad_size` 1080×1240
+
+Wayland still ignores those coordinates sometimes. After launch, KWin-place:
+
+- caption contains `GamePad View` → output `Virtual-sunshine-ds`, geometry `1920,0 1080x1240`, `noBorder`, `keepAbove`
+- `resourceClass` `info.cemu.Cemu` (TV / `Cemu 2.6` / Wind Waker) → `HDMI-A-1`, `0,0 1920x1080`
+- Minimize Steam Big Picture first or it covers HDMI
+
+### Controller
+
+`~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`:
+
+- `<type>Wii U GamePad</type>` — required for GamePad screen / game input. Pro Controller is the failure mode.
+- Copy mappings from RetroDECK `SteamInput-P1.xml` (includes mapping 25).
+- Player 0 uuid `0_030079f6de280000ff11000001000000` (`Microsoft X-Box 360 pad 0`, Steam Input wrap `28de:11ff`). Cemu SDL CRC is of the **device name**.
+- Fallback uuid `0_050017945e0400008e02000014010000` (`Sunshine (libvirtualhid) X-Box 360 Controller`, bus `0005`, `045e:028e`, version `0114`). Only present while Moonlight is streaming.
+- `patch-cemu-input.py` pick order is physical Xbox → Switch Pro → Steam virtual → Sunshine. On a Thor stream there is no physical Xbox, so Steam virtual wins. Do not bind `libvirtualhid Mouse` (`1209:0003`).
+- Changing type in the XML while Cemu is running does nothing. Stop Cemu, write the file, start again.
+
+sunshine-ds must stay `gamepad = x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`.
+
+### Launch
+
+Close the smoke HUDs. Moonlight already on `:48100`. Then:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus DISPLAY=:0
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
+export SDL_JOYSTICK_HIDAPI=0 SDL_HIDAPI_JOYSTICK=0
+unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009'
+# Wind Waker HD lives at ~/emulation/wiiu/windwakerhd/*.wux (also ~/retrodeck/roms/wiiu/)
+flatpak run info.cemu.Cemu -g "<wux>"
+```
+
+Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moonlight controller mapping.
+
+### Steam Guide / Big Picture (related)
+
+`back_button_timeout = 500` alone is not enough. Hold Select 0.5s pulses Guide on the **virtual pad**. Steam only honors that on uinput x360. Silent autostart (`steam -silent -steamdeck`) swallows `steam://open/*` with no window; start `/usr/bin/steam` without `-silent` if you need a visible client.
 
 ## Do not
 
@@ -116,3 +174,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 - Poll `/api/restart` or restart Decky to “fix” DS
 - Hardcode Headscale URLs or print `.auth` / certs / passwords
 - Install Bazzite Eden reorder hooks
+- Use RetroDECK Cemu (`-f` / fullscreen) for Thor dual-screen GamePad
+- Emulate Wii U Pro Controller when the bottom stream should be the GamePad
+- Leave sunshine-ds on `gamepad = auto` / `xseries` if Select-hold must open Steam Big Picture
+- Kill `sunshine-ds-virtual-output` while dual-stream is the checkpoint

@@ -251,6 +251,11 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
     ) + "\n"
 
 
+def is_cemu_comm(comm: str) -> bool:
+    """Linux ``comm`` is 15 chars, so Flatpak Cemu shows as ``Cemu_relwithdeb``."""
+    return comm.strip().lower().startswith("cemu")
+
+
 def cemu_running() -> bool:
     try:
         import subprocess
@@ -258,7 +263,7 @@ def cemu_running() -> bool:
         out = subprocess.check_output(["ps", "-eo", "comm="], text=True)
     except OSError:
         return False
-    return any(line.strip() in {"cemu", "Cemu", "Cemu_relwithdebinfo"} for line in out.splitlines())
+    return any(is_cemu_comm(line) for line in out.splitlines())
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -458,6 +463,10 @@ def _self_test() -> int:
         )
         dupes = [p for p in list_joysticks(root) if p["name"].endswith("Controller")]
         assert match_pad(dupes, "X-Box 360 Controller") is None
+        assert is_cemu_comm("Cemu_relwithdeb")
+        assert is_cemu_comm("Cemu_relwithdebinfo")
+        assert is_cemu_comm("cemu")
+        assert not is_cemu_comm("sunshine-ds")
     print("bind-gamepad self-test ok")
     return 0
 

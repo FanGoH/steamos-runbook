@@ -99,6 +99,18 @@ Desktop placebo app stays BUSY until `POST /api/apps/close`. HTTPS `/cancel` nee
 
 If `pgrep -x sunshine-ds` is empty but `ss -ltnp | grep 48100` still shows a listener, kill that leftover helper by **numeric PID**. Never `pgrep -f` / `pkill -f` sunshine. Never put `sunshine-ds-virtual-output` in a `pgrep -f` pattern. Keep the long-lived helper that holds `Virtual-sunshine-ds` (`--name sunshine-ds --width 1920 --height 1080`).
 
+### Odin stacked GamePad is black, touch still works
+
+A second client joining a live Thor dual-stream used to spawn **another** `sunshine-ds-virtual-output --name sunshine-ds`. KWin then has several `Virtual-sunshine-ds` outputs. kwingrab binds the last one (empty → black video). Touch still hits Azahar on the original output. `kscreen-doctor -j` / `-o` hang, which made DS think the output was missing.
+
+Do **not** kill the long-lived helper. Kill extra helper PIDs by number. Reconnect Odin after a single Virtual-sunshine-ds remains. DS must reuse the attached output and scale; it must not spawn a second helper with the same name.
+
+`ControllerNumber already allocated [0]` means Thor still owns pad 0; Odin gets a second pad. Azahar’s profile is one SDL GUID — bind `--match Odin` if that client should drive the game.
+
+### Thor bumpers fire 3DS Start/Select
+
+libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam xpad is 11 buttons. Azahar uses packed joystick indices, so L/R at 4/5 and Select/Start at 6/7 maps shoulders onto Start/Select. Use `scripts/bind-gamepad.py azahar` (L/R=6/7, Select/Start=10/11). Cemu uses GameController labels and is not affected.
+
 ## Restart sunshine-ds
 
 ```bash
@@ -196,7 +208,7 @@ Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).
 - Caption `Primary Window` → HDMI-A-1 (top screen). `Secondary Window` → Virtual-sunshine-ds (touch). Minimize the library window.
-- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (Xbox-label x360 map, not Nintendo-position). Restart Azahar after the bind.
+- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (libvirtualhid 15-button x360 map: L/R = SDL 6/7, Select/Start = 10/11). Restart Azahar after the bind.
 - Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).
 - Process `comm` is `azahar`. `resourceClass` is `Azahar`.
 
@@ -215,6 +227,9 @@ Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/
 - Reorder Sunshine first while Steam still has mappings
 - Leave sunshine-ds on `gamepad = auto` / `xseries` if Select-hold must open Steam Big Picture
 - Kill `sunshine-ds-virtual-output` while dual-stream is the checkpoint
+- Spawn a second virtual-output helper named `sunshine-ds` while one is already attached
+- Call `kscreen-doctor` to decide whether `Virtual-sunshine-ds` exists (hangs with duplicates)
+- Map Azahar L/R to SDL 4/5 on a Sunshine pad (those are Y/Z; shoulders are 6/7)
 - `pgrep -f` / `pkill -f` sunshine, or `pgrep -f` a command that contains `sunshine-ds-virtual-output`
 - Rebuild sunshine-ds to “fix” Odin “Starting connection” (that was Moonlight STACKED never binding the in-layout second surface)
 - Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once

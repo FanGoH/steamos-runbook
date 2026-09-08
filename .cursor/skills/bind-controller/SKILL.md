@@ -16,7 +16,7 @@ python3 scripts/bind-gamepad.py cemu --wait
 ```
 
 Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
-Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`. Write the Sunshine x360 map on the Default profile (3DS A/B/X/Y = Xbox A/B/X/Y = SDL 0/1/2/3, L/R = LB/RB, ZL/ZR = LT/RT). Moonlight already emits Xbox face buttons; Nintendo-position indices double-swap A/B. Do not copy RetroDECK’s L=LT / ZL=LB swap.
+Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`. Write the libvirtualhid xbox_360 map (15 SDL buttons, not Steam xpad 11): A/B/X/Y = 0/1/3/4, L/R = 6/7, Select/Start/Home = 10/11/12, ZL/ZR = LT/RT. Do not use 4/5 for L/R — those are Y/Z on this pad, and 6/7 are the shoulders. Do not copy RetroDECK’s L=LT / ZL=LB swap.
 
 Player 0 is the **Wii U GamePad**. Extra `<controller>` nodes are extra devices on that GamePad, not extra players. Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine Xbox pad (`045e:028e`) and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 

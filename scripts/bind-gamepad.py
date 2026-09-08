@@ -13,8 +13,8 @@ chosen pad and puts the mappings on it (Steam wrap can stay listed with empty
 ``<mappings>``). Cemu must restart to pick up a uuid/mapping change.
 
 Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Write the GameStream
-Xbox 360 map (Moonlight already emits Xbox A/B/X/Y). Do **not** keep
-Nintendo-position indices — that double-swaps A/B after Sunshine. Restart
+libvirtualhid xbox_360 map (15 SDL buttons: L/R=6/7, Select/Start=10/11).
+Steam xpad 11-button numbering puts Thor shoulders on Start/Select. Restart
 Azahar after a GUID or button-map change.
 
 Examples:
@@ -293,22 +293,23 @@ def azahar_guids(text: str) -> list[str]:
     return re.findall(r"guid:([0-9a-f]{32})", text)
 
 
-# Sunshine x360 + Moonlight: SDL joystick 0=A 1=B 2=X 3=Y 4=LB 5=RB 6=Back 7=Start
-# 8=Guide, hat=D-pad, axes 0/1 circle, 2 LT, 3/4 C-stick, 5 RT.
-# 3DS L/R are shoulders; ZL/ZR are triggers. Face buttons follow Xbox labels
-# (same as RetroDECK Steam wrap). Nintendo-position A=B swapped twice on Thor.
+# libvirtualhid xbox_360 enables reserved BTN_C/Z/TL2/TR2 so SDL joystick
+# packing is 15 buttons, not Steam's 11-button xpad layout:
+# 0A 1B 2C 3X 4Y 5Z 6LB 7RB 8TL2 9TR2 10Back 11Start 12Guide 13LS 14RS
+# Mapping L/R to 4/5 and Select/Start to 6/7 makes Thor shoulders fire
+# Start/Select. ZL/ZR stay analog LT/RT (axes 2/5). Face labels are Xbox.
 _AZAHAR_X360 = {
     "button_a": "button:0,engine:sdl,guid:{guid},port:0",
     "button_b": "button:1,engine:sdl,guid:{guid},port:0",
-    "button_x": "button:2,engine:sdl,guid:{guid},port:0",
-    "button_y": "button:3,engine:sdl,guid:{guid},port:0",
-    "button_l": "button:4,engine:sdl,guid:{guid},port:0",
-    "button_r": "button:5,engine:sdl,guid:{guid},port:0",
+    "button_x": "button:3,engine:sdl,guid:{guid},port:0",
+    "button_y": "button:4,engine:sdl,guid:{guid},port:0",
+    "button_l": "button:6,engine:sdl,guid:{guid},port:0",
+    "button_r": "button:7,engine:sdl,guid:{guid},port:0",
     "button_zl": "axis:2,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
     "button_zr": "axis:5,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
-    "button_select": "button:6,engine:sdl,guid:{guid},port:0",
-    "button_start": "button:7,engine:sdl,guid:{guid},port:0",
-    "button_home": "button:8,engine:sdl,guid:{guid},port:0",
+    "button_select": "button:10,engine:sdl,guid:{guid},port:0",
+    "button_start": "button:11,engine:sdl,guid:{guid},port:0",
+    "button_home": "button:12,engine:sdl,guid:{guid},port:0",
     "button_up": "direction:up,engine:sdl,guid:{guid},hat:0,port:0",
     "button_down": "direction:down,engine:sdl,guid:{guid},hat:0,port:0",
     "button_left": "direction:left,engine:sdl,guid:{guid},hat:0,port:0",
@@ -425,7 +426,7 @@ def cmd_azahar(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if new == text:
-        print(f"Azahar already bound to {guid} ({pad['name']}) with x360 GameStream map")
+        print(f"Azahar already bound to {guid} ({pad['name']}) with libvirtualhid x360 map")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
     if not bak.exists():
@@ -586,6 +587,12 @@ def _self_test() -> int:
         assert "03008d205e040000ea02000008040000" not in az
         assert 'profiles\\1\\button_a="button:0,' in az
         assert 'profiles\\1\\button_b="button:1,' in az
+        assert 'profiles\\1\\button_x="button:3,' in az
+        assert 'profiles\\1\\button_y="button:4,' in az
+        assert 'profiles\\1\\button_l="button:6,' in az
+        assert 'profiles\\1\\button_r="button:7,' in az
+        assert 'profiles\\1\\button_select="button:10,' in az
+        assert 'profiles\\1\\button_start="button:11,' in az
         assert "axis:2,direction:+" in az
     print("bind-gamepad self-test ok")
     return 0

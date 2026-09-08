@@ -106,13 +106,64 @@ EOF
 write_pages() {
   cat >"$WORK/primary.html" <<'EOF'
 <!doctype html><html><head><title>SUNSHINE-DS PRIMARY</title>
-<style>html,body{margin:0;height:100%;background:#c41e3a;color:#fff;font:64px/1.2 sans-serif;display:flex;align-items:center;justify-content:center;}</style>
-</head><body>PRIMARY TV</body></html>
+<style>
+html,body{margin:0;height:100%;background:#c41e3a;color:#fff;font:56px/1.2 sans-serif;overflow:hidden}
+#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none}
+#box{position:absolute;width:160px;height:160px;background:#fff;color:#c41e3a;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700}
+#t{font:24px/1.2 monospace;margin-top:12px}
+</style></head>
+<body>
+<div id="label"><div>PRIMARY TV</div><div id="t"></div></div>
+<div id="box">MOVE</div>
+<script>
+const box=document.getElementById('box');
+let x=40,y=40,dx=5,dy=7;
+function tick(){
+  const w=innerWidth-160,h=innerHeight-160;
+  x+=dx; y+=dy;
+  if(x<=0||x>=w) dx=-dx;
+  if(y<=0||y>=h) dy=-dy;
+  x=Math.max(0,Math.min(w,x));
+  y=Math.max(0,Math.min(h,y));
+  box.style.left=x+'px';
+  box.style.top=y+'px';
+  document.getElementById('t').textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight;
+}
+setInterval(tick,16);
+tick();
+</script>
+</body></html>
 EOF
   cat >"$WORK/gamepad.html" <<'EOF'
 <!doctype html><html><head><title>SUNSHINE-DS GAMEPAD</title>
-<style>html,body{margin:0;height:100%;background:#1e4cc4;color:#fff;font:64px/1.2 sans-serif;display:flex;align-items:center;justify-content:center;}</style>
-</head><body>GAMEPAD</body></html>
+<style>
+html,body{margin:0;height:100%;background:#1e4cc4;color:#fff;font:56px/1.2 sans-serif;overflow:hidden}
+#label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none}
+#box{position:absolute;width:160px;height:160px;background:#fff;color:#1e4cc4;display:flex;align-items:center;justify-content:center;font:28px/1 sans-serif;font-weight:700}
+#t{font:24px/1.2 monospace;margin-top:12px}
+</style></head>
+<body>
+<div id="label"><div>GAMEPAD</div><div id="t"></div></div>
+<div id="box">MOVE</div>
+<script>
+const box=document.getElementById('box');
+let x=80,y=20,dx=6,dy=8;
+function tick(){
+  const w=innerWidth-160,h=innerHeight-160;
+  x+=dx; y+=dy;
+  if(x<=0||x>=w) dx=-dx;
+  if(y<=0||y>=h) dy=-dy;
+  x=Math.max(0,Math.min(w,x));
+  y=Math.max(0,Math.min(h,y));
+  box.style.left=x+'px';
+  box.style.top=y+'px';
+  document.getElementById('t').textContent=new Date().toISOString().slice(11,23)+'  '+innerWidth+'x'+innerHeight;
+}
+// setInterval survives Chrome throttling requestAnimationFrame on an unfocused virtual output.
+setInterval(tick,16);
+tick();
+</script>
+</body></html>
 EOF
 }
 
@@ -225,6 +276,9 @@ def open_page(path, profile, x, y, w, h):
         "--ozone-platform=wayland",
         f"--user-data-dir={os.path.join(work, profile)}",
         "--no-first-run", "--no-default-browser-check", "--disable-sync",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
         f"--window-position={x},{y}",
         f"--window-size={w},{h}",
         f"--app={url}",

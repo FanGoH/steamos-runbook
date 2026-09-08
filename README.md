@@ -78,6 +78,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
+| `scripts/build-sunshine-ds.sh` | Build FanGoH Sunshine DS (does not replace Decky Sunshine) |
+| `scripts/test-sunshine-ds-desktop.sh` | Desktop-mode dual-display smoke test for sunshine-ds |
+| `scripts/build-moonlight-ds.sh` | Build Moonlight DS debug APK (`com.fangoh.moonlight.debug`) |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `AGENTS.md` | Conventions for coding agents |
@@ -121,6 +124,12 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 systemctl --user is-active cursor-agent-worker.service
 curl -sf http://127.0.0.1:18789/healthz
 ```
+
+## Sunshine DS / Moonlight DS
+
+Sunshine DS source lives on https://github.com/FanGoH/Sunshine (`sunshine-ds-linux`). The playbook only clones/builds/tests. Production Decky Sunshine on `:47989` stays untouched; the side-by-side binary is `sunshine-ds` on **`:48100`**.
+
+Moonlight DS (https://github.com/FanGoH/moonlight-android `dual-display`) streams both displays: stacked on a phone, or TV + GamePad on an AYN Thor. Build with `scripts/build-moonlight-ds.sh` (JDK 17 + Android SDK under `/home`). Pair the client to `HOST:48100`, not `:47989`.
 
 ## Manual checks
 

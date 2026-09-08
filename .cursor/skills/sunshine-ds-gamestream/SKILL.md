@@ -75,6 +75,15 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 
+### Thor shows the TV on both panels while Odin GamePad is correct
+
+Odin GamePad-only (`x-ml-video[0].source=secondary`, no `video/1`) used to SIGTERM `sunshine-ds-virtual-output` to resize 1080×1240 → 1920×1080. Thor’s second PipeWire stream died; kwingrab then **fell back to HDMI-A-1**, so both Thor panels encoded the TV. Log:
+
+- `Primary stream will capture the GamePad display` then `Screencasting output name HDMI-A-1` with `Streaming display 'Virtual-sunshine-ds' offset: 0x0`
+- Healthy Thor second stream is `Screencasting output name Virtual-sunshine-ds` at `1920x0`
+
+Do not kill the helper to change mode while another session is live. Scale to the client instead. kwingrab must not fall back to the first output when a named GamePad display was requested.
+
 ### Odin stuck on “Starting connection”
 
 Moonlight `Game` spinner stays until `connectionStarted` / `stageFailed`. AUTO on a one-display device is STACKED, which waits for `secondarySurfaceReady`. Before `f4eca72d` only the dual-panel Presentation bound that surface, so `conn.start()` never ran. After that commit, LimeLog should show `Secondary stream surface ready` then RTSP. If the spinner still never moves, Thor still owns the session — quit Thor; do not rebuild DS.

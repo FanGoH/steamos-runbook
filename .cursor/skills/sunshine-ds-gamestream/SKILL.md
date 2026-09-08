@@ -33,21 +33,22 @@ If `lstart` is older than the binary mtime, the process does not have the latest
 
 This is the working GameStream baseline. Do not “improve” it unless the user asks.
 
-- Conf `~/.config/sunshine-ds-dev/sunshine/sunshine.conf`: `capture = kwin`, `encoder = software`, `hevc_mode = 1`, `av1_mode = 1`, `port = 48100`, `output_name = HDMI-A-1`. `back_button_timeout = 500` (hold Back/Select 0.5s → Guide). `gamepad = x360` so that Guide is a uinput Xbox 360 `045e:028e` (Steam Big Picture). DS `auto` is Xbox Series UHID `045e:0b13`; Decky Linux `auto` is Xbox One uinput `045e:02ea`. Do not leave DS on `xseries`. `dual_display_source = Virtual-sunshine-ds` when the helper is holding that output; otherwise HDMI twice.
-- Virtual GamePad panel: `/home/deck/.local/bin/sunshine-ds-virtual-output --name sunshine-ds --width 1920 --height 1080 --scale 1` must stay running. Live size is whatever `kscreen-doctor` reports for `Virtual-sunshine-ds` (often 1920×1080 at `1920,0`; older notes said 1080×1240). KWin 6.7 `stream_virtual_output` fails with `Could not find output`; the helper holds the stream anyway. Killing the helper removes the output. Checkpoint rollback: `dual_display_source = HDMI-A-1` and stop the helper.
-- Dual-stream checkpoint (Thor): HDMI-A-1 1920×1080 primary + Virtual-sunshine-ds **live size** (often 1920×1080) second stream. Log: `Second display: capturing Virtual-sunshine-ds` and `Screencasting output name Virtual-sunshine-ds`. Mouse can move between streams. Do not rebuild DS to “fix” dual-stream.
+- Conf `~/.config/sunshine-ds-dev/sunshine/sunshine.conf`: `capture = kwin`, `encoder = software`, `hevc_mode = 1`, `av1_mode = 1`, `port = 48100`, `output_name = HDMI-A-1`. `back_button_timeout = 500` (hold Back/Select 0.5s → Guide). `gamepad = x360` so that Guide is a uinput Xbox 360 `045e:028e` (Steam Big Picture). DS `auto` is Xbox Series UHID `045e:0b13`; Decky Linux `auto` is Xbox One uinput `045e:02ea`. Do not leave DS on `xseries`. `dual_display_source = Virtual-sunshine-ds`.
+- **One virtual display only.** HDMI-A-1 is the physical TV (Decky Sunshine uses that too). Linux DS serves at most one `Virtual-sunshine-ds` for Azahar/Cemu/other dual-screen mods. Playbook helper: `/home/deck/.local/bin/sunshine-ds-virtual-output --name sunshine-ds --width 1920 --height 1080 --scale 1`. It must stay running across connect/disconnect (one client, the other, or both). DS must not spawn a second `--name sunshine-ds` and must not SIGTERM the helper when a stream ends. Do not use `kscreen-doctor` to decide if the output exists (hangs with duplicates). Live layout is usually HDMI 1920×1080 at `0,0` plus Virtual-sunshine-ds 1920×1080 at `1920,0`.
+- Dual-stream checkpoint: HDMI primary + that one virtual second stream. Log: `Second display: reusing Virtual-sunshine-ds` (or `capturing existing`) and `Screencasting output name Virtual-sunshine-ds`. A second client must join the **shared** second-display capture, not open another KWin screencast of the same output.
+- Thor/Odin connect+disconnect: `/resume` of desktop `881448767` is how the second device joins. Each client keeps its own pad; disconnecting one must not destroy the other's pad and must not tear down HDMI or the virtual output. `ControllerNumber already allocated [0]` on the **same** client is a duplicate arrival (keep the pad). If it appears for the **other** client at join, they are sharing a session id — quit the first client and reconnect both to `:48100`.
 - Thor mouse checkpoint: top-panel touches must stay on HDMI. `getLocationOnScreen()` is per-display (both origin 0,0); the landscape 1920-wide top activity used to hit-test the 1080-wide bottom Presentation and send display index 1. Dual-panel routes by the view’s display; stacked mode still hit-tests. Moonlight branch `cursor/top-touch-hit-test-f15e`.
 - Thor dual-panel restore: Back can dismiss the bottom Presentation while the top stream stays up. Tapping Moonlight DS on the bottom panel should re-show that Presentation and keep Game on the top display, not move the primary stream. Moonlight branch `cursor/restore-bottom-presentation-f15e`.
 - Thor Cemu dual-screen: standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Type **Wii U GamePad**. Bind with `scripts/bind-gamepad.py`; place with `scripts/ensure-cemu-dual-screen.sh`. Recipe in **Cemu dual-screen (Thor)** below.
 - Thor Azahar dual-screen: standalone Flatpak `org.azahar_emu.Azahar`, Separate Windows, `QT_QPA_PLATFORM=xcb`. Primary Window → HDMI, Secondary Window → Virtual-sunshine-ds. Recipe in **Azahar dual-screen (Thor)** below.
-- Odin stacked checkpoint (user: “fixed!”): Portal only exposes Android `Display id=0`, so Auto is **STACKED** (TV + GamePad on that one screen), not Thor dual-panel. STACKED streams both GameStream videos. Dual-panel and stacked are alternate layouts, not a mix; Portal cannot target the other LCD until Android advertises a Presentation display. Moonlight `f4eca72d` (`cursor/stacked-secondary-surface-f15e`, tag `checkpoint-odin-stacked-dual-stream`) binds the in-layout `surfaceViewSecondary`. Settings: Dual display **Auto** or **Stack both**. Quit Thor first (`ControllerNumber already allocated [0]` / `/resume` of Thor’s `881448767`). GamePad only is the single-stream option. Do not rebuild sunshine-ds to “fix” the spinner.
+- Odin stacked checkpoint (user: “fixed!”): Portal only exposes Android `Display id=0`, so Auto is **STACKED** (TV + GamePad on that one screen), not Thor dual-panel. STACKED streams both GameStream videos. Dual-panel and stacked are alternate layouts, not a mix; Portal cannot target the other LCD until Android advertises a Presentation display. Moonlight `f4eca72d` (`cursor/stacked-secondary-surface-f15e`, tag `checkpoint-odin-stacked-dual-stream`) binds the in-layout `surfaceViewSecondary`. Settings: Dual display **Auto** or **Stack both**. GamePad only is the single-stream option. Do not rebuild sunshine-ds to “fix” the spinner.
 - Start env: Distrobox `steamos-tools`, `CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev`, `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`, `WAYLAND_DISPLAY=wayland-0`, `unset DISPLAY`.
 - After `/launch` the log must contain `Skipping encoder re-probe; using [software]` (not a vulkan/vaapi walk).
 - Capture health: `cpu frame type=2` + high `pixel_diffs`. Probe I-frame ~1KB / 0% coded is `dummy_img()`, ignore it.
 - Reconnect must keep the same pid. If log shows `drop_elevated_privileges` then `zkde_screencast_unstable_v1 not found`, that pid is dead for capture — restart DS.
 - Do **not** replace Decky Sunshine. Do **not** `POST /api/restart`. Do **not** `sudo systemctl --user`. Do **not** `kwin_wayland --replace`.
 
-Code that must stay in the running binary: skip software `ALWAYS_REPROBE` on `/launch`; flush KWin Close before PipeWire stop; async `pw_stream_destroy`; never `drop_elevated_privileges` after KWin was bound this process; null-safe `net::host_create` / `free_host`; `net::set_cloexec` on RTSP/video/audio fds; virtual-output child `addclose_inet_sockets` (keep AF_UNIX). `POSIX_SPAWN_CLOEXEC_DEFAULT` is **not** defined on this glibc without `_GNU_SOURCE`.
+Code that must stay in the running binary: skip software `ALWAYS_REPROBE` on `/launch`; flush KWin Close before PipeWire stop; async `pw_stream_destroy`; never `drop_elevated_privileges` after KWin was bound this process; null-safe `net::host_create` / `free_host`; `net::set_cloexec` on RTSP/video/audio fds; virtual-output child `addclose_inet_sockets` (keep AF_UNIX); singleton `Virtual-sunshine-ds` (detect helper via `/proc`, never SIGTERM on disconnect, never spawn a second `--name sunshine-ds`); shared `capture_thread_sync2` for the GamePad stream; kwingrab first sized match on duplicate names. `POSIX_SPAWN_CLOEXEC_DEFAULT` is **not** defined on this glibc without `_GNU_SOURCE`.
 
 ## Symptom → cause → fix
 
@@ -71,10 +72,11 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 
 | Check | Meaning |
 |---|---|
-| Spectacle screenshot all black | KWin FBO wedged. `qdbus org.kde.KWin /Compositor org.kde.kwin.Compositing.reinitialize`. Playbook: `scripts/ensure-kwin-screencast.sh`. |
+| Spectacle screenshot all black | KWin FBO wedged. **Last resort:** `qdbus org.kde.KWin /Compositor org.kde.kwin.Compositing.reinitialize`. That can restart `kwin_wayland`, kill the virtual-output helper, and crash Azahar. First: restart PipeWire (user bus, not `sudo systemctl --user`) then DS; respawn **one** helper if it died. Playbook: `scripts/ensure-kwin-screencast.sh`. |
 | Probe I-frame ~1200 bytes / 0% coded | `dummy_img()`, not live capture |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
+| PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |
 
 ### Thor shows the TV on both panels while Odin GamePad is correct
 
@@ -101,11 +103,11 @@ If `pgrep -x sunshine-ds` is empty but `ss -ltnp | grep 48100` still shows a lis
 
 ### Odin stacked GamePad is black, touch still works
 
-A second client joining a live Thor dual-stream used to spawn **another** `sunshine-ds-virtual-output --name sunshine-ds`. KWin then has several `Virtual-sunshine-ds` outputs. kwingrab binds the last one (empty → black video). Touch still hits Azahar on the original output. `kscreen-doctor -j` / `-o` hang, which made DS think the output was missing.
+A second client joining a live Thor dual-stream used to spawn **another** `sunshine-ds-virtual-output --name sunshine-ds`. KWin then has several `Virtual-sunshine-ds` outputs. kwingrab used to bind the last one (empty → black video). Touch still hits Azahar on the original output. `kscreen-doctor -j` / `-o` hang, which made DS think the output was missing.
 
-Do **not** kill the long-lived helper. Kill extra helper PIDs by number. Reconnect Odin after a single Virtual-sunshine-ds remains. DS must reuse the attached output and scale; it must not spawn a second helper with the same name.
+Do **not** kill the long-lived helper. Kill extra helper PIDs by number. DS must reuse the attached output via `/proc` (not `kscreen-doctor` / throwaway KWin enumerations), share one GamePad screencast, and scale. Exactly one Virtual-sunshine-ds.
 
-`ControllerNumber already allocated [0]` means Thor still owns pad 0; Odin gets a second pad. Azahar’s profile is one SDL GUID — bind `--match Odin` if that client should drive the game.
+`ControllerNumber already allocated [0] for <client>` means that client already has pad 0 (duplicate arrival or `/resume` of the same cert). The other device should get a new global slot. Azahar’s profile is one SDL GUID — bind `--match Odin` if that client should drive the game.
 
 ### Thor bumpers fire 3DS Start/Select
 
@@ -226,9 +228,10 @@ Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/
 - Hand-edit `controller0.xml` or copy mappings onto every `<controller>`
 - Reorder Sunshine first while Steam still has mappings
 - Leave sunshine-ds on `gamepad = auto` / `xseries` if Select-hold must open Steam Big Picture
-- Kill `sunshine-ds-virtual-output` while dual-stream is the checkpoint
-- Spawn a second virtual-output helper named `sunshine-ds` while one is already attached
+- Kill `sunshine-ds-virtual-output` while dual-stream is the checkpoint, or when a client disconnects
+- Spawn a second virtual-output helper named `sunshine-ds` (Linux DS supports **one** virtual display; HDMI is the TV)
 - Call `kscreen-doctor` to decide whether `Virtual-sunshine-ds` exists (hangs with duplicates)
+- Compositor `reinitialize` as the first fix for “connecting never streaming” (kills the helper / can restart KWin). Restart PipeWire then DS first.
 - Map Azahar L/R to SDL 4/5 on a Sunshine pad (those are Y/Z; shoulders are 6/7)
 - `pgrep -f` / `pkill -f` sunshine, or `pgrep -f` a command that contains `sunshine-ds-virtual-output`
 - Rebuild sunshine-ds to “fix” Odin “Starting connection” (that was Moonlight STACKED never binding the in-layout second surface)

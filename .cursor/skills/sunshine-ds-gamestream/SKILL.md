@@ -194,7 +194,7 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
 
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
-- `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly.
+- `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).
 - Caption `Primary Window` → HDMI-A-1 (top screen). `Secondary Window` → Virtual-sunshine-ds (touch). Minimize the library window.
 - Bind: `python3 scripts/bind-gamepad.py azahar --match Thor`.
 - Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).

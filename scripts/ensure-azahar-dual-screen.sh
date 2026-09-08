@@ -69,6 +69,8 @@ for key, val in [
     ("singleWindowMode", "false"),
     ("confirmClose", "false"),
     ("pauseWhenInBackground", "false"),
+    ("screen_bottom_stretch", "true"),
+    ("screen_top_stretch", "true"),
 ]:
     text = set_key(text, key, val)
 path.write_text(text)

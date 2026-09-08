@@ -23,7 +23,7 @@ Read live sizes from KWin `workspace.screens` (do not block on `kscreen-doctor -
 
 The script:
 
-1. Sets `qt-config.ini`: `layout_option=4` (Separate Windows), `secondary_display_layout=2` (BottomScreenOnly), `fullscreen` false, `singleWindowMode` false, `confirmClose` false.
+1. Sets `qt-config.ini`: `layout_option=4` (Separate Windows), `secondary_display_layout=2` (BottomScreenOnly), `fullscreen` false, `singleWindowMode` false, `confirmClose` false, **`screen_bottom_stretch` / `screen_top_stretch` true**. Without stretch, Azahar `MaxRectangle` fits 4:3 / 5:3 by **height** inside 1920×1080 (pillarbox). Cemu GamePad already filled that window; the 3DS bottom must stretch the same way or Thor’s GamePad fill looks like it only filled vertically.
 2. Binds with `python3 scripts/bind-gamepad.py azahar --match "${AZAHAR_PAD_MATCH:-Thor}" --force` (rewrites every SDL `guid:` to the named Sunshine Xbox pad). Keep Nintendo-position button indices.
 3. KWin-places Primary → HDMI, Secondary → virtual, `noBorder` + `keepAbove`. Minimizes the library window and Steam.
 

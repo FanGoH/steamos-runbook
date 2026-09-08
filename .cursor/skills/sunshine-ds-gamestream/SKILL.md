@@ -196,7 +196,7 @@ Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).
 - Caption `Primary Window` → HDMI-A-1 (top screen). `Secondary Window` → Virtual-sunshine-ds (touch). Minimize the library window.
-- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor`.
+- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (Xbox-label x360 map, not Nintendo-position). Restart Azahar after the bind.
 - Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).
 - Process `comm` is `azahar`. `resourceClass` is `Azahar`.
 

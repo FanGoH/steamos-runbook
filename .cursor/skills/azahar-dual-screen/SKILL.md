@@ -24,10 +24,10 @@ Read live sizes from KWin `workspace.screens` (do not block on `kscreen-doctor -
 The script:
 
 1. Sets `qt-config.ini`: `layout_option=4` (Separate Windows), `secondary_display_layout=2` (BottomScreenOnly), `fullscreen` false, `singleWindowMode` false, `confirmClose` false, **`screen_bottom_stretch` / `screen_top_stretch` true**. Without stretch, Azahar `MaxRectangle` fits 4:3 / 5:3 by **height** inside 1920×1080 (pillarbox). Cemu GamePad already filled that window; the 3DS bottom must stretch the same way or Thor’s GamePad fill looks like it only filled vertically.
-2. Binds with `python3 scripts/bind-gamepad.py azahar --match "${AZAHAR_PAD_MATCH:-Thor}" --force` (rewrites every SDL `guid:` to the named Sunshine Xbox pad). Keep Nintendo-position button indices.
+2. Binds with `python3 scripts/bind-gamepad.py azahar --match "${AZAHAR_PAD_MATCH:-Thor}" --force`. Writes the Sunshine x360 map: 3DS A/B/X/Y = Xbox A/B/X/Y (SDL 0/1/2/3), L/R = LB/RB, ZL/ZR = LT/RT. Moonlight already emits Xbox face buttons; Nintendo-position indices double-swap A/B on Thor. Restart Azahar after the bind.
 3. KWin-places Primary → HDMI, Secondary → virtual, `noBorder` + `keepAbove`. Minimizes the library window and Steam.
 
-Do not hand-edit `qt-config.ini`. Restart Azahar after a GUID change.
+Do not hand-edit `qt-config.ini`. Restart Azahar after a GUID or button-map change. Do not copy RetroDECK’s L=LT / ZL=LB swap onto GameStream.
 
 ## Launch env
 

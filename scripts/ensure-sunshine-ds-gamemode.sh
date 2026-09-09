@@ -121,6 +121,11 @@ print_status() {
   if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
     eff="$(grep -E 'CapPrm|CapEff' "/proc/$pid/status" | tr '\n' ' ')"
     echo "caps: $eff"
+    # After KMS init Sunshine drops effective caps. CapPrm 0x200000 is SYS_ADMIN.
+    if printf '%s' "$eff" | grep -q 'CapPrm:[[:space:]]*0000000000200000' &&
+      printf '%s' "$eff" | grep -q 'CapEff:[[:space:]]*0000000000000000'; then
+      echo "caps note: CapEff 0 after drop is expected if the log mapped HDMI-A-1."
+    fi
   fi
   echo "desktop sunshine-ds pid: ${desk:-none} (must stay on :48100 / kwin)"
   echo "desktop conf: $DEV_CONF"

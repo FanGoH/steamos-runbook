@@ -26,6 +26,8 @@ RD_CONTROLLER="${CEMU_RD_CONTROLLER:-/home/${STEAMOS_USER:-deck}/.var/app/net.re
 ROM="${CEMU_ROM:-/home/${STEAMOS_USER:-deck}/retrodeck/roms/wiiu/Legend of Zelda, The - The Wind Waker HD (USA, Asia) (En,Fr,Es).wux}"
 APPID="${CEMU_STEAM_APPID:-2374129079}"
 PAD_MATCH="${CEMU_PAD_MATCH:-Sunshine}"
+# Skip the Eden pad patcher in ensure-cemu-input.sh (Steam virtual first).
+export CEMU_GAMEMODE_DS=1
 TV_DISPLAY="${CEMU_TV_DISPLAY:-:0}"
 PAD_DISPLAY="${CEMU_PAD_DISPLAY:-:2}"
 REAPER="${STEAM_REAPER:-/home/${STEAMOS_USER:-deck}/.local/share/Steam/ubuntu12_32/reaper}"

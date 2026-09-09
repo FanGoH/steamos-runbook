@@ -261,6 +261,16 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
         else:
             _set_mappings(controller, [])
 
+    # Player 0 is the first <controller> uuid. Analog sticks follow that
+    # device. Steam wrap must stay listed after Sunshine with empty mappings.
+    ordered = root.findall("controller")
+    for controller in ordered:
+        root.remove(controller)
+    root.append(target)
+    for controller in ordered:
+        if controller is not target:
+            root.append(controller)
+
     ET.indent(root, space="\t")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
         root, encoding="unicode"
@@ -422,7 +432,13 @@ def cmd_cemu(args: argparse.Namespace) -> int:
     except ET.ParseError:
         owners = []
     new = patch_cemu_xml(text, uuid, pad["name"])
-    if owners == [uuid]:
+    first = None
+    try:
+        first = ET.fromstring(text).find("controller")
+    except ET.ParseError:
+        first = None
+    first_uuid = (first.findtext("uuid") if first is not None else "") or ""
+    if owners == [uuid] and first_uuid == uuid and new == text:
         print(f"Cemu player 0 already bound to {uuid} ({pad['name']})")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
@@ -582,6 +598,10 @@ def _self_test() -> int:
         assert "AYN20Thor" not in patched
         assert "libvirtualhid Mouse" not in patched
         assert _mapping_owner_uuids(parsed) == [thor["cemu_uuid"]]
+        first = parsed.find("controller")
+        assert first is not None
+        assert first.findtext("uuid") == thor["cemu_uuid"]
+        assert "AYN_Thor" in (first.findtext("display_name") or "")
         steam = next(
             c
             for c in parsed.findall("controller")

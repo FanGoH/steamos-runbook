@@ -12,9 +12,9 @@
 # Does not touch :48100, sunshine-ds-dev, or the KWin helper.
 # Does not restart gamescope-session.
 #
-#   scripts/sunshine-ds-gamemode-virtual.sh --start
+#   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + damaging paint
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
-#   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # blue fullscreen + one PNG
+#   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # one PNG from the PipeWire node
 #   scripts/sunshine-ds-gamemode-virtual.sh --stop
 set -uo pipefail
 
@@ -28,6 +28,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 LOG="${SUNSHINE_DS_KMS_VIRTUAL_LOG:-$ROOT/logs/sunshine-ds-gamemode-virtual.log}"
 PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PIDFILE:-$ROOT/logs/sunshine-ds-gamemode-virtual.pid}"
+PAINT_PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE:-$ROOT/logs/sunshine-ds-gamemode-virtual-paint.pid}"
 SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virtual.png}"
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
@@ -111,6 +112,87 @@ for obj in data:
 PY
 }
 
+paint_pid() {
+  local pid
+  if [ -f "$PAINT_PIDFILE" ]; then
+    pid="$(cat "$PAINT_PIDFILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+      printf '%s\n' "$pid"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+stop_paint() {
+  local pid
+  pid="$(paint_pid || true)"
+  if [ -n "${pid:-}" ]; then
+    kill "$pid" 2>/dev/null || true
+    local i=0
+    while [ "$i" -lt 10 ] && [ -d "/proc/$pid" ]; do
+      sleep 0.1
+      i=$((i + 1))
+    done
+    if [ -d "/proc/$pid" ]; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PAINT_PIDFILE"
+}
+
+# Static fullscreen publishes one PipeWire buffer then goes silent. Sunshine
+# video/1 then encodes dummy_img() black. Keep a moving square so gamescope
+# keeps damaging (Cemu/Azahar will do this for real content).
+start_paint() {
+  local gs_pid x11
+  gs_pid="$(virtual_pid || true)"
+  if [ -z "${gs_pid:-}" ]; then
+    echo "No headless gamescope; not starting paint."
+    return 1
+  fi
+  x11="$(x11_display "$gs_pid")"
+  if [ -z "$x11" ]; then
+    echo "No Xwayland display for paint."
+    return 1
+  fi
+  if paint_pid >/dev/null; then
+    echo "Virtual paint already pid $(paint_pid)."
+    return 0
+  fi
+  # Isolated: inheriting WAYLAND_DISPLAY=gamescope-0 puts this on the TV.
+  nohup env -u WAYLAND_DISPLAY DISPLAY="$x11" python3 - >>"$LOG" 2>&1 <<'PY' &
+import tkinter as tk
+
+root = tk.Tk()
+root.configure(bg="#2244ff")
+root.attributes("-fullscreen", True)
+root.title("sunshine-ds-kms-virtual")
+canvas = tk.Canvas(root, highlightthickness=0, bg="#2244ff")
+canvas.pack(fill="both", expand=True)
+box = canvas.create_rectangle(0, 0, 160, 160, fill="#ffcc00", outline="")
+state = {"x": 40, "dx": 18}
+
+
+def tick():
+    width = max(canvas.winfo_width(), 320)
+    height = max(canvas.winfo_height(), 320)
+    state["x"] += state["dx"]
+    if state["x"] <= 0 or state["x"] >= width - 160:
+        state["dx"] *= -1
+        state["x"] += state["dx"]
+    y = max(height // 2 - 80, 0)
+    canvas.coords(box, state["x"], y, state["x"] + 160, y + 160)
+    root.after(200, tick)
+
+
+root.after(50, tick)
+root.mainloop()
+PY
+  printf '%s\n' "$!" >"$PAINT_PIDFILE"
+  echo "Virtual paint pid $! on $x11 (damaging so PipeWire keeps emitting)."
+}
+
 write_nodefile() {
   local pid node_info node serial
   pid="$(virtual_pid || true)"
@@ -152,6 +234,7 @@ print_status() {
     echo "wayland: ${wl:-unknown}"
     echo "x11: ${x11:-unknown}"
     echo "pipewire: ${node:-none}"
+    echo "paint pid: $(paint_pid || echo none)"
     echo "note: KMS cannot capture this plane. Set dual_display_source=gamescope-virtual on sunshine-ds-kms."
   elif [ -n "${pid:-}" ]; then
     echo "pid $pid is not a headless gamescope; ignoring pidfile."
@@ -160,6 +243,7 @@ print_status() {
 
 stop_virtual() {
   local pid
+  stop_paint
   pid="$(virtual_pid || true)"
   if [ -z "${pid:-}" ]; then
     echo "No headless gamescope virtual display."
@@ -191,6 +275,7 @@ start_virtual() {
   pid="$(virtual_pid || true)"
   if [ -n "${pid:-}" ] && is_headless_gamescope "$pid"; then
     echo "Already running pid $pid."
+    start_paint || true
     print_status
     return 0
   fi
@@ -210,6 +295,7 @@ start_virtual() {
   while [ "$waited" -lt 8 ]; do
     if grep -q 'stream available on node ID' "$LOG" 2>/dev/null; then
       echo "Started headless gamescope pid $pid."
+      start_paint || true
       print_status
       return 0
     fi
@@ -222,6 +308,7 @@ start_virtual() {
     waited=$((waited + 1))
   done
   echo "headless gamescope pid $pid started; PipeWire line not seen yet. See $LOG"
+  start_paint || true
   print_status
   return 0
 }

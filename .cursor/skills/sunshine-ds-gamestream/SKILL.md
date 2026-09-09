@@ -76,6 +76,7 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 | Probe I-frame ~1200 bytes / 0% coded | `dummy_img()`, not live capture |
 | Game Mode `:48200` HDMI I-frame ~17KB + P ~6KB | Live KMS `HDMI-A-1` (Moonlight DS smoke 2026-09-09) |
 | Game Mode `:48200` **bottom pitch black**, log `cpu frame type=2` full nonzero, video/1 I-frame ~1KB / 0% coded | Capture has pixels; encoder still has `dummy_img()` zeros. Headless gamescope often emits **one** MemFd then goes silent (static blue / Cemu). Fix is in sunshine-ds `pipewire.cpp`: seed dummy from last CPU frame and re-present it. Solid-color smoke has `pixel_diffs=0` but must not look black. Stage `sunshine-ds-kms.new` + `setcap` + `--start`. |
+| Game Mode `:48200` bottom black, **no** `cpu frame type=2`, probe `nonzero=0` | PipeWire connected but gamescope sent nothing. Static tk on `:2` goes silent after the first buffer. `--start` now keeps a moving yellow square on the virtual display. Reconnect Moonlight; log should show `cpu frame type=2`. |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing (animated content) |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |

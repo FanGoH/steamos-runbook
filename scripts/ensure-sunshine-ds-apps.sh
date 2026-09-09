@@ -21,22 +21,77 @@ fi
 
 python3 "$ROOT/scripts/pad_profile.py" apply-sunshine-conf "$SUNSHINE_DS_CONF" || true
 
-python3 - "$APPS_JSON" "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/logs" <<'PY'
-import json, sys
+ICON_DIR="$(dirname "$APPS_JSON")/app-icons"
+mkdir -p "$ICON_DIR"
+
+python3 - "$APPS_JSON" "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/logs" "$ICON_DIR" <<'PY'
+import json, shutil, struct, sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 cemu_cmd, azahar_cmd, stop_cmd, log_dir = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+icon_dir = Path(sys.argv[6])
+home = Path.home()
 data = json.loads(path.read_text())
 apps = data.setdefault("apps", [])
+PNG = b"\x89PNG\r\n\x1a\n"
 
-def spec(name, cmd, undo_target):
+
+def png_wh(src: Path) -> tuple[int, int]:
+    try:
+        with src.open("rb") as fh:
+            if fh.read(8) != PNG:
+                return (0, 0)
+            length, kind = struct.unpack(">I4s", fh.read(8))
+            if kind != b"IHDR" or length < 8:
+                return (0, 0)
+            return struct.unpack(">II", fh.read(8))
+    except OSError:
+        return (0, 0)
+
+
+def icon_candidates(filename: str) -> list[Path]:
+    hicolors = [
+        Path("/var/lib/flatpak/exports/share/icons/hicolor"),
+        home / ".local/share/flatpak/exports/share/icons/hicolor",
+    ]
+    app_id = filename.removesuffix(".png")
+    for prefix in (Path("/var/lib/flatpak/app"), home / ".local/share/flatpak/app"):
+        hicolors.append(prefix / app_id / "current/active/export/share/icons/hicolor")
+    found: list[Path] = []
+    for root in hicolors:
+        if not root.is_dir():
+            continue
+        found.extend(p for p in root.glob(f"*/apps/{filename}") if p.is_file())
+    return found
+
+
+def install_icon(dest_name: str, filename: str) -> str:
+    dest = icon_dir / dest_name
+    best = None
+    best_area = -1
+    for cand in icon_candidates(filename):
+        w, h = png_wh(cand)
+        area = w * h
+        if area > best_area:
+            best = cand
+            best_area = area
+    if best is None:
+        print(f"No Flatpak PNG for {filename}; Moonlight will keep desktop.png", file=sys.stderr)
+        return "desktop.png"
+    icon_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(best, dest)
+    print(f"Installed {dest} from {best} ({best_area} px)")
+    return str(dest)
+
+
+def spec(name, cmd, undo_target, image_path):
     return {
         "name": name,
         "cmd": cmd,
         "working-dir": str(Path(cmd).parent.parent),
         "output": str(Path(log_dir) / f"sunshine-app-{undo_target}.log"),
-        "image-path": "desktop.png",
+        "image-path": image_path,
         "auto-detach": False,
         "wait-all": True,
         "exit-timeout": 10,
@@ -45,9 +100,11 @@ def spec(name, cmd, undo_target):
         ],
     }
 
+cemu_icon = install_icon("cemu.png", "info.cemu.Cemu.png")
+azahar_icon = install_icon("azahar.png", "org.azahar_emu.Azahar.png")
 wanted = {
-    "Cemu Dual-Screen": spec("Cemu Dual-Screen", cemu_cmd, "cemu"),
-    "Azahar Dual-Screen": spec("Azahar Dual-Screen", azahar_cmd, "azahar"),
+    "Cemu Dual-Screen": spec("Cemu Dual-Screen", cemu_cmd, "cemu", cemu_icon),
+    "Azahar Dual-Screen": spec("Azahar Dual-Screen", azahar_cmd, "azahar", azahar_icon),
 }
 
 changed = False
@@ -71,5 +128,5 @@ if changed:
 PY
 
 chmod +x "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/scripts/pad_profile.py"
-echo "sunshine-ds apps are in $APPS_JSON (Moonlight :48100). Restart sunshine-ds to refresh the list if it is already running."
+echo "sunshine-ds apps are in $APPS_JSON (Moonlight :48100). Icons: $ICON_DIR. Restart sunshine-ds when the session is idle so Moonlight picks up new box art."
 exit 0

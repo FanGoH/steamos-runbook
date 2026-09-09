@@ -149,7 +149,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
+From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
 Or run the playbook script from the host; do not hand-edit XML.
 
@@ -207,7 +207,7 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 
 ## Azahar dual-screen (Thor)
 
-From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-azahar.sh`). Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
+From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-azahar.sh`; box art is the Azahar Flatpak icon). Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
 
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).

@@ -82,7 +82,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: wait for Sunshine pad, dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: wait for Sunshine pad, dual-screen Azahar, wait until Azahar exits |
 | `scripts/sunshine-app-stop.sh` | Kill leftover Cemu/Azahar after Moonlight Quit game (`azahar` or `cemu`) |
-| `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) |
+| `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) and copy Cemu/Azahar Flatpak icons |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |

@@ -184,6 +184,18 @@ start_mirror() {
     >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$MIRROR_PIDFILE"
   echo "GamePad mirror pid $!"
+  # Headless gamescope sometimes maps ffplay at 640x480 before -fs applies.
+  local i ff
+  for i in 1 2 3 4 5; do
+    ff="$(DISPLAY="$PAD_DISPLAY" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
+    if [ -n "${ff:-}" ]; then
+      DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xdotool windowraise "$ff" 2>/dev/null || true
+      break
+    fi
+    sleep 0.2
+  done
 }
 
 if [ "$DO_STOP" -eq 1 ]; then

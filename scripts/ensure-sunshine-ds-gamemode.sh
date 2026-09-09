@@ -8,6 +8,7 @@
 #   scripts/ensure-sunshine-ds-gamemode.sh --start   # only if gamescope is up
 #
 # Binary is sunshine-ds-kms (copy). Port 48200. No virtual-output helper.
+# Second stream duplicates HDMI-A-1 (same first step as desktop DS).
 # Host launch only: Distrobox user namespaces drop file capabilities (CapEff 0).
 # File caps set AT_SECURE, so ld.so ignores LD_LIBRARY_PATH — RUNPATH + staged
 # Fedora libs under ~/.local/lib/sunshine-ds-kms. Never setcap sunshine-ds.
@@ -258,8 +259,10 @@ port = ${KMS_PORT}
 origin_web_ui_allowed = pc
 capture = kms
 output_name = HDMI-A-1
-# Explicit none (blank is ignored and the binary defaults to "virtual").
-dual_display_source = none
+# Duplicate the TV onto video/1. Blank defaults to "virtual" (KWin helper);
+# none keeps MaxVideoStreams 1. Same first step as desktop DS before
+# Virtual-sunshine-ds existed. Game Mode has no KWin virtual output yet.
+dual_display_source = HDMI-A-1
 encoder = software
 hevc_mode = 1
 av1_mode = 1
@@ -382,10 +385,10 @@ ensure_kms_binary || exit $?
 write_kms_conf
 
 if [ -n "$(kms_ds_pid)" ]; then
-  echo "sunshine-ds-kms already running."
-else
-  start_kms || exit $?
+  echo "Restarting sunshine-ds-kms so sunshine.conf is loaded."
+  stop_kms
 fi
+start_kms || exit $?
 
 if ! wait_for_kms; then
   print_probe_log

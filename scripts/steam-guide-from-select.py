@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Game Mode: hold Select on a Sunshine pad → Steam overlay.
+"""Debug: toggle Steam Game Mode overlay atoms (sunshine-ds owns this now).
 
-GDS ``back_button_timeout = 500`` pulses Guide on the libvirtualhid x360
-(UHID bluetooth ``045e:028e``). Steam Game Mode overlay does not honor that
-the way USB xpad Guide does. This watches ``BTN_SELECT`` on named Sunshine
-pads (no EVIOCGRAB) and toggles gamescope's overlay split:
-
-  STEAM_OVERLAY=1 on Steam Big Picture, FOCUSED_APP=769, FOCUSED_APP_GFX=<game>
-
-Cemu TV stays ``GAMESCOPECTRL_BASELAYER_WINDOW``. Hold Select again to close.
+sunshine-ds pulses HOME after ``back_button_timeout`` and writes
+``STEAM_OVERLAY`` / ``GAMESCOPE_FOCUSED_APP=769`` itself. Keep this script for
+``--show`` / ``--hide`` / ``--self-test``. Do not start it from
+``ensure-cemu-gamemode-dual-screen.sh`` (double-toggle).
 """
 from __future__ import annotations
 

@@ -9,7 +9,8 @@
 # window STEAM_GAME and set GAMESCOPECTRL_BASELAYER_WINDOW or Steam BPM
 # stays on video/0 while GamePad View still mirrors. GamePad stays mapped
 # on-screen under the TV; ffplay x11grab -window_id copies that drawable
-# onto :2. Off-screen ximagesrc is MIT-SHM BadMatch.
+# onto :2. Off-screen ximagesrc is MIT-SHM BadMatch. Hold-Select overlay
+# and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -442,6 +443,7 @@ fi
 
 start_mirror "$PAD_WID"
 start_focus_watch
-start_guide_watch
+stop_guide_watch
 echo "Game Mode Cemu dual-stream: TV on $TV_DISPLAY (HDMI / video/0), GamePad mirrored to $PAD_DISPLAY (video/1)."
+echo "Hold-Select overlay and GamePad touch are in sunshine-ds (not steam-guide-from-select.py)."
 exit 0

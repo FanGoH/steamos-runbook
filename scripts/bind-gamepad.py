@@ -9,8 +9,10 @@ a button press.
 Cemu uuid is ``{guid-index}_{guid}`` (SDL2 CRC-16 of the kernel name). Player 0
 is the Wii U GamePad. Each GamePad button maps to **one** physical controller;
 later ``<controller>`` blocks overwrite earlier mappings. This script adds the
-chosen pad and puts the mappings on it (Steam wrap can stay listed with empty
-``<mappings>``). Cemu must restart to pick up a uuid/mapping change.
+chosen pad and puts SteamInput-P1 Wii U GamePad mappings on it (Steam wrap can
+stay listed with empty ``<mappings>``). moonlight.xml Pro-Controller maps are
+replaced — they omit mapping 11 and rotate the left-stick axis splits. Cemu
+must restart to pick up a uuid/mapping change.
 
 Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Button indices come
 from ``scripts/pad_profile.py`` (``GAMESTREAM_PAD_PROFILE``, default x360:
@@ -207,6 +209,61 @@ def _mapping_owner_uuids(root: ET.Element) -> list[str]:
     return owners
 
 
+# SteamInput-P1 Wii U GamePad (SDL GameController). moonlight.xml is a Wii U
+# Pro profile: it omits mapping 11 and rotates 15–25, so analog 7/8 look
+# fine while hat/axis-splits fight the left stick.
+CANONICAL_CEMU_GAMEPAD = (
+    (1, 1),
+    (2, 0),
+    (3, 3),
+    (4, 2),
+    (5, 9),
+    (6, 10),
+    (7, 42),
+    (8, 43),
+    (9, 6),
+    (10, 4),
+    (11, 11),
+    (12, 12),
+    (13, 13),
+    (14, 14),
+    (15, 7),
+    (16, 8),
+    (17, 45),
+    (18, 39),
+    (19, 44),
+    (20, 38),
+    (21, 47),
+    (22, 41),
+    (23, 46),
+    (24, 40),
+    (25, 8),
+)
+
+
+def _mapping_ids(entries: list[ET.Element]) -> set[str]:
+    return {(entry.findtext("mapping") or "") for entry in entries}
+
+
+def _entries_from_pairs(pairs: tuple[tuple[int, int], ...]) -> list[ET.Element]:
+    out: list[ET.Element] = []
+    for mapping, button in pairs:
+        entry = ET.Element("entry")
+        m = ET.SubElement(entry, "mapping")
+        m.text = str(mapping)
+        b = ET.SubElement(entry, "button")
+        b.text = str(button)
+        out.append(entry)
+    return out
+
+
+def _gamepad_mappings(richest: list[ET.Element]) -> list[ET.Element]:
+    ids = _mapping_ids(richest)
+    if "11" in ids and "7" in ids and "8" in ids:
+        return richest
+    return _entries_from_pairs(CANONICAL_CEMU_GAMEPAD)
+
+
 def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
     """Add ``uuid`` to player 0 and attach GamePad mappings to that pad only."""
     root = ET.fromstring(text)
@@ -255,9 +312,10 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
     _set_text(target, "uuid", uuid)
     _set_text(target, "display_name", display_name)
 
+    mappings = _gamepad_mappings(richest)
     for controller in root.findall("controller"):
         if controller is target:
-            _set_mappings(controller, richest)
+            _set_mappings(controller, mappings)
         else:
             _set_mappings(controller, [])
 
@@ -609,6 +667,40 @@ def _self_test() -> int:
         )
         assert steam.find("mappings") is not None
         assert steam.find("mappings").findall("entry") == []
+        pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in first.find("mappings").findall("entry")
+        }
+        assert ("11", "11") in pairs
+        assert ("7", "42") in pairs
+        assert ("8", "43") in pairs
+        assert ("25", "8") in pairs
+        assert ("15", "7") in pairs
+        moonlight = """<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>SDLController</api>
+		<uuid>0_old</uuid>
+		<display_name>Sunshine (libvirtualhid) Odin2_Portal</display_name>
+		<mappings>
+			<entry><mapping>25</mapping><button>40</button></entry>
+			<entry><mapping>7</mapping><button>42</button></entry>
+			<entry><mapping>8</mapping><button>43</button></entry>
+			<entry><mapping>15</mapping><button>14</button></entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+"""
+        fixed = ET.fromstring(patch_cemu_xml(moonlight, thor["cemu_uuid"], thor["name"]))
+        fixed_pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in fixed.find("controller").find("mappings").findall("entry")
+        }
+        assert ("11", "11") in fixed_pairs
+        assert ("25", "8") in fixed_pairs
+        assert ("15", "7") in fixed_pairs
+        assert ("15", "14") not in fixed_pairs
         assert match_pad(pads, "nope") is None
         # Generic duplicate names must not silently pick the wrong client.
         _write_js(

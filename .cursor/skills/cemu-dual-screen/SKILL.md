@@ -59,7 +59,11 @@ scripts/ensure-cemu-gamemode-dual-screen.sh
 
 Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the RetroDECK Cemu command with `--env=CEMU_GAMEMODE_DS=1`. Does **not** rewrite `shortcuts.vdf`. Overlay is Steam’s Game Mode overlay (`STEAM_OVERLAY=1` / focused shortcut), not host `LD_PRELOAD` of `gameoverlayrenderer.so` into the Flatpak.
 
-`--stop` kills only the pad mirror. Steam Exit / Moonlight Quit still owns Cemu.
+HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`.
+
+Player 0 maps must be SteamInput-P1 Wii U GamePad (includes SDL mapping 11). `moonlight.xml` is a Wii U Pro profile — copying it onto GamePad type leaves analog 7/8 looking fine while hat/axis-splits fight the left stick. `bind-gamepad.py` replaces that map.
+
+`--stop` kills the pad mirror and the gamescope focus watcher. Steam Exit / Moonlight Quit still owns Cemu.
 
 ## Do not
 

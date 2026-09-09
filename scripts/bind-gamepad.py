@@ -257,14 +257,43 @@ def _entries_from_pairs(pairs: tuple[tuple[int, int], ...]) -> list[ET.Element]:
     return out
 
 
-def _gamepad_mappings(richest: list[ET.Element]) -> list[ET.Element]:
+def _load_steaminput_p1_mappings(xml_path: Path | None) -> list[ET.Element]:
+    """Copy RetroDECK SteamInput-P1 button maps; never its Steam-virtual uuid."""
+    if xml_path is None:
+        return []
+    p1 = xml_path.parent / "SteamInput-P1.xml"
+    if not p1.is_file():
+        return []
+    try:
+        root = ET.parse(p1).getroot()
+    except ET.ParseError:
+        return []
+    for controller in root.findall("controller"):
+        entries = _controller_entries(controller)
+        ids = _mapping_ids(entries)
+        if "7" in ids and "8" in ids and "11" in ids:
+            return entries
+    return []
+
+
+def _gamepad_mappings(
+    richest: list[ET.Element], xml_path: Path | None = None
+) -> list[ET.Element]:
+    template = _load_steaminput_p1_mappings(xml_path)
+    if template:
+        return template
     ids = _mapping_ids(richest)
     if "11" in ids and "7" in ids and "8" in ids:
         return richest
     return _entries_from_pairs(CANONICAL_CEMU_GAMEPAD)
 
 
-def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
+def patch_cemu_xml(
+    text: str,
+    uuid: str,
+    display_name: str,
+    xml_path: Path | None = None,
+) -> str:
     """Add ``uuid`` to player 0 and attach GamePad mappings to that pad only."""
     root = ET.fromstring(text)
     type_node = root.find("type")
@@ -312,7 +341,7 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
     _set_text(target, "uuid", uuid)
     _set_text(target, "display_name", display_name)
 
-    mappings = _gamepad_mappings(richest)
+    mappings = _gamepad_mappings(richest, xml_path)
     for controller in root.findall("controller"):
         if controller is target:
             _set_mappings(controller, mappings)
@@ -477,7 +506,7 @@ def cmd_cemu(args: argparse.Namespace) -> int:
             return 2
         uuid = kept.findtext("uuid") or ""
         name = kept.findtext("display_name") or ""
-        new = patch_cemu_xml(text, uuid, name)
+        new = patch_cemu_xml(text, uuid, name, path)
         if new != text:
             path.write_text(new)
             print(f"Dropped mouse; kept existing {name} bind (no live pad) in {path}")
@@ -489,7 +518,7 @@ def cmd_cemu(args: argparse.Namespace) -> int:
         owners = _mapping_owner_uuids(ET.fromstring(text))
     except ET.ParseError:
         owners = []
-    new = patch_cemu_xml(text, uuid, pad["name"])
+    new = patch_cemu_xml(text, uuid, pad["name"], path)
     first = None
     try:
         first = ET.fromstring(text).find("controller")
@@ -701,6 +730,43 @@ def _self_test() -> int:
         assert ("25", "8") in fixed_pairs
         assert ("15", "7") in fixed_pairs
         assert ("15", "14") not in fixed_pairs
+        p1_dir = Path(tmp) / "cemu-profiles"
+        p1_dir.mkdir()
+        (p1_dir / "SteamInput-P1.xml").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>SDLController</api>
+		<uuid>0_steamvirtual</uuid>
+		<display_name>Steam Virtual Gamepad</display_name>
+		<mappings>
+			<entry><mapping>7</mapping><button>42</button></entry>
+			<entry><mapping>8</mapping><button>43</button></entry>
+			<entry><mapping>11</mapping><button>99</button></entry>
+			<entry><mapping>15</mapping><button>7</button></entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+"""
+        )
+        from_p1 = ET.fromstring(
+            patch_cemu_xml(
+                moonlight,
+                thor["cemu_uuid"],
+                thor["name"],
+                p1_dir / "controller0.xml",
+            )
+        )
+        p1_first = from_p1.find("controller")
+        p1_pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in p1_first.find("mappings").findall("entry")
+        }
+        assert p1_first.findtext("uuid") == thor["cemu_uuid"]
+        assert "Steam Virtual" not in (p1_first.findtext("display_name") or "")
+        assert ("11", "99") in p1_pairs
+        assert ("11", "11") not in p1_pairs
         assert match_pad(pads, "nope") is None
         # Generic duplicate names must not silently pick the wrong client.
         _write_js(

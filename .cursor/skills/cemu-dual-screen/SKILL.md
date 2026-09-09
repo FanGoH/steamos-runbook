@@ -61,7 +61,7 @@ Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the Re
 
 HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`.
 
-Player 0 maps must be SteamInput-P1 Wii U GamePad (includes SDL mapping 11). `moonlight.xml` is a Wii U Pro profile — copying it onto GamePad type leaves analog 7/8 looking fine while hat/axis-splits fight the left stick. `bind-gamepad.py` replaces that map.
+Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad layout). They are copied onto the named Sunshine pad; the Steam virtual uuid is **not** copied. `moonlight.xml` is a Wii U Pro profile — using it on GamePad type leaves analog 7/8 looking fine while d-pad and axis-splits fight the sticks.
 
 `--stop` kills the pad mirror and the gamescope focus watcher. Steam Exit / Moonlight Quit still owns Cemu.
 

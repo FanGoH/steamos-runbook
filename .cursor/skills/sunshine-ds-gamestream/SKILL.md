@@ -119,6 +119,7 @@ libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam
 scripts/ensure-sunshine-ds.sh            # start Distrobox + one helper + DS if down
 scripts/ensure-sunshine-ds.sh --status
 scripts/ensure-sunshine-ds.sh --stop     # Game Mode teardown: stop DS + virtual helper
+scripts/ensure-sunshine-ds.sh --install-shortcut  # ~/Desktop/Return to Game Mode.desktop only
 scripts/switch-to-game-mode.sh           # --stop, set login mode game, steamosctl switch-to-game-mode
 ```
 

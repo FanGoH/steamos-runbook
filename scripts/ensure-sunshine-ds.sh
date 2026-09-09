@@ -6,6 +6,7 @@
 #   scripts/ensure-sunshine-ds.sh           # start if down
 #   scripts/ensure-sunshine-ds.sh --status  # print pid/state only
 #   scripts/ensure-sunshine-ds.sh --stop    # stop DS + virtual helper (Game Mode teardown)
+#   scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop + app-launcher icon only
 #   scripts/ensure-sunshine-ds.sh --restart # idle restart (refuses BUSY)
 #   scripts/ensure-sunshine-ds.sh --restart --force  # restart even if BUSY
 set -uo pipefail
@@ -35,18 +36,20 @@ DO_RESTART=0
 DO_FORCE=0
 DO_STATUS=0
 DO_STOP=0
+DO_INSTALL_SHORTCUT=0
 for arg in "$@"; do
   case "$arg" in
     --restart) DO_RESTART=1 ;;
     --force) DO_FORCE=1 ;;
     --status) DO_STATUS=1 ;;
     --stop) DO_STOP=1 ;;
+    --install-shortcut) DO_INSTALL_SHORTCUT=1 ;;
     -h|--help)
-      sed -n '2,13p' "$0"
+      sed -n '2,14p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--status] [--stop] [--restart] [--force]" >&2
+      echo "usage: $0 [--status] [--stop] [--install-shortcut] [--restart] [--force]" >&2
       exit 2
       ;;
   esac
@@ -81,6 +84,37 @@ print_status() {
   echo "url: $DS_URL"
   [ -n "$uid" ] && echo "uniqueid: $uid"
   echo "virtual-output helper pid(s): ${helpers:-none}"
+}
+
+ensure_game_mode_shortcut() {
+  local desktop_dir apps_dir desktop_file apps_file switch_sh
+  desktop_dir="/home/${STEAMOS_USER:-deck}/Desktop"
+  apps_dir="/home/${STEAMOS_USER:-deck}/.local/share/applications"
+  desktop_file="$desktop_dir/Return to Game Mode.desktop"
+  apps_file="$apps_dir/steamos-return-to-game-mode.desktop"
+  switch_sh="$ROOT/scripts/switch-to-game-mode.sh"
+  mkdir -p "$desktop_dir" "$apps_dir"
+  cat >"$apps_file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Return to Game Mode
+Comment=Stop sunshine-ds and switch to SteamOS Game Mode
+Exec=$switch_sh
+TryExec=$switch_sh
+Path=$ROOT
+Icon=steamdeck-gaming-return
+Terminal=false
+StartupNotify=false
+Categories=System;
+Keywords=gamescope;steamos;gamemode;
+EOF
+  chmod +x "$apps_file" "$switch_sh"
+  cp -f "$apps_file" "$desktop_file"
+  chmod +x "$desktop_file"
+  if command -v gio >/dev/null 2>&1; then
+    gio set "$desktop_file" metadata::trusted true 2>/dev/null || true
+  fi
+  echo "Installed Game Mode shortcut: $desktop_file"
 }
 
 port_listener_pid() {
@@ -265,6 +299,13 @@ if [ "$DO_STATUS" -eq 1 ]; then
     *) exit 2 ;;
   esac
 fi
+
+if [ "$DO_INSTALL_SHORTCUT" -eq 1 ] && [ "$DO_STOP" -eq 0 ] && [ "$DO_RESTART" -eq 0 ]; then
+  ensure_game_mode_shortcut
+  exit 0
+fi
+
+ensure_game_mode_shortcut
 
 if [ "$DO_STOP" -eq 1 ]; then
   DO_FORCE=1

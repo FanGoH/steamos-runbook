@@ -8,6 +8,9 @@
 # STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
+# Kill leftover Tk paint on :2 (sunshine-ds-kms-virtual) before ffplay or
+# Moonlight video/1 stays the blue/yellow smoke. --mirror-only remirrors
+# without restarting Azahar (needed after kms --start recreates :2).
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
 
@@ -21,6 +24,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 LOG="${ROOT}/logs/azahar-gamemode-ds.log"
 MIRROR_PIDFILE="${ROOT}/logs/azahar-gamemode-pad-mirror.pid"
 FOCUS_PIDFILE="${ROOT}/logs/azahar-gamemode-focus.pid"
+PAINT_PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE:-$ROOT/logs/sunshine-ds-gamemode-virtual-paint.pid}"
 CEMU_MIRROR_PIDFILE="${ROOT}/logs/cemu-gamemode-pad-mirror.pid"
 STEAM_CLIENT_ID=769
 AZAHAR_INI="${AZAHAR_INI:-/home/${STEAMOS_USER:-deck}/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini}"
@@ -40,12 +44,14 @@ usage() {
 }
 
 DO_STOP=0
+DO_MIRROR_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --mirror-only) DO_MIRROR_ONLY=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop]" >&2
+      echo "usage: $0 [--stop|--mirror-only]" >&2
       exit 2
       ;;
   esac
@@ -53,6 +59,18 @@ done
 
 azahar_running() {
   ps -eo comm= | grep -qx azahar
+}
+
+stop_paint() {
+  local pid
+  pid="$(cat "$PAINT_PIDFILE" 2>/dev/null || true)"
+  if [ -n "${pid:-}" ] && [ -d "/proc/$pid" ]; then
+    echo "Stopping virtual paint pid $pid."
+    kill "$pid" 2>/dev/null || true
+  fi
+  rm -f "$PAINT_PIDFILE"
+  # Leftover Tk stays mapped after the python pid dies and covers :2.
+  DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
 }
 
 stop_mirror() {
@@ -195,18 +213,23 @@ ensure_virtual_display() {
 }
 
 steam_overlay_active() {
-  local wid val
+  local wid val map
   command -v xprop >/dev/null 2>&1 || return 1
   wid="$(DISPLAY="$TV_DISPLAY" xwininfo -root -tree 2>/dev/null | awk '/Steam Big Picture Mode/{print $1; exit}')"
   if [ -n "${wid:-}" ]; then
-    val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
-    if [ "${val:-0}" = "1" ]; then
-      return 0
+    map="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Map State/{print $3}')"
+    if [ "${map:-}" = "IsViewable" ]; then
+      val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
+      if [ "${val:-0}" = "1" ]; then
+        return 0
+      fi
     fi
   fi
   command -v xdotool >/dev/null 2>&1 || return 1
   for wid in $(DISPLAY="$TV_DISPLAY" xdotool search --class steam 2>/dev/null || true) \
              $(DISPLAY="$TV_DISPLAY" xdotool search --class steamwebhelper 2>/dev/null || true); do
+    map="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Map State/{print $3}')"
+    [ "${map:-}" = "IsViewable" ] || continue
     val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
     if [ "${val:-0}" = "1" ]; then
       return 0
@@ -296,6 +319,7 @@ place_secondary_for_capture() {
 start_mirror() {
   local wid="$1"
   stop_mirror
+  stop_paint
   place_secondary_for_capture "$wid"
   echo "Mirroring Azahar Secondary xid $wid from $TV_DISPLAY onto $PAD_DISPLAY (ffplay x11grab)."
   nohup env -u WAYLAND_DISPLAY \
@@ -341,6 +365,26 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
   echo "Left Azahar running (Steam Exit / Moonlight Quit still owns the game)."
+  exit 0
+fi
+
+if [ "$DO_MIRROR_ONLY" -eq 1 ]; then
+  ensure_virtual_display || {
+    echo "Headless gamescope $PAD_DISPLAY is not available."
+    exit 1
+  }
+  if ! azahar_running; then
+    echo "Azahar is not running."
+    exit 2
+  fi
+  if ! wait_game_windows; then
+    echo "No Azahar Primary/Secondary windows."
+    exit 2
+  fi
+  SECONDARY_WID="$(find_secondary_wid)"
+  echo "Remirroring Secondary=$SECONDARY_WID onto $PAD_DISPLAY (no Azahar restart)."
+  start_mirror "$SECONDARY_WID"
+  present_primary || true
   exit 0
 fi
 

@@ -325,11 +325,9 @@ start_guide_watch() {
 start_mirror() {
   local wid="$1"
   stop_mirror
+  stop_paint
   place_pad_for_capture "$wid"
   echo "Mirroring GamePad xid $wid from $TV_DISPLAY onto $PAD_DISPLAY (ffplay x11grab)."
-  # Leave the damaging paint running under ffplay. Headless gamescope
-  # suspends its PipeWire source with no consumer; a static ffplay window
-  # then stays connecting/black on video/1. Paint keeps the node emitting.
   # gst ximagesrc MIT-SHM BadMatch on off-screen GL windows and grabs a black
   # pixmap. ffmpeg/ffplay -window_id gets the GamePad drawable while it stays
   # mapped on-screen (under the raised TV).

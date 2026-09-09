@@ -18,6 +18,72 @@ Do not land DS Linux work on LizardByte `master` or Moonlight-stream `master`. T
 - Exactly one `Virtual-sunshine-ds` at 1920×1080, HDMI-A-1 at 0,0. Distrobox `steamos-tools`. `gamepad = x360`.
 - Dual-stream is Plasma/KWin only. Game Mode is gamescope — tear DS down first (`scripts/switch-to-game-mode.sh` / Desktop **Return to Game Mode**).
 
+## Game Mode KMS experiment (isolated)
+
+Do **not** change `sunshine-ds-dev` (`capture = kwin`, `:48100`). The experiment uses a copy of the binary named `sunshine-ds-kms`, config dir `~/.config/sunshine-ds-gamemode`, and HTTP `:48200`. User unit `steamos-sunshine-ds-gamemode.service` is `WantedBy=gamescope-session.target` (restored by `post-update.sh --install-service`). Headless gamescope for video/1: `scripts/sunshine-ds-gamemode-virtual.sh` (not the KWin `sunshine-ds-virtual-output` helper).
+
+```bash
+scripts/ensure-sunshine-ds-gamemode.sh --install-service  # enable boot unit; start if gamescope is up
+scripts/ensure-sunshine-ds-gamemode.sh --probe   # start, print KMS log, stop (unit stays enabled)
+scripts/ensure-sunshine-ds-gamemode.sh --status
+scripts/ensure-sunshine-ds-gamemode.sh --stop    # stop process; unit stays enabled
+```
+
+2026-09-08: Distrobox uid 1000 can open `/dev/dri/card*` (ACL) but **cannot gain `CAP_SYS_ADMIN`** (`CapEff` 0 even with `--privileged` / file caps — user namespace). Host `setcap cap_sys_admin+ep` on `sunshine-ds-kms` is required. File caps set `AT_SECURE`, so `ld.so` **ignores `LD_LIBRARY_PATH`** (`ldd` with that env is not the execute path). Exit 127 `libminiupnpc.so.19` on a `nohup` with `LD_LIBRARY_PATH` is that, not a missing copy. Fix: RUNPATH `$HOME/.local/lib/sunshine-ds-kms` plus staged Fedora sonames. `patchelf --set-rpath` **strips** file caps — re-`setcap` the kms copy only. Never `setcap` `sunshine-ds`. Launch on the **host**, not Distrobox. Dual-stream Game Mode is still a separate problem after KMS enumerates a plane.
+
+`--start` refuses unless `gamescope-session` is up. This worker must not `steamosctl switch-to-game-mode`. After patchelf / a fresh copy:
+
+```bash
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+getcap ~/.local/bin/sunshine-ds-kms
+# no LD_LIBRARY_PATH
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid'
+```
+
+Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Decky `:47989`. If KMS still logs `Probably not permitted` with non-zero `CapEff`, Decky `:47989` may already hold the DRM fb — stop Decky Sunshine for the experiment only, do not uninstall it.
+
+2026-09-09 host start in Game Mode: `getcap` `cap_sys_admin=ep`, pid stayed up, `/serverinfo` `FREE`, `MaxVideoStreams 1`. Log: `Screencasting with KMS`, `Mapped 'HDMI-A-1' to kmsgrab monitor index 0`, `Found monitor for DRM screencasting`, `Found H.264 encoder: libx264 [software]`. `CapPrm` still `0000000000200000` (SYS_ADMIN); `CapEff` 0 is Sunshine dropping caps after init, not the Distrobox failure. `CAP_SYS_NICE` EGL warning is noise. Startup I-frames ~1KB are `dummy_img()` — ignore until a live Moonlight stream.
+
+2026-09-09 Moonlight DS on `:48200` **saw gamescope**: `New streaming session started`, KMS `HDMI-A-1`, software `libx264` at 7.3 Mbps target. Live encode (not dummy): I-frame ~17KB, ~1500 P-frames ~6KB, ~3 Mbps. Disconnect logs `Dropped DRM master` on `card1`; a later session still went `BUSY`. Single-stream Game Mode KMS is proven.
+
+2026-09-09 **duplicate HDMI** as video/1 (`dual_display_source = HDMI-A-1`): `/serverinfo` `MaxVideoStreams 2`. User confirmed both Moonlight surfaces showed the TV. Do **not** set `virtual` here — that spawns `sunshine-ds-virtual-output` for KWin.
+
+2026-09-09 **headless gamescope virtual**: `gamescope --backend headless` (isolated `env -u WAYLAND_DISPLAY -u DISPLAY`) publishes PipeWire `Video/Source` on `gamescope-1` / Xwayland `:2`. Session gamescope has no `zkde_screencast_unstable_v1`. `--smoke` captured a 1920×1080 blue PNG from that node. KMS cannot see the plane. sunshine-ds `dual_display_source = gamescope-virtual` attaches video/1 to the sidecar `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`. Start kms with `WAYLAND_DISPLAY=gamescope-1` (or `gamescope-0`); `wayland-0` does not exist in Game Mode and pwgrab used to die in `get_dmabuf_modifiers` before attaching. Daily Thor/Odin dual-screen stays Plasma `:48100`.
+
+2026-09-09 **Game Mode video/1 pitch black** after pwgrab attached: log `cpu frame type=2` `nonzero=8294400/8294400` (blue MemFd) then video/1 I-frame ~1KB / 0% coded. Encoder started from `dummy_img()` zeros; a static gamescope surface does not send another PipeWire buffer after the software DMA-BUF probe consumed the first. sunshine-ds `pipewire.cpp` must copy the last CPU frame into dummy and re-present it on snapshot timeout. Solid blue can stay a tiny I-frame (`pixel_diffs=0`); the bottom Moonlight surface must not be black. Verify with an ADB screenshot, not I-frame size.
+
+2026-09-09 after `setcap` + `--start` of `f942497b`: two Moonlight connects still encoded video/1 `coded … 0.0%` with **no** `cpu frame type=2`. The helper’s static blue window had already gone silent. `scripts/sunshine-ds-gamemode-virtual.sh --start` now paints a moving yellow square on `:2` so gamescope keeps emitting.
+
+2026-09-09 **user confirmed** Game Mode dual-stream smoke on `:48200`: “I SEE THE SMALL SQUARE MOVING IN A BLUE SCREEN.” Log `cpu frame type=2` `nonzero=8268800/8294400` `pixel_diffs=6400`; video/1 `coded y,uvDC intra: 0.4% 7.9%` (chroma present, not dummy black); HDMI still ~17KB I-frames. Daily Thor/Odin dual-screen stays Plasma `:48100`. Do not merge this experiment into play yet. Next content on video/1 is Cemu GamePad via `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch + `ffplay` `x11grab` onto `:2`), not KWin placement.
+
+## Game Mode Cemu GamePad touch (2026-09-09)
+
+User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `1075C8EF…`). Do not “improve” this mapping unless it breaks. Daily Plasma dual-screen stays `:48100`.
+
+| Client | Layout | GamePad touch |
+|---|---|---|
+| Odin 2 Portal | **Stack both** (Auto) | works |
+| AYN Thor | **dual-panel** | works |
+| Odin 2 Portal | **GamePad only** | works (`be45fc0f`: display 0 / `x-ml-video[0].source=secondary`) |
+
+`checkpoint-2026-09-09-gamemode-cemu-touch` (`1dfeb53c`) is stacked + Thor only — GamePad-only was a no-op there. Prefer **`checkpoint-2026-09-09-gamemode-cemu-touch-v2`**.
+
+| Repo | Branch | Tip | Tag |
+|---|---|---|---|
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `970550cd` | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` plus Azahar Primary/Secondary matchers |
+| This playbook | `cursor/ds-gamemode-kms-f15e` | this tree | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` | `87267c9a` | unchanged (`checkpoint-2026-09-08-device-name`) |
+
+Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`, user unit `steamos-sunshine-ds-gamemode.service` (`WantedBy=gamescope-session.target`, starts as `deck`). Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME (BPM title, else largest `STEAM_GAME=769`). Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto **GamePad View** or Azahar **Secondary Window**, then uinput-clicks at that cursor. Overlay hide restores Cemu TV or Azahar **Primary Window**. Dual-stream/stacked use display 1; GamePad only uses display 0 with `primary_from_secondary`. HDMI/TV taps stay display 0 without that flag.
+
+```bash
+# After overwriting the ELF (clears file caps):
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+```
+
 ## Logical order that got here
 
 ```mermaid

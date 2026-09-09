@@ -9,8 +9,10 @@ a button press.
 Cemu uuid is ``{guid-index}_{guid}`` (SDL2 CRC-16 of the kernel name). Player 0
 is the Wii U GamePad. Each GamePad button maps to **one** physical controller;
 later ``<controller>`` blocks overwrite earlier mappings. This script adds the
-chosen pad and puts the mappings on it (Steam wrap can stay listed with empty
-``<mappings>``). Cemu must restart to pick up a uuid/mapping change.
+chosen pad and puts SteamInput-P1 Wii U GamePad mappings on it (Steam wrap can
+stay listed with empty ``<mappings>``). moonlight.xml Pro-Controller maps are
+replaced — they omit mapping 11 and rotate the left-stick axis splits. Cemu
+must restart to pick up a uuid/mapping change.
 
 Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Button indices come
 from ``scripts/pad_profile.py`` (``GAMESTREAM_PAD_PROFILE``, default x360:
@@ -207,7 +209,91 @@ def _mapping_owner_uuids(root: ET.Element) -> list[str]:
     return owners
 
 
-def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
+# SteamInput-P1 Wii U GamePad (SDL GameController). moonlight.xml is a Wii U
+# Pro profile: it omits mapping 11 and rotates 15–25, so analog 7/8 look
+# fine while hat/axis-splits fight the left stick.
+CANONICAL_CEMU_GAMEPAD = (
+    (1, 1),
+    (2, 0),
+    (3, 3),
+    (4, 2),
+    (5, 9),
+    (6, 10),
+    (7, 42),
+    (8, 43),
+    (9, 6),
+    (10, 4),
+    (11, 11),
+    (12, 12),
+    (13, 13),
+    (14, 14),
+    (15, 7),
+    (16, 8),
+    (17, 45),
+    (18, 39),
+    (19, 44),
+    (20, 38),
+    (21, 47),
+    (22, 41),
+    (23, 46),
+    (24, 40),
+    (25, 8),
+)
+
+
+def _mapping_ids(entries: list[ET.Element]) -> set[str]:
+    return {(entry.findtext("mapping") or "") for entry in entries}
+
+
+def _entries_from_pairs(pairs: tuple[tuple[int, int], ...]) -> list[ET.Element]:
+    out: list[ET.Element] = []
+    for mapping, button in pairs:
+        entry = ET.Element("entry")
+        m = ET.SubElement(entry, "mapping")
+        m.text = str(mapping)
+        b = ET.SubElement(entry, "button")
+        b.text = str(button)
+        out.append(entry)
+    return out
+
+
+def _load_steaminput_p1_mappings(xml_path: Path | None) -> list[ET.Element]:
+    """Copy RetroDECK SteamInput-P1 button maps; never its Steam-virtual uuid."""
+    if xml_path is None:
+        return []
+    p1 = xml_path.parent / "SteamInput-P1.xml"
+    if not p1.is_file():
+        return []
+    try:
+        root = ET.parse(p1).getroot()
+    except ET.ParseError:
+        return []
+    for controller in root.findall("controller"):
+        entries = _controller_entries(controller)
+        ids = _mapping_ids(entries)
+        if "7" in ids and "8" in ids and "11" in ids:
+            return entries
+    return []
+
+
+def _gamepad_mappings(
+    richest: list[ET.Element], xml_path: Path | None = None
+) -> list[ET.Element]:
+    template = _load_steaminput_p1_mappings(xml_path)
+    if template:
+        return template
+    ids = _mapping_ids(richest)
+    if "11" in ids and "7" in ids and "8" in ids:
+        return richest
+    return _entries_from_pairs(CANONICAL_CEMU_GAMEPAD)
+
+
+def patch_cemu_xml(
+    text: str,
+    uuid: str,
+    display_name: str,
+    xml_path: Path | None = None,
+) -> str:
     """Add ``uuid`` to player 0 and attach GamePad mappings to that pad only."""
     root = ET.fromstring(text)
     type_node = root.find("type")
@@ -233,6 +319,11 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
         if "AYN20Thor" in name:
             root.remove(controller)
             continue
+        # Sunshine also injects a mouse (1209:0003). Cemu prepends it as
+        # controller 0 and GamePad sticks go to the mouse (inverted Y, dead X).
+        if "libvirtualhid Mouse" in name:
+            root.remove(controller)
+            continue
         if (controller.findtext("uuid") or "") == uuid:
             target = controller
     remaining = root.findall("controller")
@@ -250,11 +341,22 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
     _set_text(target, "uuid", uuid)
     _set_text(target, "display_name", display_name)
 
+    mappings = _gamepad_mappings(richest, xml_path)
     for controller in root.findall("controller"):
         if controller is target:
-            _set_mappings(controller, richest)
+            _set_mappings(controller, mappings)
         else:
             _set_mappings(controller, [])
+
+    # Player 0 is the first <controller> uuid. Analog sticks follow that
+    # device. Steam wrap must stay listed after Sunshine with empty mappings.
+    ordered = root.findall("controller")
+    for controller in ordered:
+        root.remove(controller)
+    root.append(target)
+    for controller in ordered:
+        if controller is not target:
+            root.append(controller)
 
     ET.indent(root, space="\t")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
@@ -388,16 +490,42 @@ def cmd_cemu(args: argparse.Namespace) -> int:
         print(f"Missing {path}", file=sys.stderr)
         return 1
     pad = _pick_for_cemu(args)
-    if pad is None:
-        return 2
-    uuid = cemu_uuid(pad)
     text = path.read_text()
+    if pad is None:
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return 2
+        kept = None
+        for controller in root.findall("controller"):
+            name = controller.findtext("display_name") or ""
+            if "Sunshine" in name and "Mouse" not in name:
+                kept = controller
+                break
+        if kept is None:
+            return 2
+        uuid = kept.findtext("uuid") or ""
+        name = kept.findtext("display_name") or ""
+        new = patch_cemu_xml(text, uuid, name, path)
+        if new != text:
+            path.write_text(new)
+            print(f"Dropped mouse; kept existing {name} bind (no live pad) in {path}")
+        else:
+            print(f"No live pad; XML already on {name}")
+        return 0
+    uuid = cemu_uuid(pad)
     try:
         owners = _mapping_owner_uuids(ET.fromstring(text))
     except ET.ParseError:
         owners = []
-    new = patch_cemu_xml(text, uuid, pad["name"])
-    if owners == [uuid]:
+    new = patch_cemu_xml(text, uuid, pad["name"], path)
+    first = None
+    try:
+        first = ET.fromstring(text).find("controller")
+    except ET.ParseError:
+        first = None
+    first_uuid = (first.findtext("uuid") if first is not None else "") or ""
+    if owners == [uuid] and first_uuid == uuid and new == text:
         print(f"Cemu player 0 already bound to {uuid} ({pad['name']})")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
@@ -474,6 +602,13 @@ def _self_test() -> int:
 	<type>Wii U GamePad</type>
 	<controller>
 		<api>SDLController</api>
+		<uuid>0_03009ffb091200000300000001000000</uuid>
+		<display_name>libvirtualhid Mouse</display_name>
+		<mappings>
+			</mappings>
+	</controller>
+	<controller>
+		<api>SDLController</api>
 		<uuid>0_030079f6de280000ff11000001000000</uuid>
 		<display_name>Microsoft X-Box 360 pad 0</display_name>
 		<mappings>
@@ -548,7 +683,12 @@ def _self_test() -> int:
         assert thor["cemu_uuid"] in patched
         assert "AYN_Thor" in patched
         assert "AYN20Thor" not in patched
+        assert "libvirtualhid Mouse" not in patched
         assert _mapping_owner_uuids(parsed) == [thor["cemu_uuid"]]
+        first = parsed.find("controller")
+        assert first is not None
+        assert first.findtext("uuid") == thor["cemu_uuid"]
+        assert "AYN_Thor" in (first.findtext("display_name") or "")
         steam = next(
             c
             for c in parsed.findall("controller")
@@ -556,6 +696,77 @@ def _self_test() -> int:
         )
         assert steam.find("mappings") is not None
         assert steam.find("mappings").findall("entry") == []
+        pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in first.find("mappings").findall("entry")
+        }
+        assert ("11", "11") in pairs
+        assert ("7", "42") in pairs
+        assert ("8", "43") in pairs
+        assert ("25", "8") in pairs
+        assert ("15", "7") in pairs
+        moonlight = """<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>SDLController</api>
+		<uuid>0_old</uuid>
+		<display_name>Sunshine (libvirtualhid) Odin2_Portal</display_name>
+		<mappings>
+			<entry><mapping>25</mapping><button>40</button></entry>
+			<entry><mapping>7</mapping><button>42</button></entry>
+			<entry><mapping>8</mapping><button>43</button></entry>
+			<entry><mapping>15</mapping><button>14</button></entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+"""
+        fixed = ET.fromstring(patch_cemu_xml(moonlight, thor["cemu_uuid"], thor["name"]))
+        fixed_pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in fixed.find("controller").find("mappings").findall("entry")
+        }
+        assert ("11", "11") in fixed_pairs
+        assert ("25", "8") in fixed_pairs
+        assert ("15", "7") in fixed_pairs
+        assert ("15", "14") not in fixed_pairs
+        p1_dir = Path(tmp) / "cemu-profiles"
+        p1_dir.mkdir()
+        (p1_dir / "SteamInput-P1.xml").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>SDLController</api>
+		<uuid>0_steamvirtual</uuid>
+		<display_name>Steam Virtual Gamepad</display_name>
+		<mappings>
+			<entry><mapping>7</mapping><button>42</button></entry>
+			<entry><mapping>8</mapping><button>43</button></entry>
+			<entry><mapping>11</mapping><button>99</button></entry>
+			<entry><mapping>15</mapping><button>7</button></entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+"""
+        )
+        from_p1 = ET.fromstring(
+            patch_cemu_xml(
+                moonlight,
+                thor["cemu_uuid"],
+                thor["name"],
+                p1_dir / "controller0.xml",
+            )
+        )
+        p1_first = from_p1.find("controller")
+        p1_pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in p1_first.find("mappings").findall("entry")
+        }
+        assert p1_first.findtext("uuid") == thor["cemu_uuid"]
+        assert "Steam Virtual" not in (p1_first.findtext("display_name") or "")
+        assert ("11", "99") in p1_pairs
+        assert ("11", "11") not in p1_pairs
         assert match_pad(pads, "nope") is None
         # Generic duplicate names must not silently pick the wrong client.
         _write_js(

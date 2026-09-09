@@ -326,6 +326,15 @@ if [ -n "$ds_pid" ]; then
 else
   warn "no sunshine-ds process (pgrep -x sunshine-ds)"
 fi
+ds_plugin="${DECKY_HOMEBREW_DIR:-/home/${STEAMOS_USER:-deck}/homebrew}/plugins/${SUNSHINE_DS_DECKY_PLUGIN:-SunshineDS}/main.py"
+if [ -f "$ds_plugin" ]; then
+  ok "Sunshine DS Decky plugin installed"
+else
+  warn "Sunshine DS Decky plugin missing"
+  record_manual "Install Sunshine DS Decky plugin" <<EOF
+./scripts/ensure-sunshine-ds-decky.sh
+EOF
+fi
 echo
 
 echo "[Cursor Agent]"

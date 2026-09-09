@@ -6,7 +6,7 @@
 #   scripts/ensure-sunshine-ds.sh           # start if down
 #   scripts/ensure-sunshine-ds.sh --status  # print pid/state only
 #   scripts/ensure-sunshine-ds.sh --stop    # stop DS + virtual helper (Game Mode teardown)
-#   scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop + app-launcher icon only
+#   scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop icon + on-desktop oneshot
 #   scripts/ensure-sunshine-ds.sh --restart # idle restart (refuses BUSY)
 #   scripts/ensure-sunshine-ds.sh --restart --force  # restart even if BUSY
 set -uo pipefail
@@ -31,6 +31,10 @@ DS_LOG="${SUNSHINE_DS_LOG:-$ROOT/logs/sunshine-ds.log}"
 HELPER_LOG="${SUNSHINE_DS_HELPER_LOG:-$ROOT/logs/sunshine-ds-virtual-output.log}"
 WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
 UID_NUM="$(id -u)"
+ON_DESKTOP_SERVICE="${SUNSHINE_DS_ON_DESKTOP_SERVICE:-steamos-sunshine-ds-on-desktop.service}"
+ON_DESKTOP_SCRIPT="$ROOT/scripts/sunshine-ds-on-desktop.sh"
+ON_DESKTOP_LOG="${SUNSHINE_DS_ON_DESKTOP_LOG:-$ROOT/logs/sunshine-ds-on-desktop.log}"
+USER_UNIT_DIR="/home/${STEAMOS_USER:-deck}/.config/systemd/user"
 
 DO_RESTART=0
 DO_FORCE=0
@@ -115,6 +119,35 @@ EOF
     gio set "$desktop_file" metadata::trusted true 2>/dev/null || true
   fi
   echo "Installed Game Mode shortcut: $desktop_file"
+  install_on_desktop_unit
+}
+
+install_on_desktop_unit() {
+  local desired unit_path
+  mkdir -p "$USER_UNIT_DIR" "$ROOT/logs"
+  chmod +x "$ON_DESKTOP_SCRIPT" "$ROOT/scripts/switch-to-desktop-ds.sh" \
+    "$ROOT/scripts/sunshine-app-game-mode.sh" "$ROOT/scripts/switch-to-game-mode.sh" 2>/dev/null || true
+  desired="$(cat <<EOS
+[Unit]
+Description=Start proven sunshine-ds after Plasma (armed by Decky)
+After=plasma-plasmashell.service
+
+[Service]
+Type=oneshot
+Nice=5
+TimeoutStartSec=120
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$ON_DESKTOP_SCRIPT
+StandardOutput=append:$ON_DESKTOP_LOG
+StandardError=append:$ON_DESKTOP_LOG
+EOS
+)"
+  unit_path="$USER_UNIT_DIR/$ON_DESKTOP_SERVICE"
+  if [ ! -f "$unit_path" ] || [ "$(cat "$unit_path")" != "$desired" ]; then
+    printf '%s\n' "$desired" >"$unit_path"
+    systemctl --user daemon-reload
+    echo "Updated $ON_DESKTOP_SERVICE (start on demand; not enabled at login)."
+  fi
 }
 
 port_listener_pid() {

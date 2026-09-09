@@ -4,3 +4,4 @@ logs/
 rules_of_the_land.md
 __pycache__/
 *.pyc
+decky/**/node_modules/

@@ -13,6 +13,7 @@ SUNSHINE_DS_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER:-deck}/.config/sunshi
 CEMU_CMD="${STEAMOS_PLAYBOOK_DIR:-$ROOT}/scripts/sunshine-app-cemu.sh"
 AZAHAR_CMD="${STEAMOS_PLAYBOOK_DIR:-$ROOT}/scripts/sunshine-app-azahar.sh"
 STOP_CMD="${STEAMOS_PLAYBOOK_DIR:-$ROOT}/scripts/sunshine-app-stop.sh"
+GAME_MODE_CMD="${STEAMOS_PLAYBOOK_DIR:-$ROOT}/scripts/sunshine-app-game-mode.sh"
 
 if [ ! -f "$APPS_JSON" ]; then
   echo "Missing $APPS_JSON — start sunshine-ds once so it creates apps.json."
@@ -24,13 +25,14 @@ python3 "$ROOT/scripts/pad_profile.py" apply-sunshine-conf "$SUNSHINE_DS_CONF" |
 ICON_DIR="$(dirname "$APPS_JSON")/app-icons"
 mkdir -p "$ICON_DIR"
 
-python3 - "$APPS_JSON" "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/logs" "$ICON_DIR" <<'PY'
+python3 - "$APPS_JSON" "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/logs" "$ICON_DIR" "$GAME_MODE_CMD" <<'PY'
 import json, shutil, struct, sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 cemu_cmd, azahar_cmd, stop_cmd, log_dir = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 icon_dir = Path(sys.argv[6])
+game_mode_cmd = sys.argv[7]
 home = Path.home()
 data = json.loads(path.read_text())
 apps = data.setdefault("apps", [])
@@ -105,6 +107,16 @@ azahar_icon = install_icon("azahar.png", "org.azahar_emu.Azahar.png")
 wanted = {
     "Cemu Dual-Screen": spec("Cemu Dual-Screen", cemu_cmd, "cemu", cemu_icon),
     "Azahar Dual-Screen": spec("Azahar Dual-Screen", azahar_cmd, "azahar", azahar_icon),
+    "Return to Game Mode": {
+        "name": "Return to Game Mode",
+        "cmd": game_mode_cmd,
+        "working-dir": str(Path(game_mode_cmd).parent.parent),
+        "output": str(Path(log_dir) / "sunshine-app-game-mode.log"),
+        "image-path": "desktop.png",
+        "auto-detach": True,
+        "wait-all": False,
+        "exit-timeout": 5,
+    },
 }
 
 changed = False
@@ -127,6 +139,6 @@ if changed:
     path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 
-chmod +x "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$ROOT/scripts/pad_profile.py"
+chmod +x "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$GAME_MODE_CMD" "$ROOT/scripts/pad_profile.py"
 echo "sunshine-ds apps are in $APPS_JSON (Moonlight :48100). Icons: $ICON_DIR. Restart sunshine-ds when the session is idle so Moonlight picks up new box art."
 exit 0

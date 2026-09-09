@@ -333,21 +333,30 @@ start_mirror() {
   # gst ximagesrc MIT-SHM BadMatch on off-screen GL windows and grabs a black
   # pixmap. ffmpeg/ffplay -window_id gets the GamePad drawable while it stays
   # mapped on-screen (under the raised TV).
-  nohup env -u WAYLAND_DISPLAY DISPLAY="$PAD_DISPLAY" ffplay -hide_banner -loglevel warning \
+  # SDL otherwise binds Wayland (session gamescope) and leaves the X11
+  # window UnMapped on :2 — PipeWire then encodes a black root.
+  nohup env -u WAYLAND_DISPLAY \
+    DISPLAY="$PAD_DISPLAY" SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy \
+    ffplay -hide_banner -loglevel warning \
     -fs -noborder -alwaysontop -sn -an \
     -fflags nobuffer -flags low_delay \
     -f x11grab -window_id "$wid" -framerate 30 -draw_mouse 0 -i "${TV_DISPLAY}.0" \
     >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$MIRROR_PIDFILE"
   echo "GamePad mirror pid $!"
-  # Headless gamescope sometimes maps ffplay at 640x480 before -fs applies.
+  # Headless gamescope sometimes maps ffplay at 640x480, or leaves it unmapped.
   local i ff
-  for i in 1 2 3 4 5; do
+  for i in 1 2 3 4 5 6 7 8 9 10; do
     ff="$(DISPLAY="$PAD_DISPLAY" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
     if [ -n "${ff:-}" ]; then
+      DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
       DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
       DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowraise "$ff" 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xdotool windowstate --add FULLSCREEN "$ff" 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xdotool windowstate --add ABOVE "$ff" 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xdotool windowfocus "$ff" windowactivate "$ff" windowraise "$ff" 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$ff" 2>/dev/null || true
+      DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$ff" 2>/dev/null || true
       break
     fi
     sleep 0.2

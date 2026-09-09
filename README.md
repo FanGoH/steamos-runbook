@@ -70,6 +70,10 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
+| `scripts/build-sunshine-ds.sh` | Build FanGoH Sunshine DS in Distrobox (does not replace Decky Sunshine) |
+| `scripts/build-moonlight-ds.sh` | Build Moonlight DS debug APK (`com.fangoh.moonlight.debug`) |
+| `scripts/test-sunshine-ds-desktop.sh` | Desktop dual-display smoke test for sunshine-ds (`:48100`) |
+| `scripts/ensure-kwin-screencast.sh` | Last-resort: reinitialize KWin if desktop screenshots are all black |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
@@ -121,6 +125,12 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 systemctl --user is-active cursor-agent-worker.service
 curl -sf http://127.0.0.1:18789/healthz
 ```
+
+## Sunshine DS / Moonlight DS
+
+Sunshine DS source lives on https://github.com/FanGoH/Sunshine (`sunshine-ds-linux`). The playbook clones/builds/tests only. Production Decky Sunshine on `:47989` stays untouched; the side-by-side binary is `sunshine-ds` on **`:48100`**. Checkpoint SHAs: `.cursor/skills/sunshine-ds-gamestream/reference.md`.
+
+Moonlight DS (https://github.com/FanGoH/moonlight-android `dual-display`) streams both displays. Build with `scripts/build-moonlight-ds.sh` (JDK 17 + Android SDK under `/home`). Pair the client to `HOST:48100`, not `:47989`.
 
 ## Manual checks
 

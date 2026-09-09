@@ -22,7 +22,18 @@ load_env "$ROOT"
 setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+# Game Mode is gamescope-0; Plasma is wayland-0. The KMS start script used to
+# default wayland-0, which does not exist here — pwgrab then died before it
+# attached to the headless gamescope PipeWire node.
+if [ -S "${XDG_RUNTIME_DIR}/gamescope-1" ]; then
+  export WAYLAND_DISPLAY=gamescope-1
+elif [ -S "${XDG_RUNTIME_DIR}/gamescope-0" ]; then
+  export WAYLAND_DISPLAY=gamescope-0
+elif [ -S "${XDG_RUNTIME_DIR}/wayland-0" ]; then
+  export WAYLAND_DISPLAY=wayland-0
+else
+  unset WAYLAND_DISPLAY
+fi
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
 
 BOX_NAME="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
@@ -327,7 +338,7 @@ start_kms() {
     return 2
   fi
   write_kms_conf
-  echo "Starting host sunshine-ds-kms on $KMS_URL (capture=kms, RUNPATH=$KMS_LIB_DIR)."
+  echo "Starting host sunshine-ds-kms on $KMS_URL (capture=kms, RUNPATH=$KMS_LIB_DIR, WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset})."
   mkdir -p "$(dirname "$KMS_LOG")"
   : >"$KMS_LOG"
   # AT_SECURE: do not export LD_LIBRARY_PATH. Unset DISPLAY so KMS is not X11.
@@ -355,7 +366,7 @@ wait_for_kms() {
 
 print_probe_log() {
   echo "----- sunshine-ds-kms log (capture/KMS) -----"
-  grep -E 'KMS|kms|capture|Screencast|monitor|HDMI|Unable to initialize|Probably not permitted|CAP_SYS|Fatal|MaxVideo|shared libraries|not found' "$KMS_LOG" 2>/dev/null | tail -80 || true
+  grep -E 'KMS|kms|capture|Screencast|monitor|HDMI|Unable to initialize|Probably not permitted|CAP_SYS|Fatal|MaxVideo|shared libraries|not found|wayland|pwgrab|PipeWire node|gamescope-virtual' "$KMS_LOG" 2>/dev/null | tail -80 || true
   echo "----- end -----"
 }
 
@@ -409,7 +420,9 @@ if ! wait_for_kms; then
 fi
 
 xml="$(kms_serverinfo)"
-echo "sunshine-ds-kms is up pid $(kms_ds_pid) $KMS_URL ($(kms_state))"
+kms_up="$(kms_ds_pid)"
+kms_now="$(kms_state 2>/dev/null || true)"
+echo "sunshine-ds-kms is up pid ${kms_up} ${KMS_URL} (${kms_now:-DOWN})"
 echo "uniqueid $(sunshine_xml_uniqueid "$xml")"
 echo "MaxVideoStreams $(printf '%s' "$xml" | sed -n 's/.*<MaxVideoStreams>\([^<]*\)<\/MaxVideoStreams>.*/\1/p')"
 print_probe_log

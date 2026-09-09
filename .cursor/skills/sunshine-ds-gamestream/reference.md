@@ -49,7 +49,7 @@ Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Deck
 
 2026-09-09 **duplicate HDMI** as video/1 (`dual_display_source = HDMI-A-1`): `/serverinfo` `MaxVideoStreams 2`. User confirmed both Moonlight surfaces showed the TV. Do **not** set `virtual` here — that spawns `sunshine-ds-virtual-output` for KWin.
 
-2026-09-09 **headless gamescope virtual**: `gamescope --backend headless` (isolated `env -u WAYLAND_DISPLAY -u DISPLAY`) publishes PipeWire `Video/Source` on `gamescope-1` / Xwayland `:2`. Session gamescope has no `zkde_screencast_unstable_v1`. `--smoke` captured a 1920×1080 blue PNG from that node. KMS cannot see the plane. sunshine-ds `dual_display_source = gamescope-virtual` attaches video/1 to the sidecar `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`. Daily Thor/Odin dual-screen stays Plasma `:48100`.
+2026-09-09 **headless gamescope virtual**: `gamescope --backend headless` (isolated `env -u WAYLAND_DISPLAY -u DISPLAY`) publishes PipeWire `Video/Source` on `gamescope-1` / Xwayland `:2`. Session gamescope has no `zkde_screencast_unstable_v1`. `--smoke` captured a 1920×1080 blue PNG from that node. KMS cannot see the plane. sunshine-ds `dual_display_source = gamescope-virtual` attaches video/1 to the sidecar `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`. Start kms with `WAYLAND_DISPLAY=gamescope-1` (or `gamescope-0`); `wayland-0` does not exist in Game Mode and pwgrab used to die in `get_dmabuf_modifiers` before attaching. Daily Thor/Odin dual-screen stays Plasma `:48100`.
 
 ## Logical order that got here
 

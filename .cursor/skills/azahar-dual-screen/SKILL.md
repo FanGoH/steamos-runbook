@@ -47,7 +47,7 @@ If `AZAHAR_ROM` is set and Azahar is not running, the script launches. Example d
 
 ## Game Mode (`:48200`)
 
-Do **not** run the KWin desktop script in Game Mode. Use `scripts/ensure-azahar-gamemode-dual-screen.sh` (standalone Azahar, SteamLaunch, Secondary Window `ffplay` `x11grab` onto `:2`). Default pad is **Odin** (`AZAHAR_PAD_MATCH`). Restart Azahar after a GUID change. Overlay is the Cemu recipe: tag Primary `STEAM_GAME`, focus watcher yields `FOCUSED_APP=769` while `STEAM_OVERLAY=1`. Do **not** start `steam-guide-from-select.py`.
+Do **not** run the KWin desktop script in Game Mode. Use `scripts/ensure-azahar-gamemode-dual-screen.sh` (standalone Azahar, SteamLaunch, Secondary Window `ffplay` `x11grab` onto `:2`). Default pad is **Odin** (`AZAHAR_PAD_MATCH`). Restart Azahar after a GUID change. Overlay is the Cemu recipe: tag Primary `STEAM_GAME`, focus watcher yields `FOCUSED_APP=769` while `STEAM_OVERLAY=1`. sunshine-ds injects GamePad taps onto **Secondary Window** (not Cemu `GamePad View`) and restores **Primary Window** when overlay hides. Do **not** start `steam-guide-from-select.py`.
 
 Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows have no close button; 3DS Home does not quit Azahar. From Moonlight, open the overlay and **Quit game**. That SIGTERMs the app wrapper, which now kills `azahar`. Fallback: `scripts/sunshine-app-stop.sh azahar`. Do not `pkill -f` sunshine. Do not wait for a Sunshine pad before launching.
 

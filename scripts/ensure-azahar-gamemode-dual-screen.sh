@@ -6,6 +6,7 @@
 # Steam overlay: reaper SteamLaunch with the game shortcut AppId, tag the
 # Primary Window STEAM_GAME, and a focus watcher that yields HDMI when
 # STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up.
+# sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail

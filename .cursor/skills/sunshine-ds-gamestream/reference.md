@@ -72,11 +72,11 @@ User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `10
 
 | Repo | Branch | Tip | Tag |
 |---|---|---|---|
-| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `be45fc0f` | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` |
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `970550cd` | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` plus Azahar Primary/Secondary matchers |
 | This playbook | `cursor/ds-gamemode-kms-f15e` | this tree | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` | `87267c9a` | unchanged (`checkpoint-2026-09-08-device-name`) |
 
-Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`, user unit `steamos-sunshine-ds-gamemode.service` (`WantedBy=gamescope-session.target`, starts as `deck`). Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME. Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto GamePad View, then uinput-clicks at that cursor. Dual-stream/stacked use display 1; GamePad only uses display 0 with `primary_from_secondary`. HDMI/TV taps stay display 0 without that flag.
+Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`, user unit `steamos-sunshine-ds-gamemode.service` (`WantedBy=gamescope-session.target`, starts as `deck`). Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME (BPM title, else largest `STEAM_GAME=769`). Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto **GamePad View** or Azahar **Secondary Window**, then uinput-clicks at that cursor. Overlay hide restores Cemu TV or Azahar **Primary Window**. Dual-stream/stacked use display 1; GamePad only uses display 0 with `primary_from_secondary`. HDMI/TV taps stay display 0 without that flag.
 
 ```bash
 # After overwriting the ELF (clears file caps):

@@ -60,6 +60,8 @@ stop_paint() {
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$PAINT_PIDFILE"
+  # Leftover Tk stays mapped after the python pid dies and covers :2.
+  DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
 }
 
 stop_mirror() {
@@ -100,7 +102,9 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
     node.text = val
 set_xy(root, "window_position", 0, 0)
 set_xy(root, "window_size", 1920, 1080)
-set_xy(root, "pad_position", 1920, 0)
+# Off-screen pad (1920,0) cannot be x11grab'd (MIT-SHM BadMatch). Keep it
+# mapped on-screen under the TV; window_id grab still sees GamePad pixels.
+set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
 tree.write(path, encoding="UTF-8", xml_declaration=True)
 print("Wrote RetroDECK Cemu TV/pad geometry in", path)
@@ -146,29 +150,33 @@ wait_pad_wid() {
   return 1
 }
 
-place_pad_offscreen() {
-  local wid="$1"
+place_pad_for_capture() {
+  local wid="$1" tv
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 1920 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  tv="$(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu 2.6' 2>/dev/null | head -1 || true)"
+  if [ -z "${tv:-}" ]; then
+    tv="$(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null | head -1 || true)"
+  fi
+  if [ -n "${tv:-}" ] && [ "$tv" != "$wid" ]; then
+    DISPLAY="$TV_DISPLAY" xdotool windowraise "$tv" 2>/dev/null || true
+  fi
 }
 
 start_mirror() {
-  local wid="$1" sink
+  local wid="$1"
   stop_paint
   stop_mirror
-  place_pad_offscreen "$wid"
-  sink=xvimagesink
-  if ! DISPLAY="$PAD_DISPLAY" gst-inspect-1.0 xvimagesink >/dev/null 2>&1; then
-    sink=ximagesink
-  fi
-  echo "Mirroring GamePad xid $wid from $TV_DISPLAY onto $PAD_DISPLAY ($sink)."
-  # Capture the Cemu GamePad X window (session gamescope) and scan it out on
-  # the headless gamescope so sunshine-ds-kms video/1 shows the real pad.
-  nohup env DISPLAY="$PAD_DISPLAY" gst-launch-1.0 -e \
-    ximagesrc "display-name=$TV_DISPLAY" "xid=$wid" use-damage=false show-pointer=false \
-    ! videoconvert \
-    ! "$sink" force-aspect-ratio=true sync=false \
+  place_pad_for_capture "$wid"
+  echo "Mirroring GamePad xid $wid from $TV_DISPLAY onto $PAD_DISPLAY (ffplay x11grab)."
+  # gst ximagesrc MIT-SHM BadMatch on off-screen GL windows and grabs a black
+  # pixmap. ffmpeg/ffplay -window_id gets the GamePad drawable while it stays
+  # mapped on-screen (under the raised TV).
+  nohup env -u WAYLAND_DISPLAY DISPLAY="$PAD_DISPLAY" ffplay -hide_banner -loglevel warning \
+    -fs -noborder -alwaysontop -sn -an \
+    -fflags nobuffer -flags low_delay \
+    -f x11grab -window_id "$wid" -framerate 30 -draw_mouse 0 -i "${TV_DISPLAY}.0" \
     >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$MIRROR_PIDFILE"
   echo "GamePad mirror pid $!"

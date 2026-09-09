@@ -50,7 +50,7 @@ If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script
 
 ## Game Mode (`:48200`)
 
-One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), parked off-screen at `1920,0`, and `ximagesrc` mirrors that xid onto `:2` (video/1).
+One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), kept mapped on-screen under the raised TV (off-screen `ximagesrc` is MIT-SHM `BadMatch`), and `ffplay -f x11grab -window_id` mirrors that drawable onto `:2` (video/1). Kill leftover `sunshine-ds-kms-virtual` Tk or it covers the mirror. Title screen GamePad often matches TV; unique pad UI is in-game.
 
 ```bash
 # Moonlight already on sunshine-ds-kms :48200. Helper :2 already up.

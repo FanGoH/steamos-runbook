@@ -82,7 +82,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu: SteamLaunch RetroDECK Cemu windowed, mirror GamePad View onto headless `:2` |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu: SteamLaunch RetroDECK Cemu windowed, `ffplay` `x11grab` GamePad View onto headless `:2` |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |

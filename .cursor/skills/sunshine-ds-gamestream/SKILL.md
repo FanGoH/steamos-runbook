@@ -156,7 +156,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
-Game Mode `:48200` is not this path. After the moving-square smoke, run `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, GamePad `ximagesrc` onto headless `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
+Game Mode `:48200` is not this path. After the moving-square smoke, run `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, GamePad `ffplay` `x11grab` onto headless `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
 
 Or run the playbook script from the host; do not hand-edit XML.
 

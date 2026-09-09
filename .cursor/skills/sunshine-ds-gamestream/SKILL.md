@@ -247,3 +247,4 @@ Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and 
 - Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once
 - `export LD_LIBRARY_PATH` to run `sunshine-ds-kms` after `setcap` (AT_SECURE ignores it; use RUNPATH)
 - `setcap` `~/.local/bin/sunshine-ds` (desktop Distrobox path). Game Mode KMS is the `sunshine-ds-kms` copy on `:48200` only
+- Set `dual_display_source = virtual` on `:48200` (KWin helper). Game Mode video/1 is `gamescope-virtual` plus `scripts/sunshine-ds-gamemode-virtual.sh`

@@ -7,9 +7,10 @@
 #   scripts/ensure-sunshine-ds-gamemode.sh --stop
 #   scripts/ensure-sunshine-ds-gamemode.sh --start   # only if gamescope is up
 #
-# Binary is sunshine-ds-kms (copy). Port 48200. No virtual-output helper.
-# Second stream duplicates HDMI-A-1 (same first step as desktop DS).
-# Host launch only: Distrobox user namespaces drop file capabilities (CapEff 0).
+# Binary is sunshine-ds-kms (copy). Port 48200.
+# Second stream: gamescope-virtual (headless gamescope PipeWire) by default.
+# SUNSHINE_DS_KMS_DUAL_SOURCE=HDMI-A-1 duplicates the TV; none is single-stream.
+# Do not set virtual (KWin helper). Host launch only.
 # File caps set AT_SECURE, so ld.so ignores LD_LIBRARY_PATH — RUNPATH + staged
 # Fedora libs under ~/.local/lib/sunshine-ds-kms. Never setcap sunshine-ds.
 set -uo pipefail
@@ -130,6 +131,9 @@ print_status() {
   fi
   echo "desktop sunshine-ds pid: ${desk:-none} (must stay on :48100 / kwin)"
   echo "desktop conf: $DEV_CONF"
+  if [ -x "${KMS_BIN}.new" ]; then
+    echo "staged: ${KMS_BIN}.new ($(getcap "${KMS_BIN}.new" 2>/dev/null || echo 'no cap_sys_admin — sudo setcap then mv over sunshine-ds-kms'))"
+  fi
 }
 
 run_patchelf() {
@@ -212,15 +216,20 @@ ask_kms_setcap() {
 # File capabilities set AT_SECURE: ld.so ignores LD_LIBRARY_PATH.
 # RUNPATH is already $KMS_LIB_DIR. Do not export LD_LIBRARY_PATH.
 # Never setcap ~/.local/bin/sunshine-ds (desktop Distrobox path).
+# If ${KMS_BIN}.new exists (PipeWire video/1 build), cap that copy then replace:
+#   sudo setcap cap_sys_admin+ep ${KMS_BIN}.new
+#   getcap ${KMS_BIN}.new
+#   mv ${KMS_BIN}.new $KMS_BIN
 sudo setcap cap_sys_admin+ep $KMS_BIN
 getcap $KMS_BIN
-# then, in Game Mode (gamescope-session active):
+# Headless gamescope first, then Game Mode KMS (gamescope-session active):
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 cd $ROOT
+./scripts/sunshine-ds-gamemode-virtual.sh --start
 ./scripts/ensure-sunshine-ds-gamemode.sh --start
 # Moonlight: host :48200 (not :48100, not Decky :47989). Pair again if uniqueid is new.
 # curl must stay one line:
-curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid'
+curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid|MaxVideo'
 EOF
 }
 
@@ -259,10 +268,9 @@ port = ${KMS_PORT}
 origin_web_ui_allowed = pc
 capture = kms
 output_name = HDMI-A-1
-# Duplicate the TV onto video/1. Blank defaults to "virtual" (KWin helper);
-# none keeps MaxVideoStreams 1. Same first step as desktop DS before
-# Virtual-sunshine-ds existed. Game Mode has no KWin virtual output yet.
-dual_display_source = HDMI-A-1
+# gamescope-virtual = headless gamescope PipeWire on video/1 (not the KWin helper).
+# HDMI-A-1 duplicates the TV. none keeps MaxVideoStreams 1. virtual is Plasma-only.
+dual_display_source = ${SUNSHINE_DS_KMS_DUAL_SOURCE:-gamescope-virtual}
 encoder = software
 hevc_mode = 1
 av1_mode = 1

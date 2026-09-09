@@ -216,6 +216,10 @@ steam_overlay_active() {
   return 1
 }
 
+focused_app() {
+  DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
+}
+
 set_gamescope_focus() {
   local id="$1" app="$2"
   DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
@@ -241,18 +245,38 @@ present_cemu_tv() {
 }
 
 watch_cemu_focus_loop() {
-  local overlay=0
+  # HDMI reclaim must not fight Steam overlay. Hold-Select pulses Guide on the
+  # Sunshine x360 pad (GDS back_button_timeout=500); Steam then sets
+  # FOCUSED_APP=769. Re-activating Cemu every tick hides that overlay.
+  local overlay=0 steam_ticks=0 app
   while cemu_running; do
+    app="$(focused_app)"
     if steam_overlay_active; then
+      steam_ticks=0
       if [ "$overlay" -eq 0 ]; then
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
         echo "STEAM_OVERLAY=1 — FOCUSED_APP=$STEAM_CLIENT_ID gfx=$APPID"
       fi
       overlay=1
-    else
+    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      # Guide / Exit often lands on 769 before STEAM_OVERLAY=1. Wait ~2s
+      # before treating it as BPM stealing the picture.
+      overlay=1
+      steam_ticks=$((steam_ticks + 1))
+      if [ "$steam_ticks" -ge 6 ]; then
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Cemu TV"
+        present_cemu_tv || true
+        steam_ticks=0
+        overlay=0
+      fi
+    elif [ "$app" != "$APPID" ]; then
+      steam_ticks=0
       overlay=0
       present_cemu_tv || true
+    else
+      steam_ticks=0
+      overlay=0
     fi
     sleep 0.4
   done

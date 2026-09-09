@@ -59,7 +59,7 @@ scripts/ensure-cemu-gamemode-dual-screen.sh
 
 Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the RetroDECK Cemu command with `--env=CEMU_GAMEMODE_DS=1`. Does **not** rewrite `shortcuts.vdf`. Overlay is Steam’s Game Mode overlay (`STEAM_OVERLAY=1` / focused shortcut), not host `LD_PRELOAD` of `gameoverlayrenderer.so` into the Flatpak.
 
-HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`.
+HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`. The focus watcher must **not** reclaim while Steam overlay is up (`STEAM_OVERLAY=1` or `FOCUSED_APP=769` briefly): hold-Select is GDS `back_button_timeout = 500` + `gamepad = x360`, and re-activating Cemu every tick hides Guide.
 
 Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad layout). They are copied onto the named Sunshine pad; the Steam virtual uuid is **not** copied. `moonlight.xml` is a Wii U Pro profile — using it on GamePad type leaves analog 7/8 looking fine while d-pad and axis-splits fight the sticks.
 

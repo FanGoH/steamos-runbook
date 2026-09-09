@@ -286,6 +286,8 @@ encoder = software
 hevc_mode = 1
 av1_mode = 1
 gamepad = x360
+# Hold Back/Select 500ms → Guide on the uinput 360 pad (Steam overlay).
+# Default in sunshine-ds is -1 (disabled). Do not drop this on GDS/kms.
 back_button_timeout = 500
 min_log_level = info
 file_state = ${KMS_DIR}/sunshine/sunshine_state.json

@@ -21,7 +21,7 @@ import sys
 import xml.sax.saxutils
 
 INPUT_ROOT = Path("/sys/class/input")
-SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
+SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef", "1209"}
 
 # SDL2 SDL_crc16 (CRC-16/IBM, poly 0x8005 reflected).
 _CRC16_TABLE = []

@@ -5,6 +5,8 @@
 # Steam overlay: reaper SteamLaunch with the Wind Waker HD shortcut AppId,
 # then the same RetroDECK Cemu command as that tile — with CEMU_GAMEMODE_DS=1
 # so the wrapper does not force -f. Does not rewrite shortcuts.vdf.
+# GamePad stays mapped on-screen under the TV; ffplay x11grab -window_id
+# copies that drawable onto :2. Off-screen ximagesrc is MIT-SHM BadMatch.
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -166,10 +168,12 @@ place_pad_for_capture() {
 
 start_mirror() {
   local wid="$1"
-  stop_paint
   stop_mirror
   place_pad_for_capture "$wid"
   echo "Mirroring GamePad xid $wid from $TV_DISPLAY onto $PAD_DISPLAY (ffplay x11grab)."
+  # Leave the damaging paint running under ffplay. Headless gamescope
+  # suspends its PipeWire source with no consumer; a static ffplay window
+  # then stays connecting/black on video/1. Paint keeps the node emitting.
   # gst ximagesrc MIT-SHM BadMatch on off-screen GL windows and grabs a black
   # pixmap. ffmpeg/ffplay -window_id gets the GamePad drawable while it stays
   # mapped on-screen (under the raised TV).

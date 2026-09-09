@@ -233,6 +233,11 @@ def patch_cemu_xml(text: str, uuid: str, display_name: str) -> str:
         if "AYN20Thor" in name:
             root.remove(controller)
             continue
+        # Sunshine also injects a mouse (1209:0003). Cemu prepends it as
+        # controller 0 and GamePad sticks go to the mouse (inverted Y, dead X).
+        if "libvirtualhid Mouse" in name:
+            root.remove(controller)
+            continue
         if (controller.findtext("uuid") or "") == uuid:
             target = controller
     remaining = root.findall("controller")
@@ -388,10 +393,30 @@ def cmd_cemu(args: argparse.Namespace) -> int:
         print(f"Missing {path}", file=sys.stderr)
         return 1
     pad = _pick_for_cemu(args)
-    if pad is None:
-        return 2
-    uuid = cemu_uuid(pad)
     text = path.read_text()
+    if pad is None:
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return 2
+        kept = None
+        for controller in root.findall("controller"):
+            name = controller.findtext("display_name") or ""
+            if "Sunshine" in name and "Mouse" not in name:
+                kept = controller
+                break
+        if kept is None:
+            return 2
+        uuid = kept.findtext("uuid") or ""
+        name = kept.findtext("display_name") or ""
+        new = patch_cemu_xml(text, uuid, name)
+        if new != text:
+            path.write_text(new)
+            print(f"Dropped mouse; kept existing {name} bind (no live pad) in {path}")
+        else:
+            print(f"No live pad; XML already on {name}")
+        return 0
+    uuid = cemu_uuid(pad)
     try:
         owners = _mapping_owner_uuids(ET.fromstring(text))
     except ET.ParseError:
@@ -474,6 +499,13 @@ def _self_test() -> int:
 	<type>Wii U GamePad</type>
 	<controller>
 		<api>SDLController</api>
+		<uuid>0_03009ffb091200000300000001000000</uuid>
+		<display_name>libvirtualhid Mouse</display_name>
+		<mappings>
+			</mappings>
+	</controller>
+	<controller>
+		<api>SDLController</api>
 		<uuid>0_030079f6de280000ff11000001000000</uuid>
 		<display_name>Microsoft X-Box 360 pad 0</display_name>
 		<mappings>
@@ -548,6 +580,7 @@ def _self_test() -> int:
         assert thor["cemu_uuid"] in patched
         assert "AYN_Thor" in patched
         assert "AYN20Thor" not in patched
+        assert "libvirtualhid Mouse" not in patched
         assert _mapping_owner_uuids(parsed) == [thor["cemu_uuid"]]
         steam = next(
             c

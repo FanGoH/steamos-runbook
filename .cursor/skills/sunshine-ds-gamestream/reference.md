@@ -18,6 +18,20 @@ Do not land DS Linux work on LizardByte `master` or Moonlight-stream `master`. T
 - Exactly one `Virtual-sunshine-ds` at 1920×1080, HDMI-A-1 at 0,0. Distrobox `steamos-tools`. `gamepad = x360`.
 - Dual-stream is Plasma/KWin only. Game Mode is gamescope — tear DS down first (`scripts/switch-to-game-mode.sh` / Desktop **Return to Game Mode**).
 
+## Game Mode KMS experiment (isolated)
+
+Do **not** change `sunshine-ds-dev` (`capture = kwin`, `:48100`). The experiment uses a copy of the binary named `sunshine-ds-kms`, config dir `~/.config/sunshine-ds-gamemode`, and HTTP `:48200`. No virtual-output helper. Not hooked into `post-update.sh`.
+
+```bash
+scripts/ensure-sunshine-ds-gamemode.sh --probe   # start, print KMS log, stop
+scripts/ensure-sunshine-ds-gamemode.sh --status
+scripts/ensure-sunshine-ds-gamemode.sh --stop
+```
+
+2026-09-08 probe on Plasma: Distrobox uid 1000 can open `/dev/dri/card*` (ACL) but **cannot gain `CAP_SYS_ADMIN`**. Log: `Failed to gain CAP_SYS_ADMIN`, empty KMS monitor list, `Unable to initialize capture method`. `podman exec --privileged` does not fix it (user namespace). Decky Sunshine does KMS via host-root setuid bwrap. Desktop `sunshine.conf` hash was unchanged; `:47989` stayed Decky.
+
+`--start` refuses unless `gamescope-session` is up. This worker must not `steamosctl switch-to-game-mode`. Next step if you want to continue: `sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms` (that file only, never `sunshine-ds`) then `--probe` again. Dual-stream Game Mode is still a separate problem after KMS enumerates a plane.
+
 ## Logical order that got here
 
 ```mermaid

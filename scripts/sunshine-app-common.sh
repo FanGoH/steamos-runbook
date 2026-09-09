@@ -67,9 +67,11 @@ wait_for_sunshine_pad() {
 
 wait_while_comm() {
   local matcher="$1"
-  trap 'echo "Moonlight stopped the app; closing matching processes."; stop_matching_comm "$matcher"; trap - INT TERM; exit 0' INT TERM
+  local extra_pid="${2:-}"
+  trap 'echo "Moonlight stopped the app; closing matching processes."; stop_matching_comm "'"$matcher"'"; [ -n "'"$extra_pid"'" ] && kill "'"$extra_pid"'" 2>/dev/null || true; trap - INT TERM; exit 0' INT TERM
   while ps -eo comm= | grep -Eq "$matcher"; do
     sleep 2
   done
   trap - INT TERM
+  [ -n "$extra_pid" ] && kill "$extra_pid" 2>/dev/null || true
 }

@@ -25,7 +25,7 @@ The script:
 
 1. Sets `qt-config.ini`: `layout_option=4` (Separate Windows), `secondary_display_layout=2` (BottomScreenOnly), `fullscreen` false, `singleWindowMode` false, `confirmClose` false, **`screen_bottom_stretch` / `screen_top_stretch` true**. Without stretch, Azahar `MaxRectangle` fits 4:3 / 5:3 by **height** inside 1920×1080 (pillarbox). Cemu GamePad already filled that window; the 3DS bottom must stretch the same way or Thor’s GamePad fill looks like it only filled vertically.
 2. Binds with `python3 scripts/bind-gamepad.py azahar --match "${AZAHAR_PAD_MATCH:-Thor}" --force`. Button indices come from `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default x360 is a **15-button** SDL joystick (reserved C/Z/TL2/TR2), not Steam’s 11-button xpad map. 3DS A/B/X/Y = SDL 0/1/3/4, L/R = 6/7 (LB/RB), Select/Start/Home = 10/11/12, ZL/ZR = LT/RT axes. Mapping L/R to 4/5 on x360 puts Thor shoulders on Start/Select. Restart Azahar after the bind.
-3. KWin-places Primary → HDMI, Secondary → virtual, `noBorder` + `keepAbove`. Minimizes the library window and Steam.
+3. KWin-places Primary → HDMI, Secondary → virtual, `noBorder` + `keepAbove`. Minimizes Steam. Library boot does not create Primary/Secondary until a game is chosen, and those views often appear as ~400×480 / ~400×240 *before* the captions are set — do not minimize untitled small Azahar windows. Keep the library on HDMI until a game view exists, then minimize it. `sunshine-app-azahar.sh` re-places (`--place-only`) until Azahar exits; the first place also watches `windowAdded` / `captionChanged`.
 
 Do not hand-edit `qt-config.ini`. Restart Azahar after a GUID or button-map change. Do not copy RetroDECK’s L=LT / ZL=LB swap onto GameStream.
 
@@ -45,7 +45,7 @@ flatpak run --env=QT_QPA_PLATFORM=xcb org.azahar_emu.Azahar "<3ds>"
 
 If `AZAHAR_ROM` is set and Azahar is not running, the script launches. Example dump: `~/emulation/3ds/games/.../*.3ds`. Do not commit a personal ROM path. Do not inherit Steam’s ignore list. Do not use RetroDECK `-f` / `azahar-launcher`.
 
-Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows have no close button; 3DS Home does not quit Azahar. From Moonlight, open the overlay and **Quit game**. That SIGTERMs the app wrapper, which now kills `azahar`. Fallback: `scripts/sunshine-app-stop.sh azahar`. Do not `pkill -f` sunshine.
+Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows have no close button; 3DS Home does not quit Azahar. From Moonlight, open the overlay and **Quit game**. That SIGTERMs the app wrapper, which now kills `azahar`. Fallback: `scripts/sunshine-app-stop.sh azahar`. Do not `pkill -f` sunshine. The Moonlight wrapper waits at most a few seconds for the Sunshine pad so the library is not delayed 45s; leftovers from a previous session are stopped so Open actually launches.
 
 ## Do not
 

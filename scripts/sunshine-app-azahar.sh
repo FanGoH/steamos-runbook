@@ -17,8 +17,17 @@ export AZAHAR_ALLOW_LIBRARY="${AZAHAR_ALLOW_LIBRARY:-1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 mkdir -p "$ROOT/logs"
 
-if ! wait_for_sunshine_pad Sunshine "${SUNSHINE_APP_PAD_WAIT:-45}"; then
+# Do not block the library on a 45s pad wait — Moonlight then looks like Azahar
+# never opened. Bind from the existing GUID if the pad is late.
+if ! wait_for_sunshine_pad Sunshine "${SUNSHINE_APP_PAD_WAIT:-3}"; then
   echo "No Sunshine pad yet; binding after Azahar starts may still work."
+fi
+
+# A leftover azahar (wrapper gone, process still up) makes ensure skip launch,
+# so Moonlight "open" looks like it did nothing.
+if ps -eo comm= | grep -Eq '^azahar'; then
+  echo "Stopping leftover Azahar so this Moonlight app can boot."
+  stop_matching_comm '^azahar'
 fi
 
 if ! bash "$ROOT/scripts/ensure-azahar-dual-screen.sh"; then
@@ -26,7 +35,18 @@ if ! bash "$ROOT/scripts/ensure-azahar-dual-screen.sh"; then
   exit 1
 fi
 
+# Library boot creates Primary/Secondary only after a game is chosen. Re-place
+# until Azahar exits so those windows fill HDMI + Virtual-sunshine-ds.
+place_watch_pid=""
+(
+  while ps -eo comm= | grep -Eq '^azahar'; do
+    bash "$ROOT/scripts/ensure-azahar-dual-screen.sh" --place-only >/dev/null 2>&1 || true
+    sleep 1
+  done
+) &
+place_watch_pid=$!
+
 echo "Azahar dual-screen is up; waiting until Azahar exits."
-wait_while_comm '^azahar'
+wait_while_comm '^azahar' "$place_watch_pid"
 echo "Azahar exited."
 exit 0

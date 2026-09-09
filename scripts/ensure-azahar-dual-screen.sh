@@ -23,6 +23,11 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 export DISPLAY="${DISPLAY:-:0}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 
+PLACE_ONLY=0
+if [ "${1:-}" = "--place-only" ]; then
+  PLACE_ONLY=1
+fi
+
 azahar_running() {
   ps -eo comm= | grep -qx azahar
 }
@@ -40,6 +45,7 @@ Then re-run: $ROOT/scripts/ensure-azahar-dual-screen.sh
 EOF
 }
 
+if [ "$PLACE_ONLY" -eq 0 ]; then
 python3 - "$AZAHAR_INI" <<'PY'
 import re, sys
 from pathlib import Path
@@ -77,8 +83,9 @@ for key, val in [
 path.write_text(text)
 print("Wrote Azahar separate-windows layout in", path)
 PY
+fi
 
-if [ -f "$AZAHAR_INI" ]; then
+if [ "$PLACE_ONLY" -eq 0 ] && [ -f "$AZAHAR_INI" ]; then
   bind_rc=0
   if ! python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match "$PAD_MATCH" --force; then
     if [ "$PAD_MATCH" != Sunshine ]; then
@@ -95,6 +102,10 @@ if [ -f "$AZAHAR_INI" ]; then
 fi
 
 PLACE_JS="${XDG_RUNTIME_DIR}/place-azahar-dual-screen.js"
+WATCH_JS=""
+if [ "$PLACE_ONLY" -eq 0 ]; then
+  WATCH_JS='workspace.windowAdded.connect(function(w) { if (String(w.resourceClass || "") !== "Azahar") return; placeAll(); try { w.captionChanged.connect(function() { placeAll(); }); } catch (e) {} });'
+fi
 cat >"$PLACE_JS" <<EOF
 function screenGeom(name) {
     for (const s of workspace.screens) {
@@ -105,11 +116,25 @@ function screenGeom(name) {
     }
     return null;
 }
-const tv = screenGeom("${TV_OUTPUT}");
-const pad = screenGeom("${PAD_OUTPUT}");
-if (!tv || !pad) {
-    print("Azahar place: missing ${TV_OUTPUT} or ${PAD_OUTPUT}");
-} else {
+function azaharRole(w) {
+    const cap = String(w.caption || "");
+    if (cap.indexOf("Secondary Window") >= 0) return "secondary";
+    if (cap.indexOf("Primary Window") >= 0) return "primary";
+    const g = w.frameGeometry;
+    if (!g || g.width < 50 || g.height < 50) return "skip";
+    // Game views spawn ~400x480 / 400x240 before Azahar sets those captions.
+    if (g.width <= 900 && g.height <= 700) {
+        return g.height >= 400 ? "primary" : "secondary";
+    }
+    return "library";
+}
+function placeAll() {
+    const tv = screenGeom("${TV_OUTPUT}");
+    const pad = screenGeom("${PAD_OUTPUT}");
+    if (!tv || !pad) {
+        print("Azahar place: missing ${TV_OUTPUT} or ${PAD_OUTPUT}");
+        return;
+    }
     for (const w of workspace.windowList()) {
         const res = String(w.resourceClass || "").toLowerCase();
         const cap = String(w.caption || "").toLowerCase();
@@ -124,31 +149,55 @@ if (!tv || !pad) {
         try { w.output = geom.screen; } catch (e) {}
         try { w.frameGeometry = { x: geom.x, y: geom.y, width: geom.width, height: geom.height }; } catch (e) {}
     }
+    const azahar = [];
+    let hasGame = false;
     for (const w of workspace.windowList()) {
-        const cap = String(w.caption || "");
-        const res = String(w.resourceClass || "");
-        if (res !== "Azahar") continue;
-        if (cap.indexOf("Secondary Window") >= 0) {
-            raiseMove(w, pad);
-        } else if (cap.indexOf("Primary Window") >= 0) {
-            raiseMove(w, tv);
-        } else {
+        if (String(w.resourceClass || "") !== "Azahar") continue;
+        azahar.push(w);
+        const role = azaharRole(w);
+        if (role === "primary" || role === "secondary") hasGame = true;
+    }
+    for (const w of azahar) {
+        const role = azaharRole(w);
+        if (role === "skip") continue;
+        if (role === "secondary") raiseMove(w, pad);
+        else if (role === "primary") raiseMove(w, tv);
+        else if (hasGame) {
             try { w.minimized = true; } catch (e) {}
+        } else {
+            raiseMove(w, tv);
         }
     }
     print("Placed Azahar: top ${TV_OUTPUT} " + tv.x + "," + tv.y + " " + tv.width + "x" + tv.height + "; bottom ${PAD_OUTPUT} " + pad.x + "," + pad.y + " " + pad.width + "x" + pad.height);
 }
+placeAll();
+${WATCH_JS}
 EOF
 
 place_windows() {
-  if busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting loadScript s "$PLACE_JS" >/dev/null &&
+  local plugin
+  if [ "$PLACE_ONLY" -eq 1 ]; then
+    plugin="place-azahar-dual-screen-once"
+  else
+    plugin="place-azahar-dual-screen"
+  fi
+  busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting unloadScript s "$plugin" >/dev/null 2>&1 || true
+  if busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting loadScript ss "$PLACE_JS" "$plugin" >/dev/null &&
      busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting start >/dev/null; then
     echo "Placed Azahar: Primary ${TV_OUTPUT}; Secondary ${PAD_OUTPUT} (geometry from KWin screens)"
+    if [ "$PLACE_ONLY" -eq 1 ]; then
+      busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting unloadScript s "$plugin" >/dev/null 2>&1 || true
+    fi
     return 0
   fi
   echo "Could not load the KWin place script (is this a Plasma session?)."
   return 2
 }
+
+if [ "$PLACE_ONLY" -eq 1 ]; then
+  place_windows || exit 2
+  exit 0
+fi
 
 if ! azahar_running; then
   if [ -z "${AZAHAR_ROM:-}" ] && [ "${AZAHAR_ALLOW_LIBRARY:-}" != 1 ]; then

@@ -65,7 +65,7 @@ User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `10
 |---|---|---|
 | Odin 2 Portal | **Stack both** (Auto) | works |
 | AYN Thor | **dual-panel** | works |
-| Odin 2 Portal | **GamePad only** | no reaction — Moonlight sends display **0** with `x-ml-video[0].source=secondary`; host inject was display **1** only |
+| Odin 2 Portal | **GamePad only** | no reaction at `1dfeb53c` (display 0). Post-checkpoint host commit routes `primary_from_secondary` the same as display 1. |
 
 | Repo | Branch | Tip | Tag |
 |---|---|---|---|

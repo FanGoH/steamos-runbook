@@ -58,20 +58,6 @@ stop_matching_comm() {
   kill -9 "${pids[@]}" 2>/dev/null || true
 }
 
-stop_azahar_picker() {
-  local pid args
-  while read -r pid args; do
-    pid="${pid#"${pid%%[![:space:]]*}"}"
-    [ -n "$pid" ] || continue
-    case "$args" in
-      *azahar-game-picker.py*)
-        echo "Stopping pid $pid (azahar-game-picker)"
-        kill "$pid" 2>/dev/null || true
-        ;;
-    esac
-  done < <(ps -eo pid=,args=)
-}
-
 wait_for_sunshine_pad() {
   local match="${1:-Sunshine}"
   local timeout="${2:-45}"

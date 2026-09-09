@@ -10,17 +10,13 @@ reexec_on_host "$ROOT/scripts/sunshine-app-stop.sh" "$@"
 
 target="${1:-}"
 case "$target" in
-  azahar)
-    stop_matching_comm '^azahar'
-    stop_azahar_picker
-    exit 0
-    ;;
-  cemu)
-    stop_matching_comm '^[Cc]emu'
-    exit 0
-    ;;
+  azahar) matcher='^azahar' ;;
+  cemu) matcher='^[Cc]emu' ;;
   *)
     echo "usage: $0 azahar|cemu" >&2
     exit 2
     ;;
 esac
+
+stop_matching_comm "$matcher"
+exit 0

@@ -116,8 +116,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `CEMU_PAD_MATCH` | Desktop GameStream Cemu pad substring (default `Thor`) |
 | `CEMU_ROM` | Optional standalone Cemu ROM for dual-screen launch (Moonlight **Cemu Dual-Screen** uses the library if unset) |
 | `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`) |
-| `AZAHAR_ROM` | Optional standalone Azahar ROM (skips the HDMI game list) |
-| `AZAHAR_GAMES_DIR` | 3DS dumps for the Moonlight Azahar list (default `~/emulation/3ds/games`) |
+| `AZAHAR_ROM` | Optional standalone Azahar ROM (Moonlight **Azahar Dual-Screen** uses the library if unset) |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 

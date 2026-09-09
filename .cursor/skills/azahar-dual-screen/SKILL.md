@@ -5,7 +5,7 @@ description: Put standalone Azahar in desktop dual-stream layout (3DS top screen
 
 # Azahar dual-screen (desktop GameStream)
 
-Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read. Moonlight app **Azahar Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-azahar.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`). Open shows `scripts/azahar-game-picker.py` on HDMI immediately (dumps under `AZAHAR_GAMES_DIR`, default `~/emulation/3ds/games`) while ini/bind prep runs. A pick launches that ROM; Escape/cancel falls back to the Azahar library. Do not wait 45s for a pad before the list.
+Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read. Moonlight app **Azahar Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-azahar.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`). Open launches the Azahar library immediately — no pad wait, no extra sleep before the window is placed. Optional `.env` `AZAHAR_ROM` boots a dump instead of the library.
 
 This is **not** RetroDECK Azahar (`azahar-launcher`, fullscreen, `layout_option=0`). Dual-stream needs standalone Flatpak `org.azahar_emu.Azahar`, **Separate Windows**, X11/xcb.
 
@@ -45,7 +45,7 @@ flatpak run --env=QT_QPA_PLATFORM=xcb org.azahar_emu.Azahar "<3ds>"
 
 If `AZAHAR_ROM` is set and Azahar is not running, the script launches. Example dump: `~/emulation/3ds/games/.../*.3ds`. Do not commit a personal ROM path. Do not inherit Steam’s ignore list. Do not use RetroDECK `-f` / `azahar-launcher`.
 
-Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows have no close button; 3DS Home does not quit Azahar. From Moonlight, open the overlay and **Quit game**. That SIGTERMs the app wrapper, which now kills `azahar` and the HDMI game list. Fallback: `scripts/sunshine-app-stop.sh azahar`. Do not `pkill -f` sunshine. Do not wait 45s for a pad before showing the list.
+Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows have no close button; 3DS Home does not quit Azahar. From Moonlight, open the overlay and **Quit game**. That SIGTERMs the app wrapper, which now kills `azahar`. Fallback: `scripts/sunshine-app-stop.sh azahar`. Do not `pkill -f` sunshine. Do not wait for a Sunshine pad before launching.
 
 ## Do not
 

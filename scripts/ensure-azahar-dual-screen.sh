@@ -24,9 +24,11 @@ export DISPLAY="${DISPLAY:-:0}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 
 PLACE_ONLY=0
-if [ "${1:-}" = "--place-only" ]; then
-  PLACE_ONLY=1
-fi
+PREP_ONLY=0
+case "${1:-}" in
+  --place-only) PLACE_ONLY=1 ;;
+  --prep-only) PREP_ONLY=1 ;;
+esac
 
 azahar_running() {
   ps -eo comm= | grep -qx azahar
@@ -99,6 +101,11 @@ if [ "$PLACE_ONLY" -eq 0 ] && [ -f "$AZAHAR_INI" ]; then
     echo "Could not bind Azahar. Connected pads:"
     python3 "$ROOT/scripts/bind-gamepad.py" list || true
   fi
+fi
+
+if [ "$PREP_ONLY" -eq 1 ]; then
+  echo "Azahar dual-screen prep done (ini + bind, no launch)."
+  exit 0
 fi
 
 PLACE_JS="${XDG_RUNTIME_DIR}/place-azahar-dual-screen.js"
@@ -233,7 +240,9 @@ if ! azahar_running; then
     print_launch_hint
     exit 2
   fi
-  sleep 6
+  # Game windows appear after boot; sunshine-app-azahar.sh re-places.
+  # Do not sit 6s on a black stream waiting for the library.
+  sleep 0.4
 fi
 
 place_windows || exit 2

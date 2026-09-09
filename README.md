@@ -75,11 +75,13 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
-| `scripts/bind-gamepad.py` | Bind standalone Cemu player 0 to a named pad (`cemu --match Thor`); last-write-wins mappings |
+| `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
+| `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: wait for Sunshine pad, dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: wait for Sunshine pad, dual-screen Azahar, wait until Azahar exits |
+| `scripts/sunshine-app-stop.sh` | Kill leftover Cemu/Azahar after Moonlight Quit game (`azahar` or `cemu`) |
 | `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
@@ -110,6 +112,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `CURSOR_WORKER_MGMT_ADDR` | Worker healthz listen address (default `127.0.0.1:18789`) |
 | `CURSOR_WORKER_DATA_DIR` | Worker data dir (separate from the Cursor app's default lock) |
 | `SWITCH2_CONTROLLERS_DIR` | Checkout of switch2-controllers-linux (default `~/code/switch2-controllers-linux`) |
+| `GAMESTREAM_PAD_PROFILE` | sunshine-ds virtual pad: `x360` (default), later `ds5`/`ds4`/`switch` for gyro |
 | `CEMU_PAD_MATCH` | Desktop GameStream Cemu pad substring (default `Thor`) |
 | `CEMU_ROM` | Optional standalone Cemu ROM for dual-screen launch (Moonlight **Cemu Dual-Screen** uses the library if unset) |
 | `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`) |

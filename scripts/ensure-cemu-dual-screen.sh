@@ -16,6 +16,7 @@ CEMU_CONTROLLER="${CEMU_CONTROLLER:-/home/${STEAMOS_USER}/.var/app/info.cemu.Cem
 TV_OUTPUT="${CEMU_TV_OUTPUT:-HDMI-A-1}"
 PAD_OUTPUT="${CEMU_PAD_OUTPUT:-Virtual-sunshine-ds}"
 PAD_MATCH="${CEMU_PAD_MATCH:-Thor}"
+SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except)"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
@@ -30,7 +31,7 @@ sdl_launch_env() {
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009'
+  export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT"
 }
 
 print_launch_hint() {
@@ -40,7 +41,7 @@ export DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS DISPLAY=:0
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0 SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009'
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='$SDL_EXCEPT'
 flatpak run info.cemu.Cemu -g "<wux>"
 Then re-run: $ROOT/scripts/ensure-cemu-dual-screen.sh
 EOF
@@ -206,7 +207,7 @@ if ! cemu_running; then
     --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 \
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
-    --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009' \
+    --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT" \
     info.cemu.Cemu "${cemu_args[@]}" \
     >>"$ROOT/logs/cemu-dual-screen.log" 2>&1 &
   waited=0

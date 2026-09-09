@@ -12,10 +12,10 @@ later ``<controller>`` blocks overwrite earlier mappings. This script adds the
 chosen pad and puts the mappings on it (Steam wrap can stay listed with empty
 ``<mappings>``). Cemu must restart to pick up a uuid/mapping change.
 
-Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Write the GameStream
-libvirtualhid xbox_360 map (15 SDL buttons: L/R=6/7, Select/Start=10/11).
-Steam xpad 11-button numbering puts Thor shoulders on Start/Select. Restart
-Azahar after a GUID or button-map change.
+Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Button indices come
+from ``scripts/pad_profile.py`` (``GAMESTREAM_PAD_PROFILE``, default x360:
+15 SDL buttons, L/R=6/7, Select/Start=10/11). Steam xpad 11-button numbering
+puts Thor shoulders on Start/Select. Restart Azahar after a GUID or map change.
 
 Examples:
   python3 scripts/bind-gamepad.py list
@@ -36,6 +36,8 @@ import struct
 import sys
 import time
 import xml.etree.ElementTree as ET
+
+from pad_profile import load_profile
 
 INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef", "1209"}
@@ -293,30 +295,8 @@ def azahar_guids(text: str) -> list[str]:
     return re.findall(r"guid:([0-9a-f]{32})", text)
 
 
-# libvirtualhid xbox_360 enables reserved BTN_C/Z/TL2/TR2 so SDL joystick
-# packing is 15 buttons, not Steam's 11-button xpad layout:
-# 0A 1B 2C 3X 4Y 5Z 6LB 7RB 8TL2 9TR2 10Back 11Start 12Guide 13LS 14RS
-# Mapping L/R to 4/5 and Select/Start to 6/7 makes Thor shoulders fire
-# Start/Select. ZL/ZR stay analog LT/RT (axes 2/5). Face labels are Xbox.
-_AZAHAR_X360 = {
-    "button_a": "button:0,engine:sdl,guid:{guid},port:0",
-    "button_b": "button:1,engine:sdl,guid:{guid},port:0",
-    "button_x": "button:3,engine:sdl,guid:{guid},port:0",
-    "button_y": "button:4,engine:sdl,guid:{guid},port:0",
-    "button_l": "button:6,engine:sdl,guid:{guid},port:0",
-    "button_r": "button:7,engine:sdl,guid:{guid},port:0",
-    "button_zl": "axis:2,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
-    "button_zr": "axis:5,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
-    "button_select": "button:10,engine:sdl,guid:{guid},port:0",
-    "button_start": "button:11,engine:sdl,guid:{guid},port:0",
-    "button_home": "button:12,engine:sdl,guid:{guid},port:0",
-    "button_up": "direction:up,engine:sdl,guid:{guid},hat:0,port:0",
-    "button_down": "direction:down,engine:sdl,guid:{guid},hat:0,port:0",
-    "button_left": "direction:left,engine:sdl,guid:{guid},hat:0,port:0",
-    "button_right": "direction:right,engine:sdl,guid:{guid},hat:0,port:0",
-    "circle_pad": "axis_x:0,axis_y:1,deadzone:0.100000,engine:sdl,guid:{guid},port:0",
-    "c_stick": "axis_x:3,axis_y:4,deadzone:0.100000,engine:sdl,guid:{guid},port:0",
-}
+def azahar_map_for_profile(name: str | None = None) -> dict[str, str]:
+    return load_profile(name).azahar_map
 
 
 def _set_ini_line(text: str, key: str, value: str) -> str:
@@ -334,11 +314,11 @@ def _set_ini_line(text: str, key: str, value: str) -> str:
     return text
 
 
-def patch_azahar_ini(text: str, guid: str) -> str:
-    """Bind the Default profile to ``guid`` with the GameStream x360 map."""
+def patch_azahar_ini(text: str, guid: str, profile_name: str | None = None) -> str:
+    """Bind the Default profile to ``guid`` with the active GameStream pad map."""
     if not re.fullmatch(r"[0-9a-f]{32}", guid):
         raise ValueError(f"bad SDL GUID {guid!r}")
-    for name, tmpl in _AZAHAR_X360.items():
+    for name, tmpl in azahar_map_for_profile(profile_name).items():
         key = "profiles\\1\\" + name
         text = _set_ini_line(text, key, '"' + tmpl.format(guid=guid) + '"')
     return text
@@ -454,7 +434,7 @@ def cmd_azahar(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if new == text:
-        print(f"Azahar already bound to {guid} ({name}) with libvirtualhid x360 map")
+        print(f"Azahar already bound to {guid} ({name}) with {load_profile().name} map")
         return 0
     bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
     if not bak.exists():
@@ -622,6 +602,12 @@ def _self_test() -> int:
         assert 'profiles\\1\\button_select="button:10,' in az
         assert 'profiles\\1\\button_start="button:11,' in az
         assert "axis:2,direction:+" in az
+        ds = patch_azahar_ini(ini, thor["guid"], "ds5")
+        assert 'profiles\\1\\button_l="button:4,' in ds
+        assert 'profiles\\1\\button_select="button:6,' in ds
+        from pad_profile import main as pad_profile_main
+
+        assert pad_profile_main(["self-test"]) == 0
     print("bind-gamepad self-test ok")
     return 0
 
@@ -658,6 +644,9 @@ def main(argv: list[str] | None = None) -> int:
     p_azahar.add_argument("--ini", default=str(DEFAULT_AZAHAR_INI))
     p_azahar.add_argument("--force", action="store_true", help="Do not warn if Azahar is running")
     p_azahar.set_defaults(func=cmd_azahar)
+
+    p_profile = sub.add_parser("profile", help="Print the active GAMESTREAM_PAD_PROFILE")
+    p_profile.set_defaults(func=lambda _args: __import__("pad_profile").main(["json"]))
 
     p_test = sub.add_parser("self-test", help="Run offline GUID/XML checks")
     p_test.set_defaults(func=lambda _args: _self_test())

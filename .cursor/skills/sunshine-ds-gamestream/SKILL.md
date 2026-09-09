@@ -177,12 +177,12 @@ Use standalone Flatpak **`info.cemu.Cemu`**. Process `comm` is truncated to `Cem
 Do **not** hand-edit `controller0.xml`. `python3 scripts/bind-gamepad.py cemu --match Thor`.
 
 - `<type>Wii U GamePad</type>` — required for GamePad screen / game input. Pro Controller is the failure mode.
-- Cemu `set_mapping` is last-write-wins. Put mappings **only** on the named Sunshine Xbox pad (`Sunshine (libvirtualhid) AYN_Thor`, `045e:028e`, bus `0005`). Steam wrap `Microsoft X-Box 360 pad N` (`28de:11ff`) may stay listed with **empty** `<mappings>`. Reordering Sunshine first while Steam still has mappings still steals player 0.
+- Cemu `set_mapping` is last-write-wins. Put mappings **only** on the named Sunshine pad (`Sunshine (libvirtualhid) AYN_Thor`). Default profile `x360` is `045e:028e` bus `0005` (`GAMESTREAM_PAD_PROFILE`). Steam wrap `Microsoft X-Box 360 pad N` (`28de:11ff`) may stay listed with **empty** `<mappings>`. Reordering Sunshine first while Steam still has mappings still steals player 0.
 - Do not hardcode generic `X-Box 360 Controller` GUID `0_050017945e0400008e02000014010000`. Drop stale `AYN20Thor`.
 - Game Mode `patch-cemu-input.py` pick order is still physical Xbox → Switch Pro → Steam virtual → Sunshine. Desktop GameStream uses bind-gamepad. Do not bind `libvirtualhid Mouse` (`1209:0003`).
 - Changing uuid/type while Cemu is running does nothing. Stop Cemu, write the file, start again.
 
-sunshine-ds must stay `gamepad = x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`.
+Default `GAMESTREAM_PAD_PROFILE=x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`. Do not flip the profile unless the user wants gyro.
 
 ### Launch
 
@@ -194,7 +194,7 @@ export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus DISPLAY=:0
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0 SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009'
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$(python3 scripts/pad_profile.py sdl-except)"
 # Wind Waker HD often lives at ~/emulation/wiiu/windwakerhd/*.wux
 flatpak run info.cemu.Cemu -g "<wux>"
 ```
@@ -212,13 +212,14 @@ From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-az
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).
 - Caption `Primary Window` → HDMI-A-1 (top screen). `Secondary Window` → Virtual-sunshine-ds (touch). Minimize the library window.
-- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (libvirtualhid 15-button x360 map: L/R = SDL 6/7, Select/Start = 10/11). Restart Azahar after the bind.
+- Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (map from `pad_profile.py`; x360 L/R = SDL 6/7, Select/Start = 10/11). Restart Azahar after the bind.
+- Close: dual-screen windows have no chrome; 3DS Home does not quit Azahar. Moonlight overlay **Quit game**, or `scripts/sunshine-app-stop.sh azahar`.
 - Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).
 - Process `comm` is `azahar`. `resourceClass` is `Azahar`.
 
 ## Gyro / motion (Thor and Odin)
 
-Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). sunshine-ds currently `gamepad = x360`, and libvirtualhid Xbox 360 has **no** motion — logs `has motion sensors, but the selected virtual profile cannot expose them`. DualSense (`ds5`) / DS4 / Switch Pro would expose gyro, but that changes VID/PID and **breaks** the Cemu/Azahar x360 binds and Steam Guide. Do not switch `gamepad` without rebinding. Keep x360 unless the user asks to enable gyro.
+Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion. `ds5` / `ds4` / `switch` can, but they change VID/PID and break Steam Guide plus current Cemu/Azahar binds. To experiment later: set the env var, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, re-bind. Stay on x360 until the user asks.
 
 ## Do not
 

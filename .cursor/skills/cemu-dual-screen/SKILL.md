@@ -5,7 +5,7 @@ description: Put standalone Cemu in desktop dual-stream layout (TV on HDMI-A-1, 
 
 # Cemu dual-screen (desktop GameStream)
 
-Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read.
+Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read. Moonlight app **Cemu Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-cemu.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
 
 This is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`, `-f`). Dual-stream needs standalone Flatpak `info.cemu.Cemu`, windowed, emulated **Wii U GamePad**.
 
@@ -23,12 +23,12 @@ Read live sizes from `kscreen-doctor`. Current Thor checkpoint is HDMI-A-1 **192
 The script:
 
 1. Writes `settings.xml` from live kscreen (`fullscreen` false, `open_pad` true).
-2. Binds player 0 with `python3 scripts/bind-gamepad.py cemu --match "${CEMU_PAD_MATCH:-Thor}" --force` (fallback `--match Sunshine`). Mappings go **only** on the named Sunshine Xbox pad; Steam wrap may stay listed with empty `<mappings>`. Last-write-wins: do not reorder Sunshine first while Steam still has mappings. Drop `AYN20Thor`.
+2. Binds player 0 with `python3 scripts/bind-gamepad.py cemu --match "${CEMU_PAD_MATCH:-Thor}" --force` (fallback `--match Sunshine`). Mappings go **only** on the named Sunshine pad; Steam wrap may stay listed with empty `<mappings>`. Last-write-wins: do not reorder Sunshine first while Steam still has mappings. Drop `AYN20Thor`. Pad type is `GAMESTREAM_PAD_PROFILE` (default x360).
 3. KWin-places GamePad View → virtual output, other `info.cemu.Cemu` → HDMI, `noBorder` + `keepAbove`. Minimizes Steam.
 
 `controller0.xml` type must stay **Wii U GamePad**. Do not hand-edit the XML. Do not hardcode uuid `0_050017945e0400008e02000014010000` or generic `X-Box 360 Controller`. Cemu uuid is `{guid-index}_{sdl2-crc16-of-kernel-name}`. Named pads: `Sunshine (libvirtualhid) AYN_Thor` / `Odin2_Portal`. SDL GameControllerName is still `Xbox 360 Controller`.
 
-Process `comm` is truncated: `Cemu_relwithdeb`. `pgrep -x Cemu_relwithdebinfo` fails.
+Process `comm` is truncated: `Cemu_relwithdeb`. `pgrep -x Cemu_relwithdebinfo` fails. Dual-screen windows have no chrome. Moonlight overlay **Quit game** SIGTERMs the app wrapper, which kills `Cemu_relwithdeb` / `Cemu-wrapper` (`scripts/sunshine-app-stop.sh cemu`). Same path as Azahar.
 
 ## Launch env
 
@@ -40,7 +40,7 @@ export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus DISPLAY=:0
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0 SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009'
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$(python3 scripts/pad_profile.py sdl-except)"
 flatpak run info.cemu.Cemu -g "<wux>"
 ```
 

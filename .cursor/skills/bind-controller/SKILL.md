@@ -1,6 +1,6 @@
 ---
 name: bind-controller
-description: Bind Cemu or Azahar to a host gamepad (Thor, Odin, Sunshine x360, Steam virtual). Use when the user says the controller is not working, asks to change Cemu/Azahar/3DS controllers, switch pads, or bind Thor/Odin/Moonlight input.
+description: Bind Cemu or Azahar to a host gamepad (Thor, Odin, Sunshine pad, Steam virtual). Use when the user says the controller is not working, asks to change Cemu/Azahar/3DS controllers, switch pads, experiment with gyro, or bind Thor/Odin/Moonlight input.
 ---
 
 # Bind controller
@@ -9,16 +9,19 @@ Do **not** hand-edit `controller0.xml`. Run the script.
 
 ```bash
 python3 scripts/bind-gamepad.py list
+python3 scripts/bind-gamepad.py profile
 python3 scripts/bind-gamepad.py cemu --match Thor
 python3 scripts/bind-gamepad.py azahar --match Thor
 # or, if names are still generic:
 python3 scripts/bind-gamepad.py cemu --wait
 ```
 
-Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
-Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`. Write the libvirtualhid xbox_360 map (15 SDL buttons, not Steam xpad 11): A/B/X/Y = 0/1/3/4, L/R = 6/7, Select/Start/Home = 10/11/12, ZL/ZR = LT/RT. Do not use 4/5 for L/R — those are Y/Z on this pad, and 6/7 are the shoulders. Do not copy RetroDECK’s L=LT / ZL=LB swap.
+Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Default **x360**. `ds5`/`ds4`/`switch` enable Thor/Odin gyro but change VID/PID; after a switch, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, then re-bind. Do not switch the profile unless the user asks to experiment with gyro.
 
-Player 0 is the **Wii U GamePad**. Extra `<controller>` nodes are extra devices on that GamePad, not extra players. Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine Xbox pad (`045e:028e`) and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
+Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
+Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`. Maps come from the active pad profile. x360 is a 15-button SDL joystick (not Steam xpad 11): A/B/X/Y = 0/1/3/4, L/R = 6/7, Select/Start/Home = 10/11/12, ZL/ZR = LT/RT. Do not use 4/5 for L/R on x360. Do not copy RetroDECK’s L=LT / ZL=LB swap.
+
+Player 0 is the **Wii U GamePad**. Extra `<controller>` nodes are extra devices on that GamePad, not extra players. Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine pad and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 
 Game Mode RetroDECK Cemu still auto-picks on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine). Use this skill for **desktop / GameStream** binds and any explicit “use the Thor/Odin pad” request. Dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
 

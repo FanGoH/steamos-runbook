@@ -24,6 +24,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 LOG="${ROOT}/logs/cemu-gamemode-ds.log"
 MIRROR_PIDFILE="${ROOT}/logs/cemu-gamemode-pad-mirror.pid"
 FOCUS_PIDFILE="${ROOT}/logs/cemu-gamemode-focus.pid"
+GUIDE_PIDFILE="${ROOT}/logs/cemu-gamemode-guide.pid"
 PAINT_PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE:-$ROOT/logs/sunshine-ds-gamemode-virtual-paint.pid}"
 STEAM_CLIENT_ID=769
 RD_SETTINGS="${CEMU_RD_SETTINGS:-/home/${STEAMOS_USER:-deck}/.var/app/net.retrodeck.retrodeck/config/Cemu/settings.xml}"
@@ -91,6 +92,16 @@ stop_focus_watch() {
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$FOCUS_PIDFILE"
+}
+
+stop_guide_watch() {
+  local pid
+  pid="$(cat "$GUIDE_PIDFILE" 2>/dev/null || true)"
+  if [ -n "${pid:-}" ] && [ -d "/proc/$pid" ]; then
+    echo "Stopping Select-hold Guide pid $pid."
+    kill "$pid" 2>/dev/null || true
+  fi
+  rm -f "$GUIDE_PIDFILE"
 }
 
 write_rd_geometry() {
@@ -204,8 +215,15 @@ find_tv_wid() {
 
 steam_overlay_active() {
   local wid val
-  command -v xdotool >/dev/null 2>&1 || return 1
   command -v xprop >/dev/null 2>&1 || return 1
+  wid="$(DISPLAY="$TV_DISPLAY" xwininfo -root -tree 2>/dev/null | awk '/Steam Big Picture Mode/{print $1; exit}')"
+  if [ -n "${wid:-}" ]; then
+    val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
+    if [ "${val:-0}" = "1" ]; then
+      return 0
+    fi
+  fi
+  command -v xdotool >/dev/null 2>&1 || return 1
   for wid in $(DISPLAY="$TV_DISPLAY" xdotool search --class steam 2>/dev/null || true) \
              $(DISPLAY="$TV_DISPLAY" xdotool search --class steamwebhelper 2>/dev/null || true); do
     val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
@@ -292,6 +310,17 @@ start_focus_watch() {
   echo "Cemu gamescope focus pid $pid"
 }
 
+start_guide_watch() {
+  local pid
+  stop_guide_watch
+  nohup env PYTHONUNBUFFERED=1 python3 "$ROOT/scripts/steam-guide-from-select.py" \
+    --display "$TV_DISPLAY" --appid "$APPID" --hold-ms 500 \
+    >>"$LOG" 2>&1 &
+  pid=$!
+  printf '%s\n' "$pid" >"$GUIDE_PIDFILE"
+  echo "Select-hold Guide pid $pid"
+}
+
 start_mirror() {
   local wid="$1"
   stop_mirror
@@ -327,6 +356,7 @@ start_mirror() {
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
+  stop_guide_watch
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi
@@ -412,5 +442,6 @@ fi
 
 start_mirror "$PAD_WID"
 start_focus_watch
+start_guide_watch
 echo "Game Mode Cemu dual-stream: TV on $TV_DISPLAY (HDMI / video/0), GamePad mirrored to $PAD_DISPLAY (video/1)."
 exit 0

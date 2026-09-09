@@ -57,6 +57,30 @@ Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Deck
 
 2026-09-09 **user confirmed** Game Mode dual-stream smoke on `:48200`: “I SEE THE SMALL SQUARE MOVING IN A BLUE SCREEN.” Log `cpu frame type=2` `nonzero=8268800/8294400` `pixel_diffs=6400`; video/1 `coded y,uvDC intra: 0.4% 7.9%` (chroma present, not dummy black); HDMI still ~17KB I-frames. Daily Thor/Odin dual-screen stays Plasma `:48100`. Do not merge this experiment into play yet. Next content on video/1 is Cemu GamePad via `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch + `ffplay` `x11grab` onto `:2`), not KWin placement.
 
+## Game Mode Cemu GamePad touch (2026-09-09)
+
+User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `1075C8EF…`). Do not “improve” stacked/Thor dual-stream mapping unless this breaks. Daily Plasma dual-screen stays `:48100`.
+
+| Client | Layout | GamePad touch |
+|---|---|---|
+| Odin 2 Portal | **Stack both** (Auto) | works |
+| AYN Thor | **dual-panel** | works |
+| Odin 2 Portal | **GamePad only** | no reaction — Moonlight sends display **0** with `x-ml-video[0].source=secondary`; host inject was display **1** only |
+
+| Repo | Branch | Tip | Tag |
+|---|---|---|---|
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `1dfeb53c` | `checkpoint-2026-09-09-gamemode-cemu-touch` |
+| This playbook | `cursor/ds-gamemode-kms-f15e` | this tree | `checkpoint-2026-09-09-gamemode-cemu-touch` |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` | `87267c9a` | unchanged (`checkpoint-2026-09-08-device-name`) |
+
+Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME. Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto GamePad View, then uinput-clicks at that cursor.
+
+```bash
+# After overwriting the ELF (clears file caps):
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+```
+
 ## Logical order that got here
 
 ```mermaid

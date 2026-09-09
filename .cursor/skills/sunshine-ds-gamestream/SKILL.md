@@ -74,8 +74,9 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 |---|---|
 | Spectacle screenshot all black | KWin FBO wedged. **Last resort:** `qdbus org.kde.KWin /Compositor org.kde.kwin.Compositing.reinitialize`. That can restart `kwin_wayland`, kill the virtual-output helper, and crash Azahar. First: restart PipeWire (user bus, not `sudo systemctl --user`) then DS; respawn **one** helper if it died. Playbook: `scripts/ensure-kwin-screencast.sh`. |
 | Probe I-frame ~1200 bytes / 0% coded | `dummy_img()`, not live capture |
-| Game Mode `:48200` I-frame ~17KB + P ~6KB | Live KMS `HDMI-A-1` (Moonlight DS smoke 2026-09-09) |
-| `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing |
+| Game Mode `:48200` HDMI I-frame ~17KB + P ~6KB | Live KMS `HDMI-A-1` (Moonlight DS smoke 2026-09-09) |
+| Game Mode `:48200` **bottom pitch black**, log `cpu frame type=2` full nonzero, video/1 I-frame ~1KB / 0% coded | Capture has pixels; encoder still has `dummy_img()` zeros. Headless gamescope often emits **one** MemFd then goes silent (static blue / Cemu). Fix is in sunshine-ds `pipewire.cpp`: seed dummy from last CPU frame and re-present it. Solid-color smoke has `pixel_diffs=0` but must not look black. Stage `sunshine-ds-kms.new` + `setcap` + `--start`. |
+| `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing (animated content) |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |
 

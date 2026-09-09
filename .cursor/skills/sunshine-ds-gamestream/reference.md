@@ -51,6 +51,8 @@ Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Deck
 
 2026-09-09 **headless gamescope virtual**: `gamescope --backend headless` (isolated `env -u WAYLAND_DISPLAY -u DISPLAY`) publishes PipeWire `Video/Source` on `gamescope-1` / Xwayland `:2`. Session gamescope has no `zkde_screencast_unstable_v1`. `--smoke` captured a 1920×1080 blue PNG from that node. KMS cannot see the plane. sunshine-ds `dual_display_source = gamescope-virtual` attaches video/1 to the sidecar `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`. Start kms with `WAYLAND_DISPLAY=gamescope-1` (or `gamescope-0`); `wayland-0` does not exist in Game Mode and pwgrab used to die in `get_dmabuf_modifiers` before attaching. Daily Thor/Odin dual-screen stays Plasma `:48100`.
 
+2026-09-09 **Game Mode video/1 pitch black** after pwgrab attached: log `cpu frame type=2` `nonzero=8294400/8294400` (blue MemFd) then video/1 I-frame ~1KB / 0% coded. Encoder started from `dummy_img()` zeros; a static gamescope surface does not send another PipeWire buffer after the software DMA-BUF probe consumed the first. sunshine-ds `pipewire.cpp` must copy the last CPU frame into dummy and re-present it on snapshot timeout. Solid blue can stay a tiny I-frame (`pixel_diffs=0`); the bottom Moonlight surface must not be black. Verify with an ADB screenshot, not I-frame size.
+
 ## Logical order that got here
 
 ```mermaid

@@ -72,7 +72,7 @@ helper_pids() {
 print_status() {
   local pid state xml uid helpers
   pid="$(ds_pid)"
-  state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+  state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   xml="$(sunshine_ds_serverinfo)"
   uid="$(sunshine_xml_uniqueid "$xml")"
   helpers="$(helper_pids | tr '\n' ' ')"
@@ -151,7 +151,7 @@ ensure_helper() {
 
 stop_ds_if_idle() {
   local state pid leftover
-  state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+  state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   pid="$(ds_pid)"
   if [ "$state" = "BUSY" ] && [ "$DO_FORCE" -eq 0 ]; then
     echo "sunshine-ds is BUSY; not restarting a live stream. Pass --force to drop it."
@@ -227,7 +227,7 @@ start_ds() {
 wait_for_ds() {
   local waited=0 state
   while [ "$waited" -lt "$WAIT_SECS" ]; do
-    state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+    state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
     if [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; then
       return 0
     fi
@@ -242,7 +242,7 @@ report_ready() {
   local xml uid decky state pid
   xml="$(sunshine_ds_serverinfo)"
   uid="$(sunshine_xml_uniqueid "$xml")"
-  state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+  state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   pid="$(ds_pid)"
   decky="$(sunshine_xml_uniqueid "$(sunshine_serverinfo)")"
   echo "sunshine-ds is up pid ${pid:-?} $DS_URL ($state)"
@@ -259,7 +259,7 @@ report_ready() {
 
 if [ "$DO_STATUS" -eq 1 ]; then
   print_status
-  state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+  state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   case "$state" in
     FREE|BUSY) exit 0 ;;
     *) exit 2 ;;
@@ -285,7 +285,7 @@ EOF
 fi
 
 if [ "$DO_RESTART" -eq 0 ] && [ -n "$(ds_pid)" ]; then
-  state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+  state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   if [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; then
     echo "sunshine-ds already running."
     ensure_helper || true

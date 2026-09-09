@@ -89,7 +89,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) and copy Cemu/Azahar Flatpak icons |
 | `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
-| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS experiment (`sunshine-ds-kms`, `:48200`). Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS experiment (`sunshine-ds-kms` host + RUNPATH, `:48200`). Not Distrobox. Does not touch `:48100` / `sunshine-ds-dev`. |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |

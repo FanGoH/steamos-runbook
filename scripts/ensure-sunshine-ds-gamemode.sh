@@ -8,6 +8,9 @@
 #   scripts/ensure-sunshine-ds-gamemode.sh --start   # only if gamescope is up
 #
 # Binary is sunshine-ds-kms (copy). Port 48200. No virtual-output helper.
+# Host launch only: Distrobox user namespaces drop file capabilities (CapEff 0).
+# File caps set AT_SECURE, so ld.so ignores LD_LIBRARY_PATH — RUNPATH + staged
+# Fedora libs under ~/.local/lib/sunshine-ds-kms. Never setcap sunshine-ds.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,6 +26,7 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 BOX_NAME="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
 DS_BIN="${SUNSHINE_DS_BIN:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds}"
 KMS_BIN="${SUNSHINE_DS_KMS_BIN:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds-kms}"
+KMS_LIB_DIR="${SUNSHINE_DS_KMS_LIB_DIR:-/home/${STEAMOS_USER:-deck}/.local/lib/sunshine-ds-kms}"
 KMS_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-gamemode}"
 KMS_CONF="$KMS_DIR/sunshine/sunshine.conf"
 DEV_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
@@ -30,7 +34,6 @@ KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
 KMS_URL="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:${KMS_PORT}}"
 KMS_LOG="${SUNSHINE_DS_KMS_LOG:-$ROOT/logs/sunshine-ds-gamemode.log}"
 WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
-UID_NUM="$(id -u)"
 
 DO_STATUS=0
 DO_STOP=0
@@ -103,18 +106,116 @@ kms_state() {
 }
 
 print_status() {
-  local pid state xml uid desk
+  local pid state xml uid desk caps eff
   pid="$(kms_ds_pid)"
   state="$(kms_state 2>/dev/null || true)"; state="${state:-DOWN}"
   xml="$(kms_serverinfo)"
   uid="$(sunshine_xml_uniqueid "$xml")"
   desk="$(desktop_ds_pid)"
+  caps="$(getcap "$KMS_BIN" 2>/dev/null || true)"
   echo "sunshine-ds-kms pid: ${pid:-none}"
   echo "state: $state"
   echo "url: $KMS_URL"
   [ -n "$uid" ] && echo "uniqueid: $uid"
+  echo "getcap: ${caps:-none (need sudo setcap on this copy only)}"
+  if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
+    eff="$(grep -E 'CapPrm|CapEff' "/proc/$pid/status" | tr '\n' ' ')"
+    echo "caps: $eff"
+  fi
   echo "desktop sunshine-ds pid: ${desk:-none} (must stay on :48100 / kwin)"
   echo "desktop conf: $DEV_CONF"
+}
+
+run_patchelf() {
+  if command -v patchelf >/dev/null 2>&1; then
+    patchelf "$@"
+    return $?
+  fi
+  if command -v podman >/dev/null 2>&1; then
+    if ! podman inspect -f '{{.State.Running}}' "$BOX_NAME" 2>/dev/null | grep -qx true; then
+      podman start "$BOX_NAME" >/dev/null || return 1
+    fi
+    podman exec "$BOX_NAME" patchelf "$@"
+    return $?
+  fi
+  echo "patchelf missing (host and Distrobox $BOX_NAME)."
+  return 1
+}
+
+kms_lib_ok() {
+  [ -e "$KMS_LIB_DIR/libminiupnpc.so.19" ] &&
+    [ -e "$KMS_LIB_DIR/libicudata.so.76" ] &&
+    [ -e "$KMS_LIB_DIR/libicui18n.so.76" ] &&
+    [ -e "$KMS_LIB_DIR/libicuuc.so.76" ]
+}
+
+ensure_kms_libs() {
+  local src dest soname
+  mkdir -p "$KMS_LIB_DIR"
+  if kms_lib_ok; then
+    return 0
+  fi
+  if ! command -v podman >/dev/null 2>&1; then
+    echo "Missing Fedora libs in $KMS_LIB_DIR and podman is not available to copy them."
+    return 1
+  fi
+  if ! podman inspect -f '{{.State.Running}}' "$BOX_NAME" 2>/dev/null | grep -qx true; then
+    echo "Starting Distrobox $BOX_NAME to copy sunshine-ds-kms libs."
+    podman start "$BOX_NAME" >/dev/null || return 1
+  fi
+  echo "Copying Fedora sonames into $KMS_LIB_DIR (host SteamOS lacks libminiupnpc.so.19)."
+  for soname in libminiupnpc.so.19 libicudata.so.76 libicui18n.so.76 libicuuc.so.76; do
+    if [ -e "$KMS_LIB_DIR/$soname" ]; then
+      continue
+    fi
+    src="$(podman exec "$BOX_NAME" bash -lc "readlink -f /usr/lib64/$soname 2>/dev/null || readlink -f /usr/lib/$soname")"
+    if [ -z "$src" ]; then
+      echo "Distrobox $BOX_NAME has no $soname"
+      return 1
+    fi
+    dest="$KMS_LIB_DIR/$(basename "$src")"
+    podman cp "$BOX_NAME:$src" "$dest" || return 1
+    chmod 0755 "$dest"
+    ln -sfn "$(basename "$dest")" "$KMS_LIB_DIR/$soname"
+  done
+  kms_lib_ok
+}
+
+kms_rpath() {
+  readelf -d "$KMS_BIN" 2>/dev/null | awk '/RPATH|RUNPATH/ {gsub(/[\[\]]/, "", $NF); print $NF; exit}'
+}
+
+ensure_kms_rpath() {
+  local current
+  current="$(kms_rpath)"
+  if [ "$current" = "$KMS_LIB_DIR" ]; then
+    return 0
+  fi
+  echo "Setting RUNPATH $KMS_LIB_DIR on $KMS_BIN (file caps ignore LD_LIBRARY_PATH)."
+  run_patchelf --set-rpath "$KMS_LIB_DIR" "$KMS_BIN" || return 1
+  echo "patchelf rewrote the ELF; re-apply setcap on this copy only."
+  return 0
+}
+
+kms_has_sys_admin() {
+  getcap "$KMS_BIN" 2>/dev/null | grep -q 'cap_sys_admin'
+}
+
+ask_kms_setcap() {
+  record_manual "setcap sunshine-ds-kms (Game Mode KMS copy only)" <<EOF
+# File capabilities set AT_SECURE: ld.so ignores LD_LIBRARY_PATH.
+# RUNPATH is already $KMS_LIB_DIR. Do not export LD_LIBRARY_PATH.
+# Never setcap ~/.local/bin/sunshine-ds (desktop Distrobox path).
+sudo setcap cap_sys_admin+ep $KMS_BIN
+getcap $KMS_BIN
+# then, in Game Mode (gamescope-session active):
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+cd $ROOT
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+# Moonlight: host :48200 (not :48100, not Decky :47989). Pair again if uniqueid is new.
+# curl must stay one line:
+curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid'
+EOF
 }
 
 ensure_kms_binary() {
@@ -127,6 +228,8 @@ ensure_kms_binary() {
     cp -a "$DS_BIN" "$KMS_BIN"
     chmod 0755 "$KMS_BIN"
   fi
+  ensure_kms_libs || return 1
+  ensure_kms_rpath || return 1
   return 0
 }
 
@@ -202,21 +305,22 @@ start_kms() {
     echo "Missing $KMS_BIN"
     return 1
   fi
-  if ! command -v podman >/dev/null 2>&1; then
-    echo "podman missing."
-    return 1
-  fi
-  if ! podman inspect -f '{{.State.Running}}' "$BOX_NAME" 2>/dev/null | grep -qx true; then
-    echo "Starting Distrobox $BOX_NAME."
-    podman start "$BOX_NAME" >/dev/null || return 1
+  if ! kms_has_sys_admin; then
+    echo "Host $KMS_BIN has no cap_sys_admin (patchelf strips it; Distrobox user ns never has it)."
+    ask_kms_setcap
+    return 2
   fi
   write_kms_conf
-  echo "Starting sunshine-ds-kms in Distrobox $BOX_NAME on $KMS_URL (capture=kms, privileged exec for CAP_SYS_ADMIN)."
+  echo "Starting host sunshine-ds-kms on $KMS_URL (capture=kms, RUNPATH=$KMS_LIB_DIR)."
+  mkdir -p "$(dirname "$KMS_LOG")"
   : >"$KMS_LOG"
-  # --privileged is only this exec, not the desktop kwin sunshine-ds path.
-  # Distrobox uid 1000 can open /dev/dri (ACL) but has no CAP_SYS_ADMIN otherwise.
-  podman exec --privileged --user "$UID_NUM" -d "$BOX_NAME" bash -lc \
-    "export XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS PIPEWIRE_RUNTIME_DIR=$XDG_RUNTIME_DIR CONFIGURATION_DIRECTORY=$KMS_DIR HOME=/home/${STEAMOS_USER:-deck}; unset DISPLAY; exec $KMS_BIN $KMS_CONF >> $KMS_LOG 2>&1"
+  # AT_SECURE: do not export LD_LIBRARY_PATH. Unset DISPLAY so KMS is not X11.
+  export PIPEWIRE_RUNTIME_DIR="${PIPEWIRE_RUNTIME_DIR:-$XDG_RUNTIME_DIR}"
+  export CONFIGURATION_DIRECTORY="$KMS_DIR"
+  unset DISPLAY
+  unset LD_LIBRARY_PATH
+  nohup "$KMS_BIN" "$KMS_CONF" >>"$KMS_LOG" 2>&1 &
+  disown || true
 }
 
 wait_for_kms() {
@@ -235,7 +339,7 @@ wait_for_kms() {
 
 print_probe_log() {
   echo "----- sunshine-ds-kms log (capture/KMS) -----"
-  grep -E 'KMS|kms|capture|Screencast|monitor|HDMI|Unable to initialize|Probably not permitted|CAP_SYS|Fatal|MaxVideo' "$KMS_LOG" 2>/dev/null | tail -80 || true
+  grep -E 'KMS|kms|capture|Screencast|monitor|HDMI|Unable to initialize|Probably not permitted|CAP_SYS|Fatal|MaxVideo|shared libraries|not found' "$KMS_LOG" 2>/dev/null | tail -80 || true
   echo "----- end -----"
 }
 

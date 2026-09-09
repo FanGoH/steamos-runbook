@@ -244,3 +244,5 @@ Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and 
 - `pgrep -f` / `pkill -f` sunshine, or `pgrep -f` a command that contains `sunshine-ds-virtual-output`
 - Rebuild sunshine-ds to “fix” Odin “Starting connection” (that was Moonlight STACKED never binding the in-layout second surface)
 - Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once
+- `export LD_LIBRARY_PATH` to run `sunshine-ds-kms` after `setcap` (AT_SECURE ignores it; use RUNPATH)
+- `setcap` `~/.local/bin/sunshine-ds` (desktop Distrobox path). Game Mode KMS is the `sunshine-ds-kms` copy on `:48200` only

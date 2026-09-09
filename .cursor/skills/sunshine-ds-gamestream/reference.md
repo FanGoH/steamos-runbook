@@ -28,9 +28,20 @@ scripts/ensure-sunshine-ds-gamemode.sh --status
 scripts/ensure-sunshine-ds-gamemode.sh --stop
 ```
 
-2026-09-08 probe on Plasma: Distrobox uid 1000 can open `/dev/dri/card*` (ACL) but **cannot gain `CAP_SYS_ADMIN`**. Log: `Failed to gain CAP_SYS_ADMIN`, empty KMS monitor list, `Unable to initialize capture method`. `podman exec --privileged` does not fix it (user namespace). Decky Sunshine does KMS via host-root setuid bwrap. Desktop `sunshine.conf` hash was unchanged; `:47989` stayed Decky.
+2026-09-08: Distrobox uid 1000 can open `/dev/dri/card*` (ACL) but **cannot gain `CAP_SYS_ADMIN`** (`CapEff` 0 even with `--privileged` / file caps — user namespace). Host `setcap cap_sys_admin+ep` on `sunshine-ds-kms` is required. File caps set `AT_SECURE`, so `ld.so` **ignores `LD_LIBRARY_PATH`** (`ldd` with that env is not the execute path). Exit 127 `libminiupnpc.so.19` on a `nohup` with `LD_LIBRARY_PATH` is that, not a missing copy. Fix: RUNPATH `$HOME/.local/lib/sunshine-ds-kms` plus staged Fedora sonames. `patchelf --set-rpath` **strips** file caps — re-`setcap` the kms copy only. Never `setcap` `sunshine-ds`. Launch on the **host**, not Distrobox. Dual-stream Game Mode is still a separate problem after KMS enumerates a plane.
 
-`--start` refuses unless `gamescope-session` is up. This worker must not `steamosctl switch-to-game-mode`. Next step if you want to continue: `sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms` (that file only, never `sunshine-ds`) then `--probe` again. Dual-stream Game Mode is still a separate problem after KMS enumerates a plane.
+`--start` refuses unless `gamescope-session` is up. This worker must not `steamosctl switch-to-game-mode`. After patchelf / a fresh copy:
+
+```bash
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+getcap ~/.local/bin/sunshine-ds-kms
+# no LD_LIBRARY_PATH
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid'
+```
+
+Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Decky `:47989`. If KMS still logs `Probably not permitted` with non-zero `CapEff`, Decky `:47989` may already hold the DRM fb — stop Decky Sunshine for the experiment only, do not uninstall it.
 
 ## Logical order that got here
 

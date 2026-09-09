@@ -116,13 +116,12 @@ libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam
 ## Restart sunshine-ds
 
 ```bash
-pgrep -x sunshine-ds   # never pgrep -f / pkill -f
-kill $(pgrep -x sunshine-ds)
-# if :48100 still held, kill leftover helper PIDs from ss -ltnp; keep the long-lived virtual-output helper
-podman exec --user 1000 -d steamos-tools bash -lc 'export XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus PIPEWIRE_RUNTIME_DIR=/run/user/1000 CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev HOME=/home/deck KWIN_WAYLAND_NO_PERMISSION_CHECKS=1; unset DISPLAY; exec /home/deck/.local/bin/sunshine-ds /home/deck/.config/sunshine-ds-dev/sunshine/sunshine.conf >> /home/deck/steamos-playbook/logs/sunshine-ds.log 2>&1'
+scripts/ensure-sunshine-ds.sh            # start Distrobox + one helper + DS if down
+scripts/ensure-sunshine-ds.sh --status
+scripts/ensure-sunshine-ds.sh --restart  # idle only; refuses BUSY unless --force
 ```
 
-Wait until `:48100` `/serverinfo` is `SUNSHINE_SERVER_FREE` with the **dev** uniqueid. Confirm `:48100` is owned by sunshine-ds, not a helper.
+Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`.
 
 ```bash
 podman exec --user 1000 steamos-tools ninja -C /home/deck/code/sunshine-ds/build -j2 sunshine

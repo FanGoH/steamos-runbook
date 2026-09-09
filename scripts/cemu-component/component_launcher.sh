@@ -19,27 +19,51 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"
 patcher="$here/patch-cemu-input.py"
-if [ -f "$ini" ] && [ -f "$patcher" ]; then
+# Game Mode dual-stream already bound the Sunshine pad as Wii U GamePad.
+# The Eden pick order prefers Steam virtual 28de:11ff and would undo that.
+if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -f "$ini" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$ini" || true
 fi
 
 settings="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/settings.xml"
 if [ -f "$settings" ]; then
-  sed -i \
-    -e 's|<fullscreen>false</fullscreen>|<fullscreen>true</fullscreen>|' \
-    -e 's|<fullscreen_menubar>true</fullscreen_menubar>|<fullscreen_menubar>false</fullscreen_menubar>|' \
-    "$settings"
+  if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
+    # Game Mode dual-stream: TV window on session gamescope, GamePad View mapped
+    # so it can be mirrored to headless DISPLAY=:2. Do not force -f.
+    sed -i \
+      -e 's|<fullscreen>true</fullscreen>|<fullscreen>false</fullscreen>|' \
+      -e 's|<open_pad>false</open_pad>|<open_pad>true</open_pad>|' \
+      -e 's|<fullscreen_menubar>true</fullscreen_menubar>|<fullscreen_menubar>false</fullscreen_menubar>|' \
+      "$settings"
+  else
+    sed -i \
+      -e 's|<fullscreen>false</fullscreen>|<fullscreen>true</fullscreen>|' \
+      -e 's|<open_pad>true</open_pad>|<open_pad>false</open_pad>|' \
+      -e 's|<fullscreen_menubar>true</fullscreen_menubar>|<fullscreen_menubar>false</fullscreen_menubar>|' \
+      "$settings"
+  fi
 fi
 
 args=("$@")
-has_fs=0
-for arg in "${args[@]+"${args[@]}"}"; do
-  case "$arg" in
-    -f|--fullscreen) has_fs=1 ;;
-  esac
-done
-if [ "$has_fs" -eq 0 ]; then
-  args+=("-f")
+if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
+  stripped=()
+  for arg in "${args[@]+"${args[@]}"}"; do
+    case "$arg" in
+      -f|--fullscreen) continue ;;
+    esac
+    stripped+=("$arg")
+  done
+  args=("${stripped[@]+"${stripped[@]}"}")
+else
+  has_fs=0
+  for arg in "${args[@]+"${args[@]}"}"; do
+    case "$arg" in
+      -f|--fullscreen) has_fs=1 ;;
+    esac
+  done
+  if [ "$has_fs" -eq 0 ]; then
+    args+=("-f")
+  fi
 fi
 
 exec /app/retrodeck/components/cemu/component_launcher.sh "${args[@]}"

@@ -7,7 +7,7 @@ description: Put standalone Cemu in desktop dual-stream layout (TV on HDMI-A-1, 
 
 Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read. Moonlight app **Cemu Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-cemu.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
 
-This is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`, `-f`). Dual-stream needs standalone Flatpak `info.cemu.Cemu`, windowed, emulated **Wii U GamePad**.
+Desktop dual-stream is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`, `-f`). Plasma needs standalone Flatpak `info.cemu.Cemu`, windowed, emulated **Wii U GamePad**. Game Mode `:48200` uses `scripts/ensure-cemu-gamemode-dual-screen.sh` instead — do **not** run this desktop script there (`kscreen-doctor` / KWin fail).
 
 ## Desired layout
 
@@ -48,10 +48,24 @@ ROM path is the user’s; Wind Waker HD often lives under `~/emulation/wiiu/wind
 
 If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script.
 
+## Game Mode (`:48200`)
+
+One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), parked off-screen at `1920,0`, and `ximagesrc` mirrors that xid onto `:2` (video/1).
+
+```bash
+# Moonlight already on sunshine-ds-kms :48200. Helper :2 already up.
+scripts/ensure-cemu-gamemode-dual-screen.sh
+```
+
+Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the RetroDECK Cemu command with `--env=CEMU_GAMEMODE_DS=1`. Does **not** rewrite `shortcuts.vdf`. Overlay is Steam’s Game Mode overlay (`STEAM_OVERLAY=1` / focused shortcut), not host `LD_PRELOAD` of `gameoverlayrenderer.so` into the Flatpak.
+
+`--stop` kills only the pad mirror. Steam Exit / Moonlight Quit still owns Cemu.
+
 ## Do not
 
-- RetroDECK `-f` / fullscreen
+- RetroDECK `-f` / fullscreen on desktop dual-stream, or on Game Mode dual-stream
 - Wii U Pro Controller when the second stream should be GamePad
 - Hand-edit `controller0.xml` or copy mappings onto every `<controller>`
 - Resize/kill the virtual-output helper to “match” a client while another session is live
+- Run `ensure-cemu-dual-screen.sh` in Game Mode (KWin)
 - `sudo systemctl --user`, `kwin_wayland --replace`, `POST /api/restart`

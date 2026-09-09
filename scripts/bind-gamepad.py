@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""List host joysticks and bind Cemu player 0 to a chosen pad.
+"""List host joysticks and bind Cemu/Azahar to a chosen pad.
 
-Sunshine x360 pads used to share one name/GUID, so Cemu could not target Thor
-vs Odin. After sunshine-ds names pads ``Sunshine (libvirtualhid) <client>``,
+Sunshine x360 pads used to share one name/GUID, so emulators could not target
+Thor vs Odin. After sunshine-ds names pads ``Sunshine (libvirtualhid) <client>``,
 match on Thor / Odin / the device name. ``wait`` binds whichever pad receives
 a button press.
 
@@ -12,11 +12,16 @@ later ``<controller>`` blocks overwrite earlier mappings. This script adds the
 chosen pad and puts the mappings on it (Steam wrap can stay listed with empty
 ``<mappings>``). Cemu must restart to pick up a uuid/mapping change.
 
+Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Write the GameStream
+libvirtualhid xbox_360 map (15 SDL buttons: L/R=6/7, Select/Start=10/11).
+Steam xpad 11-button numbering puts Thor shoulders on Start/Select. Restart
+Azahar after a GUID or button-map change.
+
 Examples:
   python3 scripts/bind-gamepad.py list
   python3 scripts/bind-gamepad.py wait
   python3 scripts/bind-gamepad.py cemu --match Thor
-  python3 scripts/bind-gamepad.py cemu --wait
+  python3 scripts/bind-gamepad.py azahar --match Thor
 """
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import select
 import struct
 import sys
@@ -35,6 +41,9 @@ INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef", "1209"}
 EV_KEY = 1
 DEFAULT_CEMU_XML = Path.home() / ".var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml"
+DEFAULT_AZAHAR_INI = (
+    Path.home() / ".var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini"
+)
 
 _CRC16_TABLE = []
 for _i in range(256):
@@ -266,6 +275,75 @@ def cemu_running() -> bool:
     return any(is_cemu_comm(line) for line in out.splitlines())
 
 
+def is_azahar_comm(comm: str) -> bool:
+    return comm.strip() == "azahar"
+
+
+def azahar_running() -> bool:
+    try:
+        import subprocess
+
+        out = subprocess.check_output(["ps", "-eo", "comm="], text=True)
+    except OSError:
+        return False
+    return any(is_azahar_comm(line) for line in out.splitlines())
+
+
+def azahar_guids(text: str) -> list[str]:
+    return re.findall(r"guid:([0-9a-f]{32})", text)
+
+
+# libvirtualhid xbox_360 enables reserved BTN_C/Z/TL2/TR2 so SDL joystick
+# packing is 15 buttons, not Steam's 11-button xpad layout:
+# 0A 1B 2C 3X 4Y 5Z 6LB 7RB 8TL2 9TR2 10Back 11Start 12Guide 13LS 14RS
+# Mapping L/R to 4/5 and Select/Start to 6/7 makes Thor shoulders fire
+# Start/Select. ZL/ZR stay analog LT/RT (axes 2/5). Face labels are Xbox.
+_AZAHAR_X360 = {
+    "button_a": "button:0,engine:sdl,guid:{guid},port:0",
+    "button_b": "button:1,engine:sdl,guid:{guid},port:0",
+    "button_x": "button:3,engine:sdl,guid:{guid},port:0",
+    "button_y": "button:4,engine:sdl,guid:{guid},port:0",
+    "button_l": "button:6,engine:sdl,guid:{guid},port:0",
+    "button_r": "button:7,engine:sdl,guid:{guid},port:0",
+    "button_zl": "axis:2,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
+    "button_zr": "axis:5,direction:+,engine:sdl,guid:{guid},port:0,threshold:0.5",
+    "button_select": "button:10,engine:sdl,guid:{guid},port:0",
+    "button_start": "button:11,engine:sdl,guid:{guid},port:0",
+    "button_home": "button:12,engine:sdl,guid:{guid},port:0",
+    "button_up": "direction:up,engine:sdl,guid:{guid},hat:0,port:0",
+    "button_down": "direction:down,engine:sdl,guid:{guid},hat:0,port:0",
+    "button_left": "direction:left,engine:sdl,guid:{guid},hat:0,port:0",
+    "button_right": "direction:right,engine:sdl,guid:{guid},hat:0,port:0",
+    "circle_pad": "axis_x:0,axis_y:1,deadzone:0.100000,engine:sdl,guid:{guid},port:0",
+    "c_stick": "axis_x:3,axis_y:4,deadzone:0.100000,engine:sdl,guid:{guid},port:0",
+}
+
+
+def _set_ini_line(text: str, key: str, value: str) -> str:
+    line = f"{key}={value}"
+    pat = re.compile(r"^" + re.escape(key) + r"=.*$", re.M)
+    if pat.search(text):
+        text = pat.sub(lambda _m: line, text, count=1)
+    else:
+        text += f"\n{line}\n"
+    dkey = key + "\\default"
+    dpat = re.compile(r"^" + re.escape(dkey) + r"=.*$", re.M)
+    drepl = dkey + "=false"
+    if dpat.search(text):
+        text = dpat.sub(lambda _m: drepl, text, count=1)
+    return text
+
+
+def patch_azahar_ini(text: str, guid: str) -> str:
+    """Bind the Default profile to ``guid`` with the GameStream x360 map."""
+    if not re.fullmatch(r"[0-9a-f]{32}", guid):
+        raise ValueError(f"bad SDL GUID {guid!r}")
+    for name, tmpl in _AZAHAR_X360.items():
+        key = "profiles\\1\\" + name
+        text = _set_ini_line(text, key, '"' + tmpl.format(guid=guid) + '"')
+    return text
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     pads = list_joysticks(Path(args.sysfs))
     json.dump({"pads": pads}, sys.stdout, indent=2)
@@ -328,6 +406,42 @@ def cmd_cemu(args: argparse.Namespace) -> int:
     print(f"Bound Cemu player 0 to {uuid} ({pad['name']}) in {path}")
     if cemu_running() and not args.force:
         print("Cemu is running; restart it for the bind to apply.", file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_azahar(args: argparse.Namespace) -> int:
+    path = Path(args.ini)
+    if not path.is_file():
+        print(f"Missing {path}", file=sys.stderr)
+        return 1
+    pad = _pick_for_cemu(args)
+    text = path.read_text()
+    if pad is None:
+        existing = azahar_guids(text)
+        if not existing:
+            return 2
+        guid = existing[0]
+        name = "existing qt-config.ini guid"
+        print(f"No live pad matched; rewriting libvirtualhid map on {guid}", file=sys.stderr)
+    else:
+        guid = pad["guid"]
+        name = pad["name"]
+    try:
+        new = patch_azahar_ini(text, guid)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if new == text:
+        print(f"Azahar already bound to {guid} ({name}) with libvirtualhid x360 map")
+        return 0
+    bak = path.with_suffix(path.suffix + ".bak-bind-gamepad")
+    if not bak.exists():
+        bak.write_text(text)
+    path.write_text(new)
+    print(f"Bound Azahar to {guid} ({name}) in {path}")
+    if azahar_running() and not args.force:
+        print("Azahar is running; restart it for the bind to apply.", file=sys.stderr)
         return 2
     return 0
 
@@ -467,6 +581,26 @@ def _self_test() -> int:
         assert is_cemu_comm("Cemu_relwithdebinfo")
         assert is_cemu_comm("cemu")
         assert not is_cemu_comm("sunshine-ds")
+        assert is_azahar_comm("azahar")
+        assert not is_azahar_comm("azahar-launcher")
+        ini = (
+            'profiles\\1\\button_a="button:1,engine:sdl,'
+            "guid:03008d205e040000ea02000008040000,port:0\"\n"
+            'profiles\\1\\button_b="button:0,engine:sdl,'
+            "guid:03008d205e040000ea02000008040000,port:0\"\n"
+        )
+        az = patch_azahar_ini(ini, thor["guid"])
+        assert f'guid:{thor["guid"]}' in az
+        assert "03008d205e040000ea02000008040000" not in az
+        assert 'profiles\\1\\button_a="button:0,' in az
+        assert 'profiles\\1\\button_b="button:1,' in az
+        assert 'profiles\\1\\button_x="button:3,' in az
+        assert 'profiles\\1\\button_y="button:4,' in az
+        assert 'profiles\\1\\button_l="button:6,' in az
+        assert 'profiles\\1\\button_r="button:7,' in az
+        assert 'profiles\\1\\button_select="button:10,' in az
+        assert 'profiles\\1\\button_start="button:11,' in az
+        assert "axis:2,direction:+" in az
     print("bind-gamepad self-test ok")
     return 0
 
@@ -490,6 +624,14 @@ def main(argv: list[str] | None = None) -> int:
     p_cemu.add_argument("--xml", default=str(DEFAULT_CEMU_XML))
     p_cemu.add_argument("--force", action="store_true", help="Do not warn if Cemu is running")
     p_cemu.set_defaults(func=cmd_cemu)
+
+    p_azahar = sub.add_parser("azahar", help="Bind Azahar SDL mappings in qt-config.ini")
+    p_azahar.add_argument("--match", help="Substring of the device name (Thor, Odin, Sunshine)")
+    p_azahar.add_argument("--wait", action="store_true", help="Bind the pad that receives a button")
+    p_azahar.add_argument("--timeout", type=float, default=20.0)
+    p_azahar.add_argument("--ini", default=str(DEFAULT_AZAHAR_INI))
+    p_azahar.add_argument("--force", action="store_true", help="Do not warn if Azahar is running")
+    p_azahar.set_defaults(func=cmd_azahar)
 
     p_test = sub.add_parser("self-test", help="Run offline GUID/XML checks")
     p_test.set_defaults(func=lambda _args: _self_test())

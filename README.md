@@ -79,8 +79,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
-| `scripts/bind-gamepad.py` | Bind standalone Cemu to a named pad (Thor / Sunshine x360) |
+| `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad (Thor / Sunshine x360) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
+| `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |

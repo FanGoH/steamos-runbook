@@ -189,19 +189,25 @@ place_windows() {
 }
 
 if ! cemu_running; then
-  if [ -z "${CEMU_ROM:-}" ]; then
+  if [ -z "${CEMU_ROM:-}" ] && [ "${CEMU_ALLOW_LIBRARY:-}" != 1 ]; then
     print_launch_hint
     exit 2
   fi
   mkdir -p "$ROOT/logs"
   sdl_launch_env
-  echo "Launching standalone Cemu with CEMU_ROM."
+  if [ -n "${CEMU_ROM:-}" ]; then
+    echo "Launching standalone Cemu with CEMU_ROM."
+    cemu_args=(-g "$CEMU_ROM")
+  else
+    echo "Launching standalone Cemu library (CEMU_ALLOW_LIBRARY=1, no ROM)."
+    cemu_args=()
+  fi
   nohup flatpak run \
     --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 \
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
     --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009' \
-    info.cemu.Cemu -g "$CEMU_ROM" \
+    info.cemu.Cemu "${cemu_args[@]}" \
     >>"$ROOT/logs/cemu-dual-screen.log" 2>&1 &
   waited=0
   while [ "$waited" -lt 25 ]; do

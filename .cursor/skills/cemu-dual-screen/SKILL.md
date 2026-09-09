@@ -5,7 +5,7 @@ description: Put standalone Cemu in desktop dual-stream layout (TV on HDMI-A-1, 
 
 # Cemu dual-screen (desktop GameStream)
 
-Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read.
+Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read. Moonlight app **Cemu Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-cemu.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
 
 This is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`, `-f`). Dual-stream needs standalone Flatpak `info.cemu.Cemu`, windowed, emulated **Wii U GamePad**.
 

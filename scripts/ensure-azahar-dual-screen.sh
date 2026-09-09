@@ -150,19 +150,25 @@ place_windows() {
 }
 
 if ! azahar_running; then
-  if [ -z "${AZAHAR_ROM:-}" ]; then
+  if [ -z "${AZAHAR_ROM:-}" ] && [ "${AZAHAR_ALLOW_LIBRARY:-}" != 1 ]; then
     print_launch_hint
     exit 2
   fi
   mkdir -p "$ROOT/logs"
-  echo "Launching standalone Azahar with AZAHAR_ROM (QT_QPA_PLATFORM=xcb)."
+  if [ -n "${AZAHAR_ROM:-}" ]; then
+    echo "Launching standalone Azahar with AZAHAR_ROM (QT_QPA_PLATFORM=xcb)."
+    azahar_args=("$AZAHAR_ROM")
+  else
+    echo "Launching standalone Azahar library (AZAHAR_ALLOW_LIBRARY=1, no ROM, QT_QPA_PLATFORM=xcb)."
+    azahar_args=()
+  fi
   nohup flatpak run \
     --env=QT_QPA_PLATFORM=xcb \
     --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 \
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
     --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009' \
-    "$AZAHAR_FLATPAK" "$AZAHAR_ROM" \
+    "$AZAHAR_FLATPAK" "${azahar_args[@]}" \
     >>"$ROOT/logs/azahar-dual-screen.log" 2>&1 &
   waited=0
   while [ "$waited" -lt 25 ]; do

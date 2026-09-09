@@ -5,7 +5,7 @@ description: Put standalone Azahar in desktop dual-stream layout (3DS top screen
 
 # Azahar dual-screen (desktop GameStream)
 
-Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read.
+Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read. Moonlight app **Azahar Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-azahar.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
 
 This is **not** RetroDECK Azahar (`azahar-launcher`, fullscreen, `layout_option=0`). Dual-stream needs standalone Flatpak `org.azahar_emu.Azahar`, **Separate Windows**, X11/xcb.
 

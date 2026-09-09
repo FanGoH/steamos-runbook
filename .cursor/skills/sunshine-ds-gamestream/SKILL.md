@@ -149,7 +149,9 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-Run the playbook script; do not hand-edit XML.
+From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
+
+Or run the playbook script from the host; do not hand-edit XML.
 
 ```bash
 # optional: CEMU_ROM=... CEMU_PAD_MATCH=Thor
@@ -205,7 +207,7 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 
 ## Azahar dual-screen (Thor)
 
-Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
+From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-azahar.sh`). Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
 
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).
@@ -213,6 +215,10 @@ Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/
 - Bind: `python3 scripts/bind-gamepad.py azahar --match Thor` (libvirtualhid 15-button x360 map: L/R = SDL 6/7, Select/Start = 10/11). Restart Azahar after the bind.
 - Launch `QT_QPA_PLATFORM=xcb`. Qt Wayland dies (`wp_linux_drm_syncobj_surface_v1`).
 - Process `comm` is `azahar`. `resourceClass` is `Azahar`.
+
+## Gyro / motion (Thor and Odin)
+
+Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). sunshine-ds currently `gamepad = x360`, and libvirtualhid Xbox 360 has **no** motion — logs `has motion sensors, but the selected virtual profile cannot expose them`. DualSense (`ds5`) / DS4 / Switch Pro would expose gyro, but that changes VID/PID and **breaks** the Cemu/Azahar x360 binds and Steam Guide. Do not switch `gamepad` without rebinding. Keep x360 unless the user asks to enable gyro.
 
 ## Do not
 

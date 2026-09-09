@@ -366,6 +366,27 @@ def cmd_wait(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wait_appear(args: argparse.Namespace) -> int:
+    """Wait until a Sunshine/libvirtualhid pad shows up (after Moonlight connects)."""
+    needle = (args.match or "Sunshine").strip()
+    deadline = time.monotonic() + max(args.timeout, 0.0)
+    last_names = ""
+    while True:
+        pads = list_joysticks(Path(args.sysfs))
+        pad = match_pad(pads, needle)
+        if pad is None and needle.lower() == "sunshine":
+            pad = next((p for p in pads if p.get("sunshine") == "true"), None)
+        if pad is not None:
+            json.dump(pad, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            return 0
+        last_names = ", ".join(p["name"] for p in pads) or "(none)"
+        if time.monotonic() >= deadline:
+            print(f"No pad matched {needle!r} within {args.timeout:.0f}s. Connected: {last_names}", file=sys.stderr)
+            return 2
+        time.sleep(0.4)
+
+
 def _pick_for_cemu(args: argparse.Namespace) -> dict[str, str] | None:
     pads = list_joysticks(Path(args.sysfs))
     if args.wait:
@@ -616,6 +637,11 @@ def main(argv: list[str] | None = None) -> int:
     p_wait = sub.add_parser("wait", help="Print the pad that receives the next button")
     p_wait.add_argument("--timeout", type=float, default=20.0)
     p_wait.set_defaults(func=cmd_wait)
+
+    p_appear = sub.add_parser("wait-appear", help="Wait until a Sunshine pad is connected")
+    p_appear.add_argument("--match", default="Sunshine", help="Name substring (default Sunshine)")
+    p_appear.add_argument("--timeout", type=float, default=45.0)
+    p_appear.set_defaults(func=cmd_wait_appear)
 
     p_cemu = sub.add_parser("cemu", help="Bind Cemu player 0 in controller0.xml")
     p_cemu.add_argument("--match", help="Substring of the device name (Thor, Odin, Sunshine)")

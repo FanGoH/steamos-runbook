@@ -149,7 +149,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
+From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
 Or run the playbook script from the host; do not hand-edit XML.
 

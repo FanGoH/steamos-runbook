@@ -27,6 +27,6 @@ if ! bash "$ROOT/scripts/ensure-azahar-dual-screen.sh"; then
 fi
 
 echo "Azahar dual-screen is up; waiting until Azahar exits."
-wait_while_comm '^azahar$'
+wait_while_comm '^azahar'
 echo "Azahar exited."
 exit 0

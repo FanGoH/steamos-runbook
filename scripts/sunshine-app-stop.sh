@@ -10,7 +10,7 @@ reexec_on_host "$ROOT/scripts/sunshine-app-stop.sh" "$@"
 
 target="${1:-}"
 case "$target" in
-  azahar) matcher='^azahar$' ;;
+  azahar) matcher='^azahar' ;;
   cemu) matcher='^[Cc]emu' ;;
   *)
     echo "usage: $0 azahar|cemu" >&2

@@ -305,6 +305,29 @@ EOF
 esac
 echo
 
+echo "[sunshine-ds]"
+ds_state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
+ds_pid="$(pgrep -x sunshine-ds || true)"
+if [ "$ds_state" = "FREE" ]; then
+  ok "sunshine-ds SUNSHINE_SERVER_FREE (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
+elif [ "$ds_state" = "BUSY" ]; then
+  ok "sunshine-ds BUSY (in session) (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
+else
+  warn "sunshine-ds not answering (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
+  record_manual "Start sunshine-ds (not Decky :47989)" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0
+./scripts/ensure-sunshine-ds.sh
+# Idle restart: ./scripts/ensure-sunshine-ds.sh --restart
+# Do not: POST /api/restart, pgrep -f sunshine, kill the virtual-output helper
+EOF
+fi
+if [ -n "$ds_pid" ]; then
+  ok "sunshine-ds pid $ds_pid"
+else
+  warn "no sunshine-ds process (pgrep -x sunshine-ds)"
+fi
+echo
+
 echo "[Cursor Agent]"
 AGENT="$(cursor_agent_bin || true)"
 if [ -n "$AGENT" ] && [ -x "$AGENT" ]; then

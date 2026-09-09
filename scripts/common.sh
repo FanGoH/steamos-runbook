@@ -48,6 +48,11 @@ load_env() {
   SUNSHINE_WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
   SUNSHINE_WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
   SUNSHINE_PLUGINLOADER_WAIT_SECS="${SUNSHINE_PLUGINLOADER_WAIT_SECS:-60}"
+  SUNSHINE_DS_URL="${SUNSHINE_DS_URL:-http://127.0.0.1:48100}"
+  SUNSHINE_DS_BIN="${SUNSHINE_DS_BIN:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds}"
+  SUNSHINE_DS_HELPER="${SUNSHINE_DS_HELPER:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds-virtual-output}"
+  SUNSHINE_DS_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
+  SUNSHINE_DS_CONFIG_DIR="${SUNSHINE_DS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev}"
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
   CURSOR_WORKER_SERVICE="${CURSOR_WORKER_SERVICE:-cursor-agent-worker.service}"
   CURSOR_WORKER_DIR="${CURSOR_WORKER_DIR:-${STEAMOS_PLAYBOOK_DIR:-/home/${STEAMOS_USER}/steamos-playbook}}"
@@ -109,6 +114,33 @@ sunshine_stream_udp_up() {
 # BUSY with no stream sockets: leftover Desktop app after a failed/teardown session.
 sunshine_stale_busy() {
   [ "$(sunshine_serverinfo_state 2>/dev/null || true)" = "BUSY" ] && ! sunshine_stream_udp_up
+}
+
+sunshine_ds_serverinfo() {
+  curl -sS --max-time 3 "${SUNSHINE_DS_URL:-http://127.0.0.1:48100}/serverinfo" 2>/dev/null || true
+}
+
+sunshine_ds_serverinfo_state() {
+  local xml
+  xml="$(sunshine_ds_serverinfo)"
+  if [ -z "$xml" ]; then
+    printf '%s\n' "DOWN"
+    return 1
+  fi
+  if printf '%s' "$xml" | grep -q 'SUNSHINE_SERVER_BUSY'; then
+    printf '%s\n' "BUSY"
+    return 0
+  fi
+  if printf '%s' "$xml" | grep -q 'SUNSHINE_SERVER_FREE'; then
+    printf '%s\n' "FREE"
+    return 0
+  fi
+  printf '%s\n' "UNKNOWN"
+  return 1
+}
+
+sunshine_xml_uniqueid() {
+  printf '%s' "${1:-}" | tr -d '\n' | sed -n 's/.*<uniqueid>\([^<]*\)<\/uniqueid>.*/\1/p'
 }
 
 sunshine_systemd_enabled() {

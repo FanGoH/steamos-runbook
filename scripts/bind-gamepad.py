@@ -1,27 +1,35 @@
 #!/usr/bin/env python3
-"""List host joysticks and bind Cemu/Azahar to a chosen pad.
+"""List host joysticks and bind Cemu/Azahar/Eden to chosen pads.
 
 Sunshine x360 pads used to share one name/GUID, so emulators could not target
 Thor vs Odin. After sunshine-ds names pads ``Sunshine (libvirtualhid) <client>``,
 match on Thor / Odin / the device name. ``wait`` binds whichever pad receives
-a button press.
+a button press. ``status`` / ``apply`` are the Decky EmuPads JSON API.
 
 Cemu uuid is ``{guid-index}_{guid}`` (SDL2 CRC-16 of the kernel name). Player 0
-is the Wii U GamePad. Each GamePad button maps to **one** physical controller;
-later ``<controller>`` blocks overwrite earlier mappings. This script adds the
-chosen pad and puts SteamInput-P1 Wii U GamePad mappings on it (Steam wrap can
-stay listed with empty ``<mappings>``). moonlight.xml Pro-Controller maps are
-replaced — they omit mapping 11 and rotate the left-stick axis splits. Cemu
-must restart to pick up a uuid/mapping change.
+is the Wii U GamePad (``controller0.xml``). Player 1 is a Wii U Pro Controller
+(``controller1.xml``) when two pads are applied. Each GamePad button maps to
+**one** physical controller; later ``<controller>`` blocks overwrite earlier
+mappings. This script adds the chosen pad and puts SteamInput-P1 Wii U GamePad
+mappings on it (Steam wrap can stay listed with empty ``<mappings>``).
+moonlight.xml Pro-Controller maps are replaced — they omit mapping 11 and
+rotate the left-stick axis splits. Cemu must restart to pick up a uuid change.
 
 Azahar stores SDL joystick GUIDs in ``qt-config.ini``. Button indices come
 from ``scripts/pad_profile.py`` (``GAMESTREAM_PAD_PROFILE``, default x360:
 15 SDL buttons, L/R=6/7, Select/Start=10/11). Steam xpad 11-button numbering
 puts Thor shoulders on Start/Select. Restart Azahar after a GUID or map change.
+A second pad writes ``profiles\\2\\`` (saved profile named Player 2). Azahar
+uses one active profile per instance.
+
+Eden uses a CRC-less USB-bus GUID (``eden_guid``). ``player_0_`` is slot 0;
+a second pad also rewrites ``player_1_`` and sets ``player_1_connected``.
 
 Examples:
   python3 scripts/bind-gamepad.py list
-  python3 scripts/bind-gamepad.py wait
+  python3 scripts/bind-gamepad.py status
+  python3 scripts/bind-gamepad.py apply --emu cemu --pads js3
+  python3 scripts/bind-gamepad.py apply --emu eden --pads js3,js4
   python3 scripts/bind-gamepad.py cemu --match Thor
   python3 scripts/bind-gamepad.py azahar --match Thor
 """
@@ -45,9 +53,16 @@ INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef", "1209"}
 EV_KEY = 1
 DEFAULT_CEMU_XML = Path.home() / ".var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml"
+DEFAULT_CEMU_XMLS = (
+    DEFAULT_CEMU_XML,
+    Path.home()
+    / ".var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml",
+)
 DEFAULT_AZAHAR_INI = (
     Path.home() / ".var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini"
 )
+DEFAULT_EDEN_INI = Path.home() / ".config/eden/qt-config.ini"
+EMUS = ("cemu", "azahar", "eden")
 
 _CRC16_TABLE = []
 for _i in range(256):
@@ -90,6 +105,22 @@ def cemu_uuid(pad: dict[str, str]) -> str:
     return f"{pad['index']}_{sdl_guid(pad)}"
 
 
+def eden_guid(pad: dict[str, str]) -> str:
+    """Eden/SDL3 USB-bus GUID: vendor/product/version, no name CRC."""
+    raw = struct.pack(
+        "<HHHHHHHH",
+        0x0003,
+        0,
+        int(pad["vendor"], 16),
+        0,
+        int(pad["product"], 16),
+        0,
+        int(pad.get("version") or "0", 16),
+        0,
+    )
+    return raw.hex()
+
+
 def _event_node(device: Path) -> str:
     try:
         children = list(device.iterdir())
@@ -128,9 +159,44 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
         }
         pad["guid"] = sdl_guid(pad)
         pad["cemu_uuid"] = cemu_uuid(pad)
+        pad["eden_guid"] = eden_guid(pad)
         pads.append(pad)
         index += 1
     return pads
+
+
+def resolve_pads(
+    pads: list[dict[str, str]], tokens: list[str]
+) -> list[dict[str, str]] | None:
+    """Resolve ordered ``jsN`` / GUID / uuid / name tokens. None if any miss."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw in tokens:
+        tok = raw.strip()
+        if not tok:
+            continue
+        hit = None
+        low = tok.lower()
+        for pad in pads:
+            keys = (
+                pad.get("js", ""),
+                pad.get("guid", ""),
+                pad.get("cemu_uuid", ""),
+                pad.get("eden_guid", ""),
+            )
+            if tok in keys or low == pad.get("name", "").lower():
+                hit = pad
+                break
+        if hit is None:
+            hit = match_pad(pads, tok)
+        if hit is None:
+            return None
+        ident = hit.get("js") or hit.get("guid") or hit["name"]
+        if ident in seen:
+            continue
+        seen.add(ident)
+        out.append(hit)
+    return out
 
 
 def match_pad(pads: list[dict[str, str]], needle: str) -> dict[str, str] | None:
@@ -240,6 +306,48 @@ CANONICAL_CEMU_GAMEPAD = (
     (25, 8),
 )
 
+# SteamInput-P2 Wii U Pro Controller (no GamePad display mapping 11).
+CANONICAL_CEMU_PRO = (
+    (1, 0),
+    (2, 1),
+    (3, 2),
+    (4, 3),
+    (5, 9),
+    (6, 10),
+    (7, 42),
+    (8, 43),
+    (9, 6),
+    (10, 4),
+    (12, 11),
+    (13, 12),
+    (14, 13),
+    (15, 14),
+    (16, 7),
+    (17, 8),
+    (18, 45),
+    (19, 39),
+    (20, 44),
+    (21, 38),
+    (22, 47),
+    (23, 41),
+    (24, 46),
+    (25, 40),
+)
+
+MINIMAL_CEMU_PRO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U Pro Controller</type>
+	<controller>
+		<api>SDLController</api>
+		<uuid>0_placeholder</uuid>
+		<display_name>placeholder</display_name>
+		<rumble>0</rumble>
+		<mappings>
+		</mappings>
+	</controller>
+</emulated_controller>
+"""
+
 
 def _mapping_ids(entries: list[ET.Element]) -> set[str]:
     return {(entry.findtext("mapping") or "") for entry in entries}
@@ -286,6 +394,41 @@ def _gamepad_mappings(
     if "11" in ids and "7" in ids and "8" in ids:
         return richest
     return _entries_from_pairs(CANONICAL_CEMU_GAMEPAD)
+
+
+def _load_steaminput_p2_mappings(xml_path: Path | None) -> list[ET.Element]:
+    if xml_path is None:
+        return []
+    p2 = xml_path.parent / "SteamInput-P2.xml"
+    if not p2.is_file():
+        return []
+    try:
+        root = ET.parse(p2).getroot()
+    except ET.ParseError:
+        return []
+    for controller in root.findall("controller"):
+        entries = _controller_entries(controller)
+        if _mapping_ids(entries):
+            return entries
+    return []
+
+
+def _pro_mappings(
+    richest: list[ET.Element], xml_path: Path | None = None
+) -> list[ET.Element]:
+    template = _load_steaminput_p2_mappings(xml_path)
+    if template:
+        return template
+    ids = _mapping_ids(richest)
+    if "7" in ids and "8" in ids:
+        return richest
+    return _entries_from_pairs(CANONICAL_CEMU_PRO)
+
+
+def controller1_path(xml_path: Path) -> Path:
+    if xml_path.name.startswith("controller0"):
+        return xml_path.with_name(xml_path.name.replace("controller0", "controller1", 1))
+    return xml_path.parent / "controller1.xml"
 
 
 def patch_cemu_xml(
@@ -364,6 +507,74 @@ def patch_cemu_xml(
     ) + "\n"
 
 
+def patch_cemu_pro_xml(
+    text: str,
+    uuid: str,
+    display_name: str,
+    xml_path: Path | None = None,
+) -> str:
+    """Bind player 1 as a Wii U Pro Controller (``controller1.xml``)."""
+    root = ET.fromstring(text)
+    type_node = root.find("type")
+    if type_node is None:
+        type_node = ET.Element("type")
+        root.insert(0, type_node)
+    type_node.text = "Wii U Pro Controller"
+
+    controllers = root.findall("controller")
+    if not controllers:
+        raise ValueError("controller xml missing <controller>")
+
+    richest: list[ET.Element] = []
+    for controller in controllers:
+        entries = _controller_entries(controller)
+        if len(entries) > len(richest):
+            richest = entries
+
+    target = None
+    for controller in list(controllers):
+        name = controller.findtext("display_name") or ""
+        if "AYN20Thor" in name or "libvirtualhid Mouse" in name:
+            root.remove(controller)
+            continue
+        if (controller.findtext("uuid") or "") == uuid:
+            target = controller
+    remaining = root.findall("controller")
+    if not remaining and target is None:
+        raise ValueError("controller xml missing <controller>")
+    if target is None:
+        target = copy.deepcopy(remaining[0] if remaining else controllers[0])
+        rumble = target.find("rumble")
+        if rumble is None:
+            rumble = ET.SubElement(target, "rumble")
+        rumble.text = "0"
+        root.append(target)
+
+    _set_text(target, "api", "SDLController")
+    _set_text(target, "uuid", uuid)
+    _set_text(target, "display_name", display_name)
+
+    mappings = _pro_mappings(richest, xml_path)
+    for controller in root.findall("controller"):
+        if controller is target:
+            _set_mappings(controller, mappings)
+        else:
+            _set_mappings(controller, [])
+
+    ordered = root.findall("controller")
+    for controller in ordered:
+        root.remove(controller)
+    root.append(target)
+    for controller in ordered:
+        if controller is not target:
+            root.append(controller)
+
+    ET.indent(root, space="\t")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
+        root, encoding="unicode"
+    ) + "\n"
+
+
 def is_cemu_comm(comm: str) -> bool:
     """Linux ``comm`` is 15 chars, so Flatpak Cemu shows as ``Cemu_relwithdeb``."""
     return comm.strip().lower().startswith("cemu")
@@ -393,8 +604,32 @@ def azahar_running() -> bool:
     return any(is_azahar_comm(line) for line in out.splitlines())
 
 
+def is_eden_comm(comm: str) -> bool:
+    name = comm.strip().lower()
+    return name in {"eden", "eden.desktop"} or name.startswith("eden")
+
+
+def eden_running() -> bool:
+    try:
+        import subprocess
+
+        out = subprocess.check_output(["ps", "-eo", "comm="], text=True)
+    except OSError:
+        return False
+    return any(is_eden_comm(line) for line in out.splitlines())
+
+
 def azahar_guids(text: str) -> list[str]:
     return re.findall(r"guid:([0-9a-f]{32})", text)
+
+
+def azahar_guid_for_slot(text: str, slot: int) -> str:
+    pat = re.compile(
+        rf"^profiles\\{slot}\\button_a=.*guid:([0-9a-f]{{32}})",
+        re.M,
+    )
+    match = pat.search(text)
+    return match.group(1) if match else ""
 
 
 def azahar_map_for_profile(name: str | None = None) -> dict[str, str]:
@@ -416,14 +651,452 @@ def _set_ini_line(text: str, key: str, value: str) -> str:
     return text
 
 
-def patch_azahar_ini(text: str, guid: str, profile_name: str | None = None) -> str:
-    """Bind the Default profile to ``guid`` with the active GameStream pad map."""
+def patch_azahar_ini(
+    text: str,
+    guid: str,
+    profile_name: str | None = None,
+    slot: int = 1,
+) -> str:
+    """Bind Azahar profile ``slot`` (1-based) to ``guid`` with the pad map."""
     if not re.fullmatch(r"[0-9a-f]{32}", guid):
         raise ValueError(f"bad SDL GUID {guid!r}")
+    if slot < 1:
+        raise ValueError(f"bad Azahar profile slot {slot}")
+    if slot > 1:
+        text = _ensure_azahar_profile_slot(text, slot)
     for name, tmpl in azahar_map_for_profile(profile_name).items():
-        key = "profiles\\1\\" + name
+        key = f"profiles\\{slot}\\" + name
         text = _set_ini_line(text, key, '"' + tmpl.format(guid=guid) + '"')
+    if slot > 1:
+        text = _set_ini_line(text, f"profiles\\{slot}\\name", f"Player {slot}")
+        text = _set_ini_line(text, "profiles\\size", str(max(_azahar_profile_size(text), slot)))
     return text
+
+
+def _azahar_profile_size(text: str) -> int:
+    match = re.search(r"^profiles\\size=(\d+)\s*$", text, re.M)
+    return int(match.group(1)) if match else 1
+
+
+def _ensure_azahar_profile_slot(text: str, slot: int) -> str:
+    prefix = f"profiles\\{slot}\\"
+    if re.search(r"^" + re.escape(prefix), text, re.M):
+        return text
+    extras: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("profiles\\1\\"):
+            extras.append("profiles\\" + f"{slot}\\" + line[len("profiles\\1\\") :])
+    if not extras:
+        return text
+    block = "\n".join(extras)
+    size_pat = re.compile(r"^profiles\\size=.*$", re.M)
+    if size_pat.search(text):
+        return size_pat.sub(lambda _m: block + "\n" + _m.group(0), text, count=1)
+    return text.rstrip() + "\n" + block + "\n"
+
+
+def eden_guid_for_player(text: str, player: int) -> str:
+    pat = re.compile(
+        rf'^player_{player}_button_a=.*guid:([0-9a-fA-F]{{32}})',
+        re.M,
+    )
+    match = pat.search(text)
+    return (match.group(1).lower() if match else "")
+
+
+def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
+    """Rewrite Eden ``player_N_`` SDL bindings for the ordered pads."""
+    guids = [eden_guid(pad) for pad in pads]
+    if not guids:
+        return text
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        handled = False
+        for index, guid in enumerate(guids):
+            prefix = f"player_{index}_"
+            if not line.startswith(prefix) or "engine:sdl" not in line:
+                continue
+            stripped = re.sub(r",guid:[0-9a-fA-F]+", "", line)
+            port = f"port:{index},"
+            if f"guid:{guid}" not in stripped:
+                if f"engine:sdl,{port}" in stripped:
+                    stripped = stripped.replace(
+                        f"engine:sdl,{port}",
+                        f"engine:sdl,{port}guid:{guid},",
+                    )
+                elif "engine:sdl," in stripped:
+                    stripped = stripped.replace(
+                        "engine:sdl,",
+                        f"engine:sdl,guid:{guid},",
+                    )
+            line = stripped
+            handled = True
+            break
+        if not handled and len(guids) >= 2:
+            if line.startswith("player_1_connected=") and not line.startswith(
+                "player_1_connected\\"
+            ):
+                line = "player_1_connected=true\n"
+            elif line.startswith("player_1_connected\\default="):
+                line = "player_1_connected\\default=false\n"
+        out.append(line)
+    return "".join(out)
+
+
+def _write_changed(path: Path, old: str, new: str, bak_suffix: str) -> bool:
+    if new == old:
+        return False
+    bak = path.with_suffix(path.suffix + bak_suffix)
+    if not bak.exists():
+        bak.write_text(old)
+    path.write_text(new)
+    return True
+
+
+def _cemu_xml_paths(explicit: str | None) -> list[Path]:
+    if explicit:
+        return [Path(explicit)]
+    return [path for path in DEFAULT_CEMU_XMLS if path.is_file()]
+
+
+def _pad_summary(pad: dict[str, str] | None) -> dict[str, str]:
+    if pad is None:
+        return {}
+    return {
+        "js": pad.get("js", ""),
+        "name": pad.get("name", ""),
+        "guid": pad.get("guid", ""),
+        "cemu_uuid": pad.get("cemu_uuid", ""),
+        "eden_guid": pad.get("eden_guid", ""),
+        "sunshine": pad.get("sunshine", "false"),
+        "steam": pad.get("steam", "false"),
+    }
+
+
+def _find_pad(
+    pads: list[dict[str, str]], *, guid: str = "", uuid: str = "", eden: str = ""
+) -> dict[str, str] | None:
+    guid = guid.lower()
+    eden = eden.lower()
+    for pad in pads:
+        if uuid and pad.get("cemu_uuid") == uuid:
+            return pad
+        if guid and pad.get("guid", "").lower() == guid:
+            return pad
+        if eden and pad.get("eden_guid", "").lower() == eden:
+            return pad
+    return None
+
+
+def cemu_players_from_xml(path: Path, pads: list[dict[str, str]]) -> list[dict]:
+    players: list[dict] = []
+    for slot, xml_path in ((0, path), (1, controller1_path(path))):
+        if not xml_path.is_file():
+            continue
+        try:
+            root = ET.parse(xml_path).getroot()
+        except ET.ParseError:
+            continue
+        first = root.find("controller")
+        uuid = (first.findtext("uuid") if first is not None else "") or ""
+        name = (first.findtext("display_name") if first is not None else "") or ""
+        pad = _find_pad(pads, uuid=uuid)
+        players.append(
+            {
+                "slot": slot,
+                "path": str(xml_path),
+                "uuid": uuid,
+                "name": name,
+                "type": root.findtext("type") or "",
+                "pad": _pad_summary(pad),
+            }
+        )
+    return players
+
+
+def azahar_players_from_ini(path: Path, pads: list[dict[str, str]]) -> list[dict]:
+    if not path.is_file():
+        return []
+    text = path.read_text()
+    players: list[dict] = []
+    for slot in (1, 2):
+        guid = azahar_guid_for_slot(text, slot)
+        if not guid:
+            continue
+        pad = _find_pad(pads, guid=guid)
+        players.append(
+            {
+                "slot": slot - 1,
+                "guid": guid,
+                "name": pad["name"] if pad else "",
+                "pad": _pad_summary(pad),
+            }
+        )
+    return players
+
+
+def eden_players_from_ini(path: Path, pads: list[dict[str, str]]) -> list[dict]:
+    if not path.is_file():
+        return []
+    text = path.read_text()
+    players: list[dict] = []
+    for slot in (0, 1):
+        guid = eden_guid_for_player(text, slot)
+        if not guid:
+            continue
+        pad = _find_pad(pads, eden=guid)
+        players.append(
+            {
+                "slot": slot,
+                "guid": guid,
+                "name": pad["name"] if pad else "",
+                "pad": _pad_summary(pad),
+            }
+        )
+    return players
+
+
+def status_payload(
+    sysfs: Path,
+    *,
+    cemu_xml: str | None = None,
+    azahar_ini: str | None = None,
+    eden_ini: str | None = None,
+) -> dict:
+    pads = list_joysticks(sysfs)
+    cemu_paths = _cemu_xml_paths(cemu_xml)
+    azahar_path = Path(azahar_ini) if azahar_ini else DEFAULT_AZAHAR_INI
+    eden_path = Path(eden_ini) if eden_ini else DEFAULT_EDEN_INI
+    cemu_players: list[dict] = []
+    for path in cemu_paths:
+        cemu_players.extend(cemu_players_from_xml(path, pads))
+    return {
+        "pads": pads,
+        "profile": load_profile().name,
+        "emus": {
+            "cemu": {
+                "running": cemu_running(),
+                "paths": [str(p) for p in cemu_paths],
+                "players": cemu_players,
+                "p2": "Wii U Pro Controller in controller1.xml when two pads are applied.",
+            },
+            "azahar": {
+                "running": azahar_running(),
+                "paths": [str(azahar_path)] if azahar_path.is_file() else [],
+                "players": azahar_players_from_ini(azahar_path, pads),
+                "p2": "Profile 2 is a saved mapping; Azahar uses one profile per instance.",
+            },
+            "eden": {
+                "running": eden_running(),
+                "paths": [str(eden_path)] if eden_path.is_file() else [],
+                "players": eden_players_from_ini(eden_path, pads),
+                "p2": "player_1_ GUID + player_1_connected when two pads are applied. Two Sunshine x360 pads share one Eden GUID; player 2 is SDL port 1.",
+            },
+        },
+    }
+
+
+def _pick_ordered(args: argparse.Namespace) -> tuple[list[dict[str, str]], str]:
+    pads = list_joysticks(Path(args.sysfs))
+    tokens: list[str] = []
+    if getattr(args, "pads", None):
+        tokens = [part for part in args.pads.split(",") if part.strip()]
+    elif getattr(args, "match", None):
+        tokens = [part for part in args.match.split(",") if part.strip()]
+    if tokens:
+        resolved = resolve_pads(pads, tokens)
+        if resolved is None:
+            names = ", ".join(p["name"] for p in pads) or "(none)"
+            return [], f"No pad matched {tokens!r}. Connected: {names}"
+        return resolved, ""
+    if getattr(args, "wait", False):
+        print("Press a button on the pad to bind…", file=sys.stderr)
+        pad = wait_button(pads, args.timeout)
+        if pad is None:
+            return [], "No button press."
+        return [pad], ""
+    return [], "Pass --pads jsN,jsM or --match NAME[,NAME2] or --wait."
+
+
+def apply_cemu_pads(
+    paths: list[Path],
+    ordered: list[dict[str, str]],
+    *,
+    force: bool,
+) -> tuple[list[str], int]:
+    messages: list[str] = []
+    rc = 0
+    if not ordered:
+        return messages, 2
+    for path in paths:
+        if not path.is_file():
+            messages.append(f"Missing {path}")
+            rc = max(rc, 1)
+            continue
+        text = path.read_text()
+        p1 = ordered[0]
+        new = patch_cemu_xml(text, cemu_uuid(p1), p1["name"], path)
+        changed = _write_changed(path, text, new, ".bak-bind-gamepad")
+        if changed:
+            messages.append(f"Bound Cemu player 1 to {cemu_uuid(p1)} ({p1['name']}) in {path}")
+        else:
+            messages.append(f"Cemu player 1 already {cemu_uuid(p1)} ({p1['name']}) in {path}")
+        if len(ordered) >= 2:
+            p2 = ordered[1]
+            p2_path = controller1_path(path)
+            old = p2_path.read_text() if p2_path.is_file() else MINIMAL_CEMU_PRO_XML
+            p2_xml = patch_cemu_pro_xml(old, cemu_uuid(p2), p2["name"], p2_path)
+            if _write_changed(p2_path, old if p2_path.is_file() else "", p2_xml, ".bak-bind-gamepad"):
+                messages.append(
+                    f"Bound Cemu player 2 to {cemu_uuid(p2)} ({p2['name']}) in {p2_path}"
+                )
+            else:
+                messages.append(
+                    f"Cemu player 2 already {cemu_uuid(p2)} ({p2['name']}) in {p2_path}"
+                )
+    if cemu_running() and not force:
+        messages.append("Cemu is running; restart it for the bind to apply.")
+        rc = max(rc, 2)
+    return messages, rc
+
+
+def apply_azahar_pads(
+    path: Path,
+    ordered: list[dict[str, str]],
+    *,
+    force: bool,
+) -> tuple[list[str], int]:
+    messages: list[str] = []
+    if not path.is_file():
+        return [f"Missing {path}"], 1
+    if not ordered:
+        return messages, 2
+    text = path.read_text()
+    new = text
+    try:
+        new = patch_azahar_ini(new, ordered[0]["guid"], slot=1)
+        if len(ordered) >= 2:
+            new = patch_azahar_ini(new, ordered[1]["guid"], slot=2)
+    except ValueError as exc:
+        return [str(exc)], 1
+    names = " + ".join(p["name"] for p in ordered[:2])
+    if _write_changed(path, text, new, ".bak-bind-gamepad"):
+        messages.append(f"Bound Azahar to {names} in {path}")
+    else:
+        messages.append(f"Azahar already bound to {names} in {path}")
+    rc = 0
+    if azahar_running() and not force:
+        messages.append("Azahar is running; restart it for the bind to apply.")
+        rc = 2
+    return messages, rc
+
+
+def apply_eden_pads(
+    path: Path,
+    ordered: list[dict[str, str]],
+    *,
+    force: bool,
+) -> tuple[list[str], int]:
+    messages: list[str] = []
+    if not path.is_file():
+        return [f"Missing {path}"], 1
+    if not ordered:
+        return messages, 2
+    text = path.read_text()
+    new = patch_eden_ini(text, ordered[:2])
+    names = " + ".join(f"{p['name']} ({eden_guid(p)})" for p in ordered[:2])
+    if _write_changed(path, text, new, ".bak-bind-gamepad"):
+        messages.append(f"Bound Eden to {names} in {path}")
+    else:
+        messages.append(f"Eden already bound to {names} in {path}")
+    rc = 0
+    if eden_running() and not force:
+        messages.append("Eden is running; restart it for the bind to apply.")
+        rc = 2
+    return messages, rc
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    payload = status_payload(
+        Path(args.sysfs),
+        cemu_xml=getattr(args, "xml", None),
+        azahar_ini=getattr(args, "azahar_ini", None),
+        eden_ini=getattr(args, "eden_ini", None),
+    )
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if payload["pads"] else 2
+
+
+def _emit_apply(
+    *,
+    rc: int,
+    emu: str,
+    ordered: list[dict[str, str]],
+    messages: list[str],
+) -> int:
+    payload = {
+        "ok": rc == 0 or (rc == 2 and bool(ordered)),
+        "rc": rc,
+        "emu": emu,
+        "pads": [_pad_summary(p) for p in ordered[:2]],
+        "messages": messages,
+        "restart": rc == 2 and bool(ordered),
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    for line in messages:
+        print(line, file=sys.stderr)
+    return rc
+
+
+def cmd_apply(args: argparse.Namespace) -> int:
+    ordered, pick_err = _pick_ordered(args)
+    emu = (getattr(args, "emu", None) or "all").strip().lower()
+    if pick_err:
+        return _emit_apply(rc=2, emu=emu, ordered=[], messages=[pick_err])
+    if emu not in ("all", *EMUS):
+        return _emit_apply(
+            rc=1,
+            emu=emu,
+            ordered=ordered,
+            messages=[f"Unknown emu {emu!r}. Use cemu, azahar, eden, or all."],
+        )
+    targets = EMUS if emu == "all" else (emu,)
+    messages: list[str] = []
+    rc = 0
+    force = bool(getattr(args, "force", False))
+    for name in targets:
+        if name == "cemu":
+            paths = _cemu_xml_paths(getattr(args, "xml", None))
+            if not paths:
+                messages.append("No Cemu controller0.xml found.")
+                rc = max(rc, 1)
+                continue
+            msgs, code = apply_cemu_pads(paths, ordered, force=force)
+        elif name == "azahar":
+            ini = getattr(args, "ini", None) if emu == "azahar" else None
+            path = Path(ini) if ini else DEFAULT_AZAHAR_INI
+            msgs, code = apply_azahar_pads(path, ordered, force=force)
+        else:
+            ini = getattr(args, "ini", None) if emu == "eden" else None
+            path = Path(ini) if ini else DEFAULT_EDEN_INI
+            msgs, code = apply_eden_pads(path, ordered, force=force)
+        messages.extend(msgs)
+        rc = max(rc, code)
+    return _emit_apply(rc=rc, emu=emu, ordered=ordered, messages=messages)
+
+
+def cmd_eden(args: argparse.Namespace) -> int:
+    args.emu = "eden"
+    if not getattr(args, "pads", None) and not getattr(args, "match", None) and not getattr(args, "wait", False):
+        return _emit_apply(
+            rc=2,
+            emu="eden",
+            ordered=[],
+            messages=["Pass --match NAME or --pads jsN or --wait."],
+        )
+    return cmd_apply(args)
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -677,6 +1350,11 @@ def _self_test() -> int:
         assert thor is not None and thor["index"] == "0", thor
         assert odin is not None and odin["index"] == "1", odin
         assert thor["guid"] != odin["guid"]
+        assert thor["eden_guid"] == "030000005e0400008e02000014010000"
+        assert odin["eden_guid"] == thor["eden_guid"]
+        assert resolve_pads(pads, ["js1", "js2"]) == [thor, odin]
+        assert resolve_pads(pads, ["Thor", "Odin"]) == [thor, odin]
+        assert resolve_pads(pads, ["nope"]) is None
         patched = patch_cemu_xml(xml, cemu_uuid(thor), thor["name"])
         parsed = ET.fromstring(patched)
         assert parsed.findtext("type") == "Wii U GamePad"
@@ -816,6 +1494,35 @@ def _self_test() -> int:
         ds = patch_azahar_ini(ini, thor["guid"], "ds5")
         assert 'profiles\\1\\button_l="button:4,' in ds
         assert 'profiles\\1\\button_select="button:6,' in ds
+        two = patch_azahar_ini(ini, thor["guid"], slot=1)
+        two = patch_azahar_ini(two, odin["guid"], slot=2)
+        assert azahar_guid_for_slot(two, 1) == thor["guid"]
+        assert azahar_guid_for_slot(two, 2) == odin["guid"]
+        assert "profiles\\2\\name=Player 2" in two
+        assert "profiles\\size=2" in two
+        pro = patch_cemu_pro_xml(MINIMAL_CEMU_PRO_XML, cemu_uuid(odin), odin["name"])
+        pro_root = ET.fromstring(pro)
+        assert pro_root.findtext("type") == "Wii U Pro Controller"
+        assert pro_root.find("controller").findtext("uuid") == odin["cemu_uuid"]
+        eden_src = (
+            'player_0_button_a="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:1"\n'
+            'player_1_connected=false\n'
+            'player_1_connected\\default=true\n'
+            'player_1_button_a="engine:sdl,port:1,guid:03000000de280000ff11000001000000,button:1"\n'
+        )
+        eden = patch_eden_ini(eden_src, [thor, odin])
+        assert f"guid:{thor['eden_guid']}" in eden
+        assert eden_guid_for_player(eden, 0) == thor["eden_guid"]
+        assert eden_guid_for_player(eden, 1) == odin["eden_guid"]
+        assert "player_1_connected=true\n" in eden
+        cemu_dir = Path(tmp) / "cemu-apply"
+        cemu_dir.mkdir()
+        xml_path = cemu_dir / "controller0.xml"
+        xml_path.write_text(xml)
+        msgs, code = apply_cemu_pads([xml_path], [thor, odin], force=True)
+        assert code == 0
+        assert (cemu_dir / "controller1.xml").is_file()
+        assert "Wii U Pro Controller" in (cemu_dir / "controller1.xml").read_text()
         from pad_profile import main as pad_profile_main
 
         assert pad_profile_main(["self-test"]) == 0
@@ -830,6 +1537,23 @@ def main(argv: list[str] | None = None) -> int:
 
     p_list = sub.add_parser("list", help="Print joysticks as JSON")
     p_list.set_defaults(func=cmd_list)
+
+    p_status = sub.add_parser("status", help="Print pads plus current Cemu/Azahar/Eden binds")
+    p_status.add_argument("--xml", default=None, help="Cemu controller0.xml (default: standalone + RetroDECK)")
+    p_status.add_argument("--azahar-ini", dest="azahar_ini", default=None)
+    p_status.add_argument("--eden-ini", dest="eden_ini", default=None)
+    p_status.set_defaults(func=cmd_status)
+
+    p_apply = sub.add_parser("apply", help="Bind ordered pads to cemu, azahar, eden, or all")
+    p_apply.add_argument("--emu", default="all", help="cemu, azahar, eden, or all")
+    p_apply.add_argument("--pads", help="Comma-separated jsN / GUID / name (player 1, player 2)")
+    p_apply.add_argument("--match", help="Comma-separated name substrings (Thor,Odin)")
+    p_apply.add_argument("--wait", action="store_true", help="Bind the pad that receives a button")
+    p_apply.add_argument("--timeout", type=float, default=20.0)
+    p_apply.add_argument("--xml", default=None, help="Cemu controller0.xml only (skip other trees)")
+    p_apply.add_argument("--ini", default=None, help="Azahar or Eden qt-config.ini when --emu is one of those")
+    p_apply.add_argument("--force", action="store_true", help="Do not warn if the emu is running")
+    p_apply.set_defaults(func=cmd_apply)
 
     p_wait = sub.add_parser("wait", help="Print the pad that receives the next button")
     p_wait.add_argument("--timeout", type=float, default=20.0)
@@ -855,6 +1579,15 @@ def main(argv: list[str] | None = None) -> int:
     p_azahar.add_argument("--ini", default=str(DEFAULT_AZAHAR_INI))
     p_azahar.add_argument("--force", action="store_true", help="Do not warn if Azahar is running")
     p_azahar.set_defaults(func=cmd_azahar)
+
+    p_eden = sub.add_parser("eden", help="Bind Eden player_0_ (and player_1_ if two pads)")
+    p_eden.add_argument("--match", help="Substring or comma-separated names (Thor,Odin)")
+    p_eden.add_argument("--pads", help="Comma-separated jsN / GUID")
+    p_eden.add_argument("--wait", action="store_true", help="Bind the pad that receives a button")
+    p_eden.add_argument("--timeout", type=float, default=20.0)
+    p_eden.add_argument("--ini", default=str(DEFAULT_EDEN_INI))
+    p_eden.add_argument("--force", action="store_true", help="Do not warn if Eden is running")
+    p_eden.set_defaults(func=cmd_eden)
 
     p_profile = sub.add_parser("profile", help="Print the active GAMESTREAM_PAD_PROFILE")
     p_profile.set_defaults(func=lambda _args: __import__("pad_profile").main(["json"]))

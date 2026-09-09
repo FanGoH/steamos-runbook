@@ -447,6 +447,14 @@ if [ -e "$HOMEBREW_DIR/services/PluginLoader" ] || [ -d "$HOMEBREW_DIR" ]; then
 else
   warn "Decky files not found (optional)"
 fi
+if [ -f "$HOMEBREW_DIR/plugins/EmuPads/main.py" ]; then
+  ok "Decky Emu Pads plugin installed"
+else
+  warn "Decky Emu Pads plugin not installed"
+  record_manual "Install Emu Pads Decky plugin" <<EOF
+./scripts/ensure-emu-pads-decky.sh
+EOF
+fi
 echo
 
 echo "[Switch 2 controllers]"

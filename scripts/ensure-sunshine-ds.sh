@@ -5,6 +5,7 @@
 #
 #   scripts/ensure-sunshine-ds.sh           # start if down
 #   scripts/ensure-sunshine-ds.sh --status  # print pid/state only
+#   scripts/ensure-sunshine-ds.sh --stop    # stop DS + virtual helper (Game Mode teardown)
 #   scripts/ensure-sunshine-ds.sh --restart # idle restart (refuses BUSY)
 #   scripts/ensure-sunshine-ds.sh --restart --force  # restart even if BUSY
 set -uo pipefail
@@ -33,17 +34,19 @@ UID_NUM="$(id -u)"
 DO_RESTART=0
 DO_FORCE=0
 DO_STATUS=0
+DO_STOP=0
 for arg in "$@"; do
   case "$arg" in
     --restart) DO_RESTART=1 ;;
     --force) DO_FORCE=1 ;;
     --status) DO_STATUS=1 ;;
+    --stop) DO_STOP=1 ;;
     -h|--help)
-      sed -n '2,12p' "$0"
+      sed -n '2,13p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--status] [--restart] [--force]" >&2
+      echo "usage: $0 [--status] [--stop] [--restart] [--force]" >&2
       exit 2
       ;;
   esac
@@ -180,6 +183,33 @@ stop_ds_if_idle() {
   return 0
 }
 
+stop_helpers() {
+  local pids leftover i
+  pids="$(helper_pids | tr '\n' ' ')"
+  pids="${pids% }"
+  if [ -z "$pids" ]; then
+    echo "No virtual-output helper running."
+    return 0
+  fi
+  echo "Stopping virtual-output helper(s): $pids"
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 15 ]; do
+    [ -z "$(helper_pids)" ] && break
+    sleep 0.2
+    i=$((i + 1))
+  done
+  leftover="$(helper_pids | tr '\n' ' ')"
+  leftover="${leftover% }"
+  if [ -n "$leftover" ]; then
+    echo "Force-killing leftover helper(s): $leftover"
+    # shellcheck disable=SC2086
+    kill -9 $leftover 2>/dev/null || true
+  fi
+  return 0
+}
+
 start_ds() {
   if [ ! -x "$DS_BIN" ]; then
     echo "Missing $DS_BIN"
@@ -234,6 +264,15 @@ if [ "$DO_STATUS" -eq 1 ]; then
     FREE|BUSY) exit 0 ;;
     *) exit 2 ;;
   esac
+fi
+
+if [ "$DO_STOP" -eq 1 ]; then
+  DO_FORCE=1
+  stop_ds_if_idle || true
+  stop_helpers
+  echo "sunshine-ds torn down for Game Mode (Decky :47989 untouched)."
+  print_status
+  exit 0
 fi
 
 if [ ! -S "${XDG_RUNTIME_DIR}/wayland-0" ] && [ ! -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then

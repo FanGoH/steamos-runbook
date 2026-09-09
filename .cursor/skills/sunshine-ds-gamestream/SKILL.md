@@ -118,7 +118,8 @@ libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam
 ```bash
 scripts/ensure-sunshine-ds.sh            # start Distrobox + one helper + DS if down
 scripts/ensure-sunshine-ds.sh --status
-scripts/ensure-sunshine-ds.sh --restart  # idle only; refuses BUSY unless --force
+scripts/ensure-sunshine-ds.sh --stop     # Game Mode teardown: stop DS + virtual helper
+scripts/switch-to-game-mode.sh           # --stop, set login mode game, steamosctl switch-to-game-mode
 ```
 
 Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`.

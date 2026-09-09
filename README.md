@@ -83,6 +83,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
 | `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu: SteamLaunch RetroDECK Cemu windowed, `ffplay` `x11grab` GamePad View onto headless `:2` |
+| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
@@ -125,7 +126,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `GAMESTREAM_PAD_PROFILE` | sunshine-ds virtual pad: `x360` (default), later `ds5`/`ds4`/`switch` for gyro |
 | `CEMU_PAD_MATCH` | Desktop GameStream Cemu pad substring (default `Thor`) |
 | `CEMU_ROM` | Optional standalone Cemu ROM for dual-screen launch |
-| `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`) |
+| `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`). Game Mode script defaults to `Odin`. |
 | `AZAHAR_ROM` | Optional standalone Azahar ROM |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):

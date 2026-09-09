@@ -1,0 +1,26 @@
+---
+description: Decky plugins call playbook scripts as user deck (PluginLoader is root)
+alwaysApply: true
+---
+
+# Decky plugins
+
+PluginLoader runs as **root**. Source lives in the playbook (`decky/<Name>/`: `main.py`, `plugin.json` `api_version` 1, `dist/index.js`). Install with `scripts/ensure-*-decky.sh`. Examples: `decky/EmuPads/`, SunshineDS on the box.
+
+```python
+# ❌ BAD — missing user bus; also never sudo systemctl --user
+subprocess.run(["sudo", "systemctl", "--user", "restart", "foo"])
+
+# ✅ GOOD — runuser + session bus (skip runuser when already uid deck)
+cmd = ["runuser", "-u", "deck", "--", "env",
+       f"HOME={home}", "USER=deck",
+       f"XDG_RUNTIME_DIR=/run/user/{uid}",
+       f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
+       "python3", playbook_script, *args]
+```
+
+- Call playbook scripts (`bind-gamepad.py`, `switch-to-desktop-ds.sh`). Do not hand-edit emulator XML/INI or duplicate bind logic in the plugin.
+- Frontend: `SP_REACT` / `DFL` / `@decky/api` `callable`, same as SunshineDS. Writing `dist/index.js` is enough; do not add a npm build unless asked.
+- Decky Python methods: snake_case, `api_version` 1. `getattr(decky, "logger", None)` — a local `decky` module may exist without `logger`.
+- `~/homebrew/plugins` is often `root:root`. `sudo -n` copy, else `record_manual` with the exact `sudo cp`. Do not hijack another plugin dir. Reload plugins after install.
+- Do not `sudo systemctl --user`. Do not `pgrep -f` / `pkill -f` sunshine.

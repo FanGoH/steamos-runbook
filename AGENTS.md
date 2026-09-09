@@ -70,6 +70,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 ## Script conventions
 
 - Small focused scripts; orchestrators collect `MANUAL_ACTIONS_FILE` and print a summary
+- Decky plugins: `.cursor/rules/decky-plugins.mdc` — PluginLoader is root, `runuser -u deck`, never `sudo systemctl --user`, source in `decky/<Name>/`, install via `ensure-*-decky.sh`
 - Exit `0` OK, `2` for “needs manual / warn”, other non-zero for hard failure
 - NIC, Headscale URL, hostname, Flatpak IDs come from `.env` — no personal URLs or hostnames as code defaults
 - `TAILSCALE_LOGIN_SERVER` must be set in `.env` (no hardcoded Headscale URL in repo)

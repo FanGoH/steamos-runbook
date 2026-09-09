@@ -1,0 +1,10 @@
+{
+  "name": "Sunshine DS",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["sunshine", "gamestream", "moonlight", "steamos"],
+    "description": "Leave Game Mode for Plasma and start proven sunshine-ds (:48100). Cemu/Azahar stay Moonlight apps."
+  }
+}

@@ -119,9 +119,13 @@ libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam
 scripts/ensure-sunshine-ds.sh            # start Distrobox + one helper + DS if down
 scripts/ensure-sunshine-ds.sh --status
 scripts/ensure-sunshine-ds.sh --stop     # Game Mode teardown: stop DS + virtual helper
-scripts/ensure-sunshine-ds.sh --install-shortcut  # ~/Desktop/Return to Game Mode.desktop only
+scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop icon + on-desktop oneshot unit
+scripts/ensure-sunshine-ds-decky.sh      # copy Decky plugin (sudo if plugins dir is root-owned)
+scripts/switch-to-desktop-ds.sh --yes    # Game Mode → Plasma + arm DS (Decky button; not the agent)
 scripts/switch-to-game-mode.sh           # --stop, set login mode game, steamosctl switch-to-game-mode
 ```
+
+Game Mode entry: Quick Access → Decky → **Sunshine DS** → **Start Dual-Stream Desktop**. That does not launch Cemu/Azahar. After Plasma is up, Moonlight `:48100`. Return: Moonlight app **Return to Game Mode** (same teardown as the Desktop shortcut).
 
 Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`.
 
@@ -244,3 +248,4 @@ Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and 
 - `pgrep -f` / `pkill -f` sunshine, or `pgrep -f` a command that contains `sunshine-ds-virtual-output`
 - Rebuild sunshine-ds to “fix” Odin “Starting connection” (that was Moonlight STACKED never binding the in-layout second surface)
 - Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once
+- `switch-to-desktop-ds.sh --yes` from an agent (kills gamescope / this worker). That is the Decky button only.

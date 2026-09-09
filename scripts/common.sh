@@ -53,6 +53,8 @@ load_env() {
   SUNSHINE_DS_HELPER="${SUNSHINE_DS_HELPER:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds-virtual-output}"
   SUNSHINE_DS_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
   SUNSHINE_DS_CONFIG_DIR="${SUNSHINE_DS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev}"
+  SUNSHINE_DS_ON_DESKTOP_SERVICE="${SUNSHINE_DS_ON_DESKTOP_SERVICE:-steamos-sunshine-ds-on-desktop.service}"
+  SUNSHINE_DS_DECKY_PLUGIN="${SUNSHINE_DS_DECKY_PLUGIN:-SunshineDS}"
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
   CURSOR_WORKER_SERVICE="${CURSOR_WORKER_SERVICE:-cursor-agent-worker.service}"
   CURSOR_WORKER_DIR="${CURSOR_WORKER_DIR:-${STEAMOS_PLAYBOOK_DIR:-/home/${STEAMOS_USER}/steamos-playbook}}"

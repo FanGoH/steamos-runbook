@@ -59,21 +59,23 @@ Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Deck
 
 ## Game Mode Cemu GamePad touch (2026-09-09)
 
-User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `1075C8EF…`). Do not “improve” stacked/Thor dual-stream mapping unless this breaks. Daily Plasma dual-screen stays `:48100`.
+User confirmed Wind Waker GamePad taps on sunshine-ds-kms `:48200` (uniqueid `1075C8EF…`). Do not “improve” this mapping unless it breaks. Daily Plasma dual-screen stays `:48100`.
 
 | Client | Layout | GamePad touch |
 |---|---|---|
 | Odin 2 Portal | **Stack both** (Auto) | works |
 | AYN Thor | **dual-panel** | works |
-| Odin 2 Portal | **GamePad only** | no reaction at `1dfeb53c` (display 0). Post-checkpoint host commit routes `primary_from_secondary` the same as display 1. |
+| Odin 2 Portal | **GamePad only** | works (`be45fc0f`: display 0 / `x-ml-video[0].source=secondary`) |
+
+`checkpoint-2026-09-09-gamemode-cemu-touch` (`1dfeb53c`) is stacked + Thor only — GamePad-only was a no-op there. Prefer **`checkpoint-2026-09-09-gamemode-cemu-touch-v2`**.
 
 | Repo | Branch | Tip | Tag |
 |---|---|---|---|
-| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `1dfeb53c` | `checkpoint-2026-09-09-gamemode-cemu-touch` |
-| This playbook | `cursor/ds-gamemode-kms-f15e` | this tree | `checkpoint-2026-09-09-gamemode-cemu-touch` |
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` | `be45fc0f` | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` |
+| This playbook | `cursor/ds-gamemode-kms-f15e` | this tree | `checkpoint-2026-09-09-gamemode-cemu-touch-v2` |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` | `87267c9a` | unchanged (`checkpoint-2026-09-08-device-name`) |
 
-Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME. Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto GamePad View, then uinput-clicks at that cursor.
+Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Conf `capture = kms`, `dual_display_source = gamescope-virtual`. Cemu TV + GamePad stacked at session `:0` `0,0`; ffplay mirrors GamePad onto headless `:2`. Overlay is GDS `STEAM_OVERLAY` on HOME. Fangoh Moonlight GamePad fingers are absolute mouse (native LI_TOUCH off). kms unsets `$DISPLAY`; inject opens `:0`, warps onto GamePad View, then uinput-clicks at that cursor. Dual-stream/stacked use display 1; GamePad only uses display 0 with `primary_from_secondary`. HDMI/TV taps stay display 0 without that flag.
 
 ```bash
 # After overwriting the ELF (clears file caps):

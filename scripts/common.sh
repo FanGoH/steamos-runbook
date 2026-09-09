@@ -59,6 +59,8 @@ load_env() {
   SUNSHINE_DS_KMS_CONFIG_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-gamemode}"
   SUNSHINE_DS_KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
   SUNSHINE_DS_KMS_URL="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:${SUNSHINE_DS_KMS_PORT}}"
+  SUNSHINE_DS_KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+  SUNSHINE_DS_KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
   CURSOR_WORKER_SERVICE="${CURSOR_WORKER_SERVICE:-cursor-agent-worker.service}"
   CURSOR_WORKER_DIR="${CURSOR_WORKER_DIR:-${STEAMOS_PLAYBOOK_DIR:-/home/${STEAMOS_USER}/steamos-playbook}}"

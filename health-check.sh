@@ -328,6 +328,53 @@ else
 fi
 echo
 
+echo "[sunshine-ds-kms / Game Mode]"
+kms_unit="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+kms_virt="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
+kms_url="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:48200}"
+kms_pid="$(pgrep -x sunshine-ds-kms || true)"
+kms_xml="$(curl -sS --max-time 3 "${kms_url}/serverinfo" 2>/dev/null || true)"
+kms_state="DOWN"
+if printf '%s' "$kms_xml" | grep -q 'SUNSHINE_SERVER_BUSY'; then
+  kms_state="BUSY"
+elif printf '%s' "$kms_xml" | grep -q 'SUNSHINE_SERVER_FREE'; then
+  kms_state="FREE"
+fi
+if systemctl --user is-enabled "$kms_unit" >/dev/null 2>&1 \
+  && systemctl --user is-enabled "$kms_virt" >/dev/null 2>&1; then
+  ok "$kms_unit enabled (gamescope-session.target)"
+else
+  warn "$kms_unit / $kms_virt not enabled"
+  record_manual "Enable Game Mode sunshine-ds-kms boot unit" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --install-service
+systemctl --user is-enabled $kms_unit
+# sudo is only setcap after copy/patchelf, not for starting the unit
+EOF
+fi
+if systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
+  if [ "$kms_state" = "FREE" ] || [ "$kms_state" = "BUSY" ]; then
+    ok "sunshine-ds-kms ${kms_state} (${kms_url})"
+  else
+    warn "Game Mode: sunshine-ds-kms not answering (${kms_url})"
+    record_manual "Start Game Mode sunshine-ds-kms" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+curl -s --max-time 3 ${kms_url}/serverinfo | grep -E 'state|uniqueid'
+# If getcap has no cap_sys_admin:
+#   sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+EOF
+  fi
+  if [ -n "$kms_pid" ]; then
+    ok "sunshine-ds-kms pid $kms_pid"
+  else
+    warn "no sunshine-ds-kms process (pgrep -x sunshine-ds-kms)"
+  fi
+else
+  ok "Plasma: $kms_unit stays down (desktop DS is :48100)"
+fi
+echo
+
 echo "[Cursor Agent]"
 AGENT="$(cursor_agent_bin || true)"
 if [ -n "$AGENT" ] && [ -x "$AGENT" ]; then

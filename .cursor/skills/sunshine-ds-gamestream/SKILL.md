@@ -126,9 +126,12 @@ scripts/ensure-sunshine-ds.sh --status
 scripts/ensure-sunshine-ds.sh --stop     # Game Mode teardown: stop DS + virtual helper
 scripts/ensure-sunshine-ds.sh --install-shortcut  # ~/Desktop/Return to Game Mode.desktop only
 scripts/switch-to-game-mode.sh           # --stop, set login mode game, steamosctl switch-to-game-mode
+scripts/ensure-sunshine-ds-gamemode.sh --install-service  # :48200 boot unit (gamescope-session)
+scripts/ensure-sunshine-ds-gamemode.sh --start
+scripts/ensure-sunshine-ds-gamemode.sh --status
 ```
 
-Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`.
+Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`. Game Mode `:48200` is `sunshine-ds-kms` via `steamos-sunshine-ds-gamemode.service` (user `deck`, no sudo).
 
 ```bash
 podman exec --user 1000 steamos-tools ninja -C /home/deck/code/sunshine-ds/build -j2 sunshine
@@ -253,4 +256,5 @@ Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and 
 - Expect Thor dual-panel on the Portal, or stacked plus a separate Android display at once
 - `export LD_LIBRARY_PATH` to run `sunshine-ds-kms` after `setcap` (AT_SECURE ignores it; use RUNPATH)
 - `setcap` `~/.local/bin/sunshine-ds` (desktop Distrobox path). Game Mode KMS is the `sunshine-ds-kms` copy on `:48200` only
+- `sudo` `sunshine-ds-kms` or `sudo systemctl --user` (start as `deck`; sudo is only `setcap`)
 - Set `dual_display_source = virtual` on `:48200` (KWin helper). Game Mode video/1 is `gamescope-virtual` plus `scripts/sunshine-ds-gamemode-virtual.sh`

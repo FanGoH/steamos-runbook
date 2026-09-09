@@ -90,7 +90,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) and copy Cemu/Azahar Flatpak icons |
 | `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
-| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS experiment (`sunshine-ds-kms` host + RUNPATH, `:48200`). Default second stream is headless gamescope (`gamescope-virtual`). Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
 | `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` paints a moving square so PipeWire keeps emitting; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
@@ -115,6 +115,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `DECKY_LOADER_URL` | Decky PluginLoader URL used to call `start_sunshine` / `restart_sunshine` |
 | `SUNSHINE_WATCH_PATH` | Fires when Pulse appears (chmod + start); not the Flatpak Sunshine unit |
 | `SUNSHINE_AFTER_GAMESCOPE_SERVICE` | Restarts Sunshine via Decky after `gamescope-session` (KMS rebind) |
+| `SUNSHINE_DS_KMS_SERVICE` | Game Mode `:48200` user unit (`WantedBy=gamescope-session.target`) |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
 | `CURSOR_WORKER_DIR` | Folder the Cursor worker registers as its My Machines identity (default: this playbook). Must be a checkout of the repo you want to launch agents against. |
 | `CURSOR_WORKER_EXTRA_DIRS` | Extra workspace roots, **space-separated** (paths with spaces are not supported). These are additional folders on the same worker, not extra repo registrations. |
@@ -159,6 +160,7 @@ sudo ethtool "$STEAMOS_NIC_INTERFACE" | grep Wake-on
 systemctl --user is-enabled app-dev.lizardbyte.app.Sunshine.service || true
 systemctl --user is-enabled steamos-sunshine-watch.path
 systemctl --user is-enabled steamos-sunshine-after-gamescope.service
+systemctl --user is-enabled steamos-sunshine-ds-gamemode.service
 systemctl --user status cursor-agent-worker.service --no-pager
 systemctl --user status nso-gc.service --no-pager
 curl -s http://127.0.0.1:47989/serverinfo

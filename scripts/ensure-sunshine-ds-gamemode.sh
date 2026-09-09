@@ -4,10 +4,13 @@
 #
 #   scripts/ensure-sunshine-ds-gamemode.sh --probe   # start, print capture log, stop
 #   scripts/ensure-sunshine-ds-gamemode.sh --status
-#   scripts/ensure-sunshine-ds-gamemode.sh --stop
-#   scripts/ensure-sunshine-ds-gamemode.sh --start   # only if gamescope is up
+#   scripts/ensure-sunshine-ds-gamemode.sh --stop    # stop process; keeps the boot unit enabled
+#   scripts/ensure-sunshine-ds-gamemode.sh --start   # gamescope up; also enables the boot unit
+#   scripts/ensure-sunshine-ds-gamemode.sh               # install/enable boot unit
+#   scripts/ensure-sunshine-ds-gamemode.sh --install-service
 #
-# Binary is sunshine-ds-kms (copy). Port 48200.
+# Binary is sunshine-ds-kms (copy). Port 48200. Starts as user deck (no sudo).
+# sudo is only setcap after copying/patchelf. Boot is gamescope-session, not Plasma.
 # Second stream: gamescope-virtual (headless gamescope PipeWire) by default.
 # SUNSHINE_DS_KMS_DUAL_SOURCE=HDMI-A-1 duplicates the TV; none is single-stream.
 # Do not set virtual (KWin helper). Host launch only.
@@ -47,29 +50,40 @@ KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
 KMS_URL="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:${KMS_PORT}}"
 KMS_LOG="${SUNSHINE_DS_KMS_LOG:-$ROOT/logs/sunshine-ds-gamemode.log}"
 WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
+KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
+UNIT_DIR="/home/${STEAMOS_USER:-deck}/.config/systemd/user"
+RUNNER="$ROOT/scripts/run-sunshine-ds-gamemode.sh"
+VIRTUAL_SCRIPT="$ROOT/scripts/sunshine-ds-gamemode-virtual.sh"
 
 DO_STATUS=0
 DO_STOP=0
 DO_PROBE=0
 DO_START=0
 DO_FORCE_DESKTOP=0
+DO_INSTALL_SERVICE=0
 for arg in "$@"; do
   case "$arg" in
     --status) DO_STATUS=1 ;;
     --stop) DO_STOP=1 ;;
     --probe) DO_PROBE=1 ;;
     --start) DO_START=1 ;;
+    --install-service) DO_INSTALL_SERVICE=1 ;;
     --force-desktop-kms) DO_FORCE_DESKTOP=1 ;;
     -h|--help)
-      sed -n '2,14p' "$0"
+      sed -n '2,16p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--status] [--stop] [--probe] [--start] [--force-desktop-kms]" >&2
+      echo "usage: $0 [--status] [--stop] [--probe] [--start] [--install-service] [--force-desktop-kms]" >&2
       exit 2
       ;;
   esac
 done
+
+if [ "$#" -eq 0 ]; then
+  DO_INSTALL_SERVICE=1
+fi
 
 mkdir -p "$ROOT/logs"
 
@@ -142,6 +156,8 @@ print_status() {
   fi
   echo "desktop sunshine-ds pid: ${desk:-none} (must stay on :48100 / kwin)"
   echo "desktop conf: $DEV_CONF"
+  echo "unit: $KMS_SERVICE $(systemctl --user is-enabled "$KMS_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_SERVICE" 2>/dev/null || echo inactive)"
+  echo "virtual unit: $KMS_VIRTUAL_SERVICE $(systemctl --user is-enabled "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo inactive)"
   if [ -x "${KMS_BIN}.new" ]; then
     echo "staged: ${KMS_BIN}.new ($(getcap "${KMS_BIN}.new" 2>/dev/null || echo 'no cap_sys_admin — sudo setcap then mv over sunshine-ds-kms'))"
   fi
@@ -236,11 +252,13 @@ getcap $KMS_BIN
 # Headless gamescope first, then Game Mode KMS (gamescope-session active):
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 cd $ROOT
-./scripts/sunshine-ds-gamemode-virtual.sh --start
+./scripts/ensure-sunshine-ds-gamemode.sh --install-service
+# Or, if gamescope is already up:
 ./scripts/ensure-sunshine-ds-gamemode.sh --start
 # Moonlight: host :48200 (not :48100, not Decky :47989). Pair again if uniqueid is new.
 # curl must stay one line:
 curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid|MaxVideo'
+# The process is user deck. sudo is only this setcap after copy/patchelf.
 EOF
 }
 
@@ -260,54 +278,105 @@ ensure_kms_binary() {
 }
 
 write_kms_conf() {
-  local apps
-  mkdir -p "$KMS_DIR/sunshine/credentials"
-  apps="$KMS_DIR/sunshine/apps.json"
-  if [ ! -f "$apps" ]; then
-    cat >"$apps" <<'EOF'
-{
-  "env": { "PATH": "$(PATH):$(HOME)/.local/bin" },
-  "apps": [
-    { "name": "Desktop", "image-path": "desktop.png" }
-  ]
-}
-EOF
-  fi
-  cat >"$KMS_CONF" <<EOF
-# Isolated Game Mode KMS experiment. Not sunshine-ds-dev.
-port = ${KMS_PORT}
-origin_web_ui_allowed = pc
-capture = kms
-output_name = HDMI-A-1
-# gamescope-virtual = headless gamescope PipeWire on video/1 (not the KWin helper).
-# HDMI-A-1 duplicates the TV. none keeps MaxVideoStreams 1. virtual is Plasma-only.
-dual_display_source = ${SUNSHINE_DS_KMS_DUAL_SOURCE:-gamescope-virtual}
-encoder = software
-hevc_mode = 1
-av1_mode = 1
-gamepad = x360
-# Hold Back/Select 500ms → HOME on the UHID x360. sunshine-ds then toggles
-# gamescope STEAM_OVERLAY (Steam ignores UHID Guide). Default is -1 (off).
-back_button_timeout = 500
-min_log_level = info
-file_state = ${KMS_DIR}/sunshine/sunshine_state.json
-log_path = ${KMS_DIR}/sunshine/sunshine.log
-file_apps = ${KMS_DIR}/sunshine/apps.json
-pkey = ${KMS_DIR}/sunshine/credentials/cakey.pem
-cert = ${KMS_DIR}/sunshine/credentials/cacert.pem
-credentials_file = ${KMS_DIR}/sunshine/sunshine_state.json
-EOF
+  bash "$RUNNER" --write-conf
 }
 
 gamescope_up() {
   systemctl --user is-active gamescope-session.service >/dev/null 2>&1
 }
 
-stop_kms() {
+install_gamemode_units() {
+  mkdir -p "$UNIT_DIR" "$ROOT/logs"
+  chmod +x "$RUNNER" "$VIRTUAL_SCRIPT" 2>/dev/null || true
+
+  local virtual_unit kms_unit changed=0
+  virtual_unit="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook Game Mode headless gamescope (sunshine-ds-kms video/1)
+After=gamescope-session.service pipewire.service
+PartOf=gamescope-session.service
+StartLimitIntervalSec=600
+StartLimitBurst=8
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Nice=10
+TimeoutStartSec=30
+Environment=HOME=/home/${STEAMOS_USER:-deck}
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$VIRTUAL_SCRIPT --start
+ExecStop=$VIRTUAL_SCRIPT --stop
+StandardOutput=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
+StandardError=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
+
+[Install]
+WantedBy=gamescope-session.target
+EOS
+)"
+
+  kms_unit="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook Game Mode sunshine-ds-kms (:48200)
+After=gamescope-session.service pipewire.service $KMS_VIRTUAL_SERVICE
+Requires=$KMS_VIRTUAL_SERVICE
+PartOf=gamescope-session.service
+ConditionPathExists=$KMS_BIN
+StartLimitIntervalSec=600
+StartLimitBurst=8
+
+[Service]
+Type=simple
+Nice=10
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=2
+TimeoutStartSec=60
+Environment=HOME=/home/${STEAMOS_USER:-deck}
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=CONFIGURATION_DIRECTORY=$KMS_DIR
+Environment=PATH=/home/${STEAMOS_USER:-deck}/.local/bin:/usr/bin:/bin
+UnsetEnvironment=DISPLAY LD_LIBRARY_PATH
+ExecStart=$RUNNER
+KillMode=mixed
+StandardOutput=append:$KMS_LOG
+StandardError=append:$KMS_LOG
+
+[Install]
+WantedBy=gamescope-session.target
+Also=$KMS_VIRTUAL_SERVICE
+EOS
+)"
+
+  if [ ! -f "$UNIT_DIR/$KMS_VIRTUAL_SERVICE" ] || [ "$(cat "$UNIT_DIR/$KMS_VIRTUAL_SERVICE")" != "$virtual_unit" ]; then
+    printf '%s\n' "$virtual_unit" >"$UNIT_DIR/$KMS_VIRTUAL_SERVICE"
+    changed=1
+  fi
+  if [ ! -f "$UNIT_DIR/$KMS_SERVICE" ] || [ "$(cat "$UNIT_DIR/$KMS_SERVICE")" != "$kms_unit" ]; then
+    printf '%s\n' "$kms_unit" >"$UNIT_DIR/$KMS_SERVICE"
+    changed=1
+  fi
+  if [ "$changed" -eq 1 ]; then
+    systemctl --user daemon-reload
+    echo "Updated $KMS_SERVICE / $KMS_VIRTUAL_SERVICE."
+  fi
+  if ! systemctl --user is-enabled "$KMS_VIRTUAL_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$KMS_VIRTUAL_SERVICE"
+    echo "Enabled $KMS_VIRTUAL_SERVICE for gamescope-session.target."
+  fi
+  if ! systemctl --user is-enabled "$KMS_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$KMS_SERVICE"
+    echo "Enabled $KMS_SERVICE for gamescope-session.target (starts as deck; sudo is only setcap)."
+  else
+    echo "$KMS_SERVICE already enabled."
+  fi
+  return 0
+}
+
+stop_kms_process() {
   local pid leftover i
   pid="$(kms_ds_pid)"
   if [ -z "$pid" ]; then
-    echo "No sunshine-ds-kms process."
     return 0
   fi
   echo "Stopping sunshine-ds-kms pid $pid."
@@ -322,6 +391,19 @@ stop_kms() {
   if [ -n "$leftover" ]; then
     kill -9 "$leftover" 2>/dev/null || true
   fi
+  return 0
+}
+
+stop_kms() {
+  if systemctl --user cat "$KMS_SERVICE" >/dev/null 2>&1; then
+    echo "Stopping $KMS_SERVICE (unit stays enabled for next Game Mode boot)."
+    systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true
+  fi
+  if systemctl --user cat "$KMS_VIRTUAL_SERVICE" >/dev/null 2>&1; then
+    systemctl --user stop "$KMS_VIRTUAL_SERVICE" 2>/dev/null || true
+  fi
+  stop_kms_process
+  bash "$VIRTUAL_SCRIPT" --stop >/dev/null 2>&1 || true
   return 0
 }
 
@@ -340,16 +422,18 @@ start_kms() {
     return 2
   fi
   write_kms_conf
-  echo "Starting host sunshine-ds-kms on $KMS_URL (capture=kms, RUNPATH=$KMS_LIB_DIR, WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset})."
+  install_gamemode_units
+  systemctl --user reset-failed "$KMS_SERVICE" 2>/dev/null || true
+  systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true
+  stop_kms_process
+  echo "Starting $KMS_SERVICE on $KMS_URL (capture=kms, RUNPATH=$KMS_LIB_DIR, WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset})."
   mkdir -p "$(dirname "$KMS_LOG")"
-  : >"$KMS_LOG"
-  # AT_SECURE: do not export LD_LIBRARY_PATH. Unset DISPLAY so KMS is not X11.
-  export PIPEWIRE_RUNTIME_DIR="${PIPEWIRE_RUNTIME_DIR:-$XDG_RUNTIME_DIR}"
-  export CONFIGURATION_DIRECTORY="$KMS_DIR"
-  unset DISPLAY
-  unset LD_LIBRARY_PATH
-  nohup "$KMS_BIN" "$KMS_CONF" >>"$KMS_LOG" 2>&1 &
-  disown || true
+  if ! systemctl --user start "$KMS_SERVICE"; then
+    echo "systemctl --user start $KMS_SERVICE failed."
+    systemctl --user status "$KMS_SERVICE" --no-pager -l || true
+    return 1
+  fi
+  return 0
 }
 
 wait_for_kms() {
@@ -391,14 +475,55 @@ if [ "$DO_STOP" -eq 1 ]; then
   exit 0
 fi
 
-if [ "$DO_PROBE" -eq 0 ] && [ "$DO_START" -eq 0 ]; then
-  echo "usage: $0 [--probe] [--start] [--status] [--stop]" >&2
+if [ "$DO_PROBE" -eq 0 ] && [ "$DO_START" -eq 0 ] && [ "$DO_INSTALL_SERVICE" -eq 0 ]; then
+  echo "usage: $0 [--probe] [--start] [--install-service] [--status] [--stop]" >&2
   exit 2
+fi
+
+if [ "$DO_INSTALL_SERVICE" -eq 1 ] && [ "$DO_START" -eq 0 ] && [ "$DO_PROBE" -eq 0 ]; then
+  install_gamemode_units
+  if ! gamescope_up && [ "$DO_FORCE_DESKTOP" -eq 0 ]; then
+    echo "Unit enabled for gamescope-session.target. Not starting on Plasma (desktop DS stays :48100)."
+    print_status
+    assert_desktop_untouched "$BEFORE_HASH" || exit 1
+    if ! kms_has_sys_admin; then
+      ask_kms_setcap
+      exit 2
+    fi
+    exit 0
+  fi
+  if systemctl --user is-active "$KMS_SERVICE" >/dev/null 2>&1; then
+    echo "$KMS_SERVICE already active."
+    print_status
+    assert_desktop_untouched "$BEFORE_HASH" || exit 1
+    exit 0
+  fi
+  if [ -n "$(desktop_ds_pid)" ]; then
+    echo "Desktop sunshine-ds is running. Unit is enabled; it starts on the next gamescope-session (after ensure-sunshine-ds.sh --stop)."
+    print_status
+    assert_desktop_untouched "$BEFORE_HASH" || exit 1
+    exit 0
+  fi
+  if [ ! -x "$KMS_BIN" ]; then
+    ensure_kms_binary || exit $?
+  fi
+  start_kms || exit $?
+  if ! wait_for_kms; then
+    print_probe_log
+    print_status
+    assert_desktop_untouched "$BEFORE_HASH" || exit 1
+    exit 1
+  fi
+  echo "sunshine-ds-kms is up pid $(kms_ds_pid) $KMS_URL ($(kms_state 2>/dev/null || echo DOWN))"
+  print_status
+  assert_desktop_untouched "$BEFORE_HASH" || exit 1
+  exit 0
 fi
 
 if [ "$DO_START" -eq 1 ] && [ "$DO_FORCE_DESKTOP" -eq 0 ] && ! gamescope_up; then
   echo "gamescope-session is not active. This experiment is for Game Mode."
   echo "Desktop dual-stream stays on :48100 (capture=kwin). Pass --probe to try KMS on Plasma without keeping it, or --start --force-desktop-kms."
+  echo "To only enable the boot unit: $0 --install-service"
   exit 2
 fi
 
@@ -436,7 +561,7 @@ if grep -q 'Unable to initialize capture method' "$KMS_LOG" 2>/dev/null; then
 fi
 
 if [ "$DO_PROBE" -eq 1 ]; then
-  echo "Probe done; stopping sunshine-ds-kms so :48100 kwin stays the daily path."
+  echo "Probe done; stopping sunshine-ds-kms. Boot unit stays enabled for gamescope-session."
   stop_kms
 fi
 

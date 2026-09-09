@@ -74,6 +74,7 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 |---|---|
 | Spectacle screenshot all black | KWin FBO wedged. **Last resort:** `qdbus org.kde.KWin /Compositor org.kde.kwin.Compositing.reinitialize`. That can restart `kwin_wayland`, kill the virtual-output helper, and crash Azahar. First: restart PipeWire (user bus, not `sudo systemctl --user`) then DS; respawn **one** helper if it died. Playbook: `scripts/ensure-kwin-screencast.sh`. |
 | Probe I-frame ~1200 bytes / 0% coded | `dummy_img()`, not live capture |
+| Game Mode `:48200` I-frame ~17KB + P ~6KB | Live KMS `HDMI-A-1` (Moonlight DS smoke 2026-09-09) |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |

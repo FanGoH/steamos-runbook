@@ -43,7 +43,9 @@ curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'state|uniqueid
 
 Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Decky `:47989`. If KMS still logs `Probably not permitted` with non-zero `CapEff`, Decky `:47989` may already hold the DRM fb — stop Decky Sunshine for the experiment only, do not uninstall it.
 
-2026-09-09 host start in Game Mode: `getcap` `cap_sys_admin=ep`, pid stayed up, `/serverinfo` `FREE`, `MaxVideoStreams 1`. Log: `Screencasting with KMS`, `Mapped 'HDMI-A-1' to kmsgrab monitor index 0`, `Found monitor for DRM screencasting`, `Found H.264 encoder: libx264 [software]`. `CapPrm` still `0000000000200000` (SYS_ADMIN); `CapEff` 0 is Sunshine dropping caps after init, not the Distrobox failure. `CAP_SYS_NICE` EGL warning is noise. Startup I-frames ~1KB are `dummy_img()` — ignore until a live Moonlight stream. Next: pair Moonlight to `:48200` (single stream). Dual-stream Game Mode is still later. Do not merge until a client actually sees gamescope video.
+2026-09-09 host start in Game Mode: `getcap` `cap_sys_admin=ep`, pid stayed up, `/serverinfo` `FREE`, `MaxVideoStreams 1`. Log: `Screencasting with KMS`, `Mapped 'HDMI-A-1' to kmsgrab monitor index 0`, `Found monitor for DRM screencasting`, `Found H.264 encoder: libx264 [software]`. `CapPrm` still `0000000000200000` (SYS_ADMIN); `CapEff` 0 is Sunshine dropping caps after init, not the Distrobox failure. `CAP_SYS_NICE` EGL warning is noise. Startup I-frames ~1KB are `dummy_img()` — ignore until a live Moonlight stream.
+
+2026-09-09 Moonlight DS on `:48200` **saw gamescope**: `New streaming session started`, KMS `HDMI-A-1`, software `libx264` at 7.3 Mbps target. Live encode (not dummy): I-frame ~17KB, ~1500 P-frames ~6KB, ~3 Mbps. Disconnect logs `Dropped DRM master` on `card1`; a later session still went `BUSY`. Single-stream Game Mode KMS is proven. Dual-stream Game Mode is still later (gamescope has no `Virtual-sunshine-ds`). Daily Thor/Odin dual-screen stays Plasma `:48100`.
 
 ## Logical order that got here
 

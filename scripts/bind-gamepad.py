@@ -121,14 +121,16 @@ def eden_guid(pad: dict[str, str]) -> str:
     return raw.hex()
 
 
-# SDL community db names generic 045e:028e "Xbox 360 EasySMX". Override every
-# GUID Cemu/SDL2 may use (USB, USB+version, BT, live CRC) so the dropdown
-# shows the Moonlight client, not EasySMX.
+# SDL community db names generic 045e:028e "Xbox 360 EasySMX" and uses Steam
+# xpad 11-button numbers (LB=b4, Back=b6). libvirtualhid xbox_360 is 15-button
+# (BTN_C/Z/TL2/TR2 reserved): 0A 1B 2C 3X 4Y 5Z 6LB 7RB 8TL2 9TR2 10Back
+# 11Start 12Guide 13LS 14RS. The 11-button map makes Thor bumpers fire
+# Select/Start. Same packing as pad_profile._AZAHAR_SPARSE_XBOX.
 _X360_SDL_MAP = (
-    "a:b0,b:b1,back:b6,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,"
-    "guide:b8,leftshoulder:b4,leftstick:b9,lefttrigger:a2,leftx:a0,lefty:a1,"
-    "rightshoulder:b5,rightstick:b10,righttrigger:a5,rightx:a3,righty:a4,"
-    "start:b7,x:b2,y:b3,platform:Linux,"
+    "a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,"
+    "guide:b12,leftshoulder:b6,leftstick:b13,lefttrigger:a2,leftx:a0,lefty:a1,"
+    "rightshoulder:b7,rightstick:b14,righttrigger:a5,rightx:a3,righty:a4,"
+    "start:b11,x:b3,y:b4,platform:Linux,"
 )
 _EASYSMX_USB_GUID = "030000005e0400008e02000000010000"
 _X360_USB_VERSION_GUID = "030000005e0400008e02000014010000"
@@ -1476,6 +1478,10 @@ def _self_test() -> int:
         mapping = sdl_mapping_for_pad(thor_pad)
         assert "AYN_Thor" in mapping
         assert "EasySMX" not in mapping
+        assert "leftshoulder:b6" in mapping
+        assert "back:b10" in mapping
+        assert "leftshoulder:b4" not in mapping
+        assert "back:b6," not in mapping
         assert _EASYSMX_USB_GUID in mapping
         assert thor_pad["guid"] in mapping
         assert _X360_USB_VERSION_GUID in mapping

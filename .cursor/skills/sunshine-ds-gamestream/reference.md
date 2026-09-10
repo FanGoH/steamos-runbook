@@ -14,7 +14,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
 | Host ELF | `~/.local/bin/sunshine-ds-kms` sha `620e6aef…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Live pid may still be the `f8d9968c` skip build — sidecar must not write `node=` |
 | Sidecar | `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`: `serial=` + **`pw_node=`** (not `node=`). `f8d9968c` skips AUTOCONNECT when `node=` is set |
-| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink = Virtual Surround Sound` when Pulse has that sink (do not capture empty `sink-sunshine-stereo`) |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink` = HDMI alsa leaf (Steam UI + VSS mix; not VSS.monitor, not `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Desktop app **`958645192`**. Not `881448767`, not Decky `:47989`, not `:48100` |
 | Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
 | Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
@@ -127,7 +127,7 @@ User: Game Mode Cemu on Thor is working (HDMI picture, GamePad stream, Thor pad)
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
 | Host ELF | `~/.local/bin/sunshine-ds-kms` sha `82a51040…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms` |
-| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink = Virtual Surround Sound` when Pulse has that sink (do not capture empty `sink-sunshine-stereo`) |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink` = HDMI alsa leaf (Steam UI + VSS mix; not VSS.monitor, not `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Not Decky `:47989`, not desktop `:48100` |
 | Cemu | RetroDECK `Cemu_relwithdebinfo -g <wux>` with `CEMU_GAMEMODE_DS=1` and **no** `-f`. TV on session `:0`. GamePad View `ffplay -window_id` onto headless `:2` |
 | Pad | `CEMU_PAD_MATCH=Thor` → mappings only on `Sunshine (libvirtualhid) AYN_Thor`. Steam wrap `28de:11ff` listed with empty mappings |

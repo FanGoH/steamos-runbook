@@ -130,6 +130,32 @@ paint_pid() {
   return 1
 }
 
+# Leftover GamePad x11grab keeps the last frame on :2 after Cemu exits.
+# pgrep -x ffplay, then inspect argv / DISPLAY — never pgrep -f sunshine.
+kill_x11grab_ffplay() {
+  local x11="${1:-}" pid cmd disp
+  if [ -z "$x11" ]; then
+    x11="$(x11_display || true)"
+  fi
+  [ -n "$x11" ] || x11=":2"
+  command -v pgrep >/dev/null 2>&1 || return 0
+  for pid in $(pgrep -x ffplay || true); do
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *x11grab*) ;;
+      *) continue ;;
+    esac
+    disp="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1 || true)"
+    case "$disp" in
+      "$x11"|"${x11}.0"|":2"|":2.0")
+        echo "Stopping leftover x11grab ffplay pid $pid on ${disp:-?}."
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
 stop_paint() {
   local pid x11
   pid="$(paint_pid || true)"
@@ -173,7 +199,8 @@ start_paint() {
     present_idle_screensaver "$x11" || true
     return 0
   fi
-  # Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
+  # Live Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
+  # --paint kills leftover x11grab first so this skip does not freeze the clock.
   if command -v xdotool >/dev/null 2>&1 &&
      DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1; then
     echo "ffplay already on $x11; not starting screensaver."
@@ -404,6 +431,13 @@ if [ "$DO_SMOKE" -eq 1 ]; then
 fi
 
 if [ "$DO_PAINT" -eq 1 ]; then
+  # Frozen GamePad after Cemu exit is leftover x11grab on :2. Kill it
+  # before start_paint's "ffplay already here" skip.
+  x11="$(x11_display || true)"
+  kill_x11grab_ffplay "${x11:-:2}"
+  if [ -n "${x11:-}" ] && command -v xdotool >/dev/null 2>&1; then
+    DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
+  fi
   stop_paint
   start_paint || exit $?
   print_status

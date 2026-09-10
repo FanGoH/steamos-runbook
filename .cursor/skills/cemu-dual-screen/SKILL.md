@@ -48,9 +48,9 @@ ROM path is the user’s; Wind Waker HD often lives under `~/emulation/wiiu/wind
 
 If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script.
 
-## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-10-gamemode-cemu-audio`
+## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-10-gamemode-tender-ds`
 
-User confirmed 2026-09-10: “it works!” — Thor both screens, Steam overlay (Cemu windows listed), bottom screensaver, Thor pad. Do not “improve” this unless it breaks. Full recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`. Sep 9 `checkpoint-2026-09-09-gamemode-cemu-ds` is the HDMI DCC / Cemu-picture baseline.
+User confirmed 2026-09-10: “amazing checkpoint” — Tender Cemu Play while streaming `:48200` launches dual-screen; Steam Exit restores the idle clock. Same Thor screens / overlay / pad / Cemu audio as `checkpoint-2026-09-10-gamemode-cemu-audio`. Do not “improve” this unless it breaks. Full recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`. Sep 9 `checkpoint-2026-09-09-gamemode-cemu-ds` is the HDMI DCC / Cemu-picture baseline.
 
 One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), kept mapped on-screen under the raised TV (off-screen `ximagesrc` is MIT-SHM `BadMatch`), and ffplay `-window_id` mirrors that drawable onto `:2` (video/1). Force `SDL_VIDEODRIVER=x11` and **windowmap** ffplay plus `GAMESCOPECTRL_BASELAYER_WINDOW` on `:2` — SDL Wayland leaves the X11 window `IsUnMapped` and PipeWire encodes a black root even though the GamePad pixmap has pixels. Kill leftover `sunshine-ds-kms-virtual` Tk (idle screensaver) or it covers the mirror. On Cemu/mirror exit, `sunshine-ds-gamemode-virtual.sh --paint` restores the clock on video/1. Title screen GamePad often matches TV; unique pad UI is in-game.
 

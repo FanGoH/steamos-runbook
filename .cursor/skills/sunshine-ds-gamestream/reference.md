@@ -8,7 +8,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-10-gamemode-cemu-audio`** (prefer: screens + overlay + pad + Moonlight Cemu audio). Earlier full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
+| Tag | **`checkpoint-2026-09-10-gamemode-tender-ds`** (prefer: Tender Play auto dual-screen + Exit paints clock + Cemu audio). Earlier: `checkpoint-2026-09-10-gamemode-cemu-audio` (manual script only). Full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
@@ -17,7 +17,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 | Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink` = HDMI alsa leaf (Steam UI + VSS mix; not VSS.monitor, not `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Desktop app **`958645192`**. Not `881448767`, not Decky `:47989`, not `:48100` |
 | Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
-| Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
+| Cemu | Tender Play while `:48200` BUSY + virtual sidecar → `CEMU_GAMEMODE_DS=1` + `--attach` (**no** `-f`). Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2`. Exit: kill leftover x11grab then `--paint` |
 | Overlay | Hold Select 0.5s. sunshine-ds sets `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` (`:0`). Hide restores Cemu TV. Do not start `steam-guide-from-select.py` |
 | GamePad tap | Inject opens `:1` then `:0` (never `$DISPLAY` / `:2`). Cemu `FOCUS_DISPLAY=1` puts GamePad View on `:1`; `:0`-only warps fail and uinput clicks HDMI `0,0`. Live 2026-09-10: `GamePad inject: using :1` then `abs unit=… px=310,200` / `960,540` / `1549,800` on GamePad GL child (not HDMI `0,0`). Tag `checkpoint-2026-09-10-gamemode-gamepad-touch` |
 | HDMI / top tap | Tag **`checkpoint-2026-09-10-gamemode-top-touch`**. Display 0: Cemu TV on `:1` while playing; Steam Big Picture on `:0` while hold-Select overlay is up (`STEAM_OVERLAY=1`, log `HDMI inject: overlay on :0` / `overlay-abs`). Do not take this path for Odin GamePad-only. GamePad path stays display 1. Live 17:34 in-game: `HDMI inject: using :1` TV `0x80003f` 1920×1051; bottom `GamePad inject: using :1` `0x800040`. Live 17:43 overlay (user: “touches on top work”): `HDMI inject: overlay on :0` then `overlay-abs … xid=25165829 1920x1080` (BPM child `0x1800005`); `:0` cursor followed ADB top taps |
@@ -29,6 +29,8 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 # :2 already up — do not --start (KillMode can kill the helper):
 ./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
+# Prefer Tender Cemu Play while Moonlight is on :48200 Desktop.
+# Manual:
 CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 ```
 
@@ -148,7 +150,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). Prefer **`checkpoint-2026-09-10-gamemode-cemu-audio`** for the full Thor experience including Cemu on Virtual Surround Sound.monitor.
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). Prefer **`checkpoint-2026-09-10-gamemode-tender-ds`** for Tender Play auto dual-screen, Exit → idle clock, and Cemu audio. `checkpoint-2026-09-10-gamemode-cemu-audio` is the same minus Tender `--attach` / leftover-x11grab paint.
 
 ## Logical order that got here
 

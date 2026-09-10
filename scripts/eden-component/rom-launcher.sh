@@ -122,6 +122,21 @@ if [ "$is_retrodeck" -eq 1 ] \
   fi
 fi
 
+# Insert Flatpak --env after `run` so the sandbox sees CEMU_GAMEMODE_DS.
+# Must run at script scope (`set --` in a function only changes that frame).
+enable_cemu_gamemode_ds() {
+  export CEMU_GAMEMODE_DS=1
+  CEMU_DS_NEW_ARGS=()
+  local injected=0 arg
+  for arg in "$@"; do
+    CEMU_DS_NEW_ARGS+=("$arg")
+    if [ "$injected" -eq 0 ] && [ "$arg" = "run" ]; then
+      CEMU_DS_NEW_ARGS+=(--env=CEMU_GAMEMODE_DS=1)
+      injected=1
+    fi
+  done
+}
+
 # Steam RunGame does not inherit CEMU_GAMEMODE_DS. The dual-screen script
 # touches logs/cemu-gamemode-ds.want immediately before Play; consume it
 # here (and pass --env into Flatpak) so windowed GamePad launch works.
@@ -132,17 +147,8 @@ if [ -f "$want" ]; then
   want_mtime="$(stat -c %Y "$want" 2>/dev/null || echo 0)"
   now="$(date +%s)"
   if [ $((now - want_mtime)) -lt 120 ]; then
-    export CEMU_GAMEMODE_DS=1
-    new_args=()
-    injected=0
-    for arg in "$@"; do
-      new_args+=("$arg")
-      if [ "$injected" -eq 0 ] && [ "$arg" = "run" ]; then
-        new_args+=(--env=CEMU_GAMEMODE_DS=1)
-        injected=1
-      fi
-    done
-    set -- "${new_args[@]}"
+    enable_cemu_gamemode_ds "$@"
+    set -- "${CEMU_DS_NEW_ARGS[@]}"
   fi
   rm -f "$want"
 fi
@@ -162,6 +168,17 @@ for arg in "$@"; do
       ;;
   esac
 done
+# Live :48200 dual-stream (BUSY + gamescope-virtual sidecar): windowed
+# GamePad instead of HDMI-only -f. Cemu-wrapper starts --attach.
+if [ "$is_cemu" -eq 1 ] && [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
+  stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
+  if [ -x "$stream_chk" ] && "$stream_chk"; then
+    echo "rom-launcher: :48200 second screen BUSY — CEMU_GAMEMODE_DS=1" >&2
+    enable_cemu_gamemode_ds "$@"
+    set -- "${CEMU_DS_NEW_ARGS[@]}"
+  fi
+fi
+
 if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; then
   echo "rom-launcher: host cemu-gamescope-focus SteamAppId=${SteamAppId:-2374129079} DS=${CEMU_GAMEMODE_DS:-}" >&2
   CEMU_STEAM_APPID="${SteamAppId:-2374129079}" CEMU_FOCUS_SECONDS="${CEMU_FOCUS_SECONDS:-30}" \

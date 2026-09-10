@@ -167,6 +167,7 @@ start_paint() {
   fi
   if paint_pid >/dev/null; then
     echo "Bottom screensaver already pid $(paint_pid)."
+    present_idle_screensaver "$x11" || true
     return 0
   fi
   # Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
@@ -185,6 +186,29 @@ start_paint() {
     python3 "$saver" --display "$x11" >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$PAINT_PIDFILE"
   echo "Bottom screensaver pid $! on $x11 (idle clock; withdraws for ffplay)."
+  present_idle_screensaver "$x11" || true
+}
+
+# PipeWire / Moonlight video/1 encodes the gamescope root. A mapped Tk with
+# pixels is still black on Thor until it is GAMESCOPECTRL_BASELAYER_WINDOW.
+present_idle_screensaver() {
+  local x11="${1:-}" wid i
+  if [ -z "$x11" ]; then
+    x11="$(x11_display "$(virtual_pid || true)" || true)"
+  fi
+  [ -n "$x11" ] || return 1
+  command -v xdotool >/dev/null 2>&1 || return 1
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    wid="$(DISPLAY="$x11" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+    if [ -n "${wid:-}" ]; then
+      DISPLAY="$x11" xdotool windowmap "$wid" windowraise "$wid" 2>/dev/null || true
+      DISPLAY="$x11" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$wid" 2>/dev/null || true
+      DISPLAY="$x11" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$wid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 write_nodefile() {

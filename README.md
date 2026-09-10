@@ -85,7 +85,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (Thor checkpoint): SteamLaunch RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, `ffplay` `x11grab` GamePad View onto headless `:2` |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (Thor checkpoint): SteamLaunch RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1` via consume-on-read `logs/cemu-gamemode-ds.want`, no `-f`), bind `--match Thor`, `ffplay` `x11grab` GamePad View onto headless `:2` |
 | `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |

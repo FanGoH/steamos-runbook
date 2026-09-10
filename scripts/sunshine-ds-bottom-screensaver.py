@@ -69,6 +69,24 @@ def display_has_app(display: str) -> bool:
     return bool(ff)
 
 
+def promote_baselayer(display: str) -> None:
+    """Headless gamescope encodes a black root unless this xid is the baselayer."""
+    env = os.environ.copy()
+    env["DISPLAY"] = display
+    env.pop("WAYLAND_DISPLAY", None)
+    wids = _run(["xdotool", "search", "--name", TITLE], env).split()
+    if not wids:
+        return
+    wid = wids[0]
+    _run(["xdotool", "windowmap", wid], env)
+    _run(["xdotool", "windowraise", wid], env)
+    for atom in ("GAMESCOPE_FOCUSED_WINDOW", "GAMESCOPECTRL_BASELAYER_WINDOW"):
+        _run(
+            ["xprop", "-root", "-f", atom, "32c", "-set", atom, wid],
+            env,
+        )
+
+
 def _self_test() -> int:
     tree = """
   Root window id: 0x345
@@ -140,6 +158,7 @@ def run_screensaver(display: str) -> int:
         root.lift()
         state["hidden"] = False
         root.update_idletasks()
+        promote_baselayer(display)
 
     def hide():
         if state["hidden"]:
@@ -164,6 +183,7 @@ def run_screensaver(display: str) -> int:
         root.after(200, tick)
 
     canvas.bind("<Configure>", layout)
+    root.after(80, lambda: promote_baselayer(display))
     root.after(50, tick)
     root.mainloop()
     return 0

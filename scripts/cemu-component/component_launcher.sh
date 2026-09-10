@@ -8,6 +8,20 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# Steam RunGame does not inherit CEMU_GAMEMODE_DS from the dual-screen
+# script. Touch logs/cemu-gamemode-ds.want immediately before RunGame;
+# consume it here so a leftover file cannot turn the next Tender Play
+# into windowed 10x10 (spinning logo).
+want="${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}"
+if [ -f "$want" ]; then
+  want_mtime="$(stat -c %Y "$want" 2>/dev/null || echo 0)"
+  now="$(date +%s)"
+  if [ $((now - want_mtime)) -lt 120 ]; then
+    export CEMU_GAMEMODE_DS=1
+  fi
+  rm -f "$want"
+fi
+
 # Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
 # virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
 # Moonlight-only session can still bind Sunshine when Steam virtual is gone.
@@ -129,8 +143,9 @@ else
 fi
 
 # Tender rom-launcher starts cemu-gamescope-focus.sh on the host before
-# RetroDECK. A second start here is a no-op unless that helper died.
-if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
+# RetroDECK. Dual-stream is windowed on :0 — do not hammer FOCUS_DISPLAY=1.
+if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -n "${FLATPAK_ID:-}" ] \
+  && command -v flatpak-spawn >/dev/null \
   && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
   appid="${SteamAppId:-2374129079}"
   flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
@@ -147,7 +162,7 @@ cd "$cemu_data"
 cemu_log="${CEMU_WRAPPER_LOG:-/home/deck/steamos-playbook/logs/cemu-wrapper.log}"
 mkdir -p "$(dirname "$cemu_log")"
 {
-  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} args:${args[*]} ----"
+  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} args:${args[*]} ----"
   echo "GTK_IM_MODULE=${GTK_IM_MODULE:-} GDK_BACKEND=${GDK_BACKEND:-} WSI=${ENABLE_GAMESCOPE_WSI:-} DISABLED=${GAMESCOPE_DISPLAY_DISABLED:-}"
 } >>"$cemu_log"
 

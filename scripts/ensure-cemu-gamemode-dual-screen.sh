@@ -595,7 +595,10 @@ if ! cemu_running; then
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  rm -f "$DS_WANT"
+  # Steam does not pass CEMU_GAMEMODE_DS into RunGame. Touch a 120s
+  # consume-on-read flag for rom-launcher / Cemu-wrapper, then launch.
+  mkdir -p "$(dirname "$DS_WANT")"
+  date -Iseconds >"$DS_WANT"
   start_focus_nudge
   # Tender Play: SteamClient.Apps.RunGame(gameId). steam:// and a host
   # flatpak run never become FOCUSED_APP (Cemu stays 10x10 InputOnly).

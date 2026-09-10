@@ -48,18 +48,24 @@ ROM path is the user’s; Wind Waker HD often lives under `~/emulation/wiiu/wind
 
 If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script.
 
-## Game Mode (`:48200`)
+## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-09-gamemode-cemu-ds`
+
+User confirmed Thor dual-panel Wind Waker on sunshine-ds-kms (HDMI picture + GamePad stream + Thor buttons). Do not “improve” this unless it breaks.
 
 One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), kept mapped on-screen under the raised TV (off-screen `ximagesrc` is MIT-SHM `BadMatch`), and ffplay `-window_id` mirrors that drawable onto `:2` (video/1). Force `SDL_VIDEODRIVER=x11` and **windowmap** ffplay plus `GAMESCOPECTRL_BASELAYER_WINDOW` on `:2` — SDL Wayland leaves the X11 window `IsUnMapped` and PipeWire encodes a black root even though the GamePad pixmap has pixels. Kill leftover `sunshine-ds-kms-virtual` Tk or it covers the mirror. Title screen GamePad often matches TV; unique pad UI is in-game.
 
+A Tender / `rom-launcher` Cemu that still has **`-f`** is the wrong instance (HDMI-only, no GamePad stream). Close it first:
+
 ```bash
-# Moonlight already on sunshine-ds-kms :48200. Helper :2 already up.
-scripts/ensure-cemu-gamemode-dual-screen.sh
+# Moonlight already on sunshine-ds-kms :48200 (not Decky :47989). Helper :2 already up.
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/sunshine-app-stop.sh cemu
+CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 ```
 
-Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the RetroDECK Cemu command with `--env=CEMU_GAMEMODE_DS=1`. Does **not** rewrite `shortcuts.vdf`. Overlay is Steam’s Game Mode overlay (`STEAM_OVERLAY=1` / focused shortcut), not host `LD_PRELOAD` of `gameoverlayrenderer.so` into the Flatpak.
+Launch is `reaper SteamLaunch AppId=2374129079` (Wind Waker HD tile) plus the RetroDECK Cemu command with `--env=CEMU_GAMEMODE_DS=1` and **no** `-f`. Does **not** rewrite `shortcuts.vdf`. Overlay is Steam’s Game Mode overlay (`STEAM_OVERLAY=1` / focused shortcut), not host `LD_PRELOAD` of `gameoverlayrenderer.so` into the Flatpak. Bind mappings only on `Sunshine (libvirtualhid) AYN_Thor` (Steam wrap may stay listed empty). Cemu reads uuid at start — bind then launch, do not expect a live rebind.
 
-HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`. The focus watcher must **not** reclaim while Steam overlay is up. GDS `back_button_timeout = 500` pulses HOME on UHID bluetooth x360; Steam ignores that Guide. **sunshine-ds** then toggles `STEAM_OVERLAY=1` on Steam Big Picture plus `FOCUSED_APP=769` / `FOCUSED_APP_GFX=<game>`. Hold Select again to close. `scripts/steam-guide-from-select.py` is debug-only (`--show` / `--hide`); do not start the Python watcher. Fangoh Moonlight GamePad taps are **absolute mouse** (native LI_TOUCH is off). sunshine-ds opens session **`:0`** (kms unsets `$DISPLAY`), warps onto **GamePad View**, then still emits the uinput click at that cursor. Dual-stream/stacked use display 1; Odin **GamePad only** is display 0 with `primary_from_secondary`. Checkpoint **`checkpoint-2026-09-09-gamemode-cemu-touch-v2`** (sunshine-ds `be45fc0f`): Odin stacked, Thor dual-panel, and Odin GamePad only all work.
+HDMI (video/0) is gamescope’s focused surface, not X11 stacking. Cemu TV can be viewable while Moonlight still shows Steam BPM. The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYER_WINDOW` / `GAMESCOPE_FOCUSED_*` to that xid, and `windowactivate`s it (same reclaim as `eden-from-retrodeck.sh`). Do **not** treat `windowraise` alone as enough. Do **not** force Cemu `-f`. The focus watcher must **not** reclaim while Steam overlay is up. GDS `back_button_timeout = 500` pulses HOME on UHID bluetooth x360; Steam ignores that Guide. **sunshine-ds** then toggles `STEAM_OVERLAY=1` on Steam Big Picture plus `FOCUSED_APP=769` / `FOCUSED_APP_GFX=<game>`. Hold Select again to close. `scripts/steam-guide-from-select.py` is debug-only (`--show` / `--hide`); do not start the Python watcher. Fangoh Moonlight GamePad taps are **absolute mouse** (native LI_TOUCH is off). sunshine-ds opens session **`:0`** (kms unsets `$DISPLAY`), warps onto **GamePad View**, then still emits the uinput click at that cursor. Dual-stream/stacked use display 1; Odin **GamePad only** is display 0 with `primary_from_secondary`. Checkpoint **`checkpoint-2026-09-09-gamemode-cemu-ds`** (sunshine-ds `119d7452`): Thor dual-panel picture + pad. Earlier **`checkpoint-2026-09-09-gamemode-cemu-touch-v2`** (`be45fc0f`) is touch/overlay only (HDMI was still DCC-black).
 
 Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad layout). They are copied onto the named Sunshine pad; the Steam virtual uuid is **not** copied. `moonlight.xml` is a Wii U Pro profile — using it on GamePad type leaves analog 7/8 looking fine while d-pad and axis-splits fight the sticks.
 
@@ -72,4 +78,5 @@ Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad
 - Hand-edit `controller0.xml` or copy mappings onto every `<controller>`
 - Resize/kill the virtual-output helper to “match” a client while another session is live
 - Run `ensure-cemu-dual-screen.sh` in Game Mode (KWin)
+- Connect Game Mode Cemu to Decky `:47989` (black / mouse-only). Host is `:48200`.
 - `sudo systemctl --user`, `kwin_wayland --replace`, `POST /api/restart`

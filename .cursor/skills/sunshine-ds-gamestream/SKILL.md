@@ -13,10 +13,11 @@ Read this **before** tracing capture or `/launch` from scratch. Host uniqueids a
 
 ```bash
 curl -s --max-time 3 http://127.0.0.1:48100/serverinfo | grep -E 'uniqueid|currentgame|state'
+curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'uniqueid|currentgame|state'
 curl -s --max-time 3 http://127.0.0.1:47989/serverinfo | grep -E 'uniqueid|currentgame|state'
 ```
 
-Thor and Odin must use the **dev** uniqueid / `:48100`. `:47989` is Decky KMS and is black on Plasma desktop.
+Plasma Thor/Odin daily dual-screen uses the **dev** uniqueid / `:48100`. Game Mode Cemu dual-screen uses `sunshine-ds-kms` / `:48200` (uniqueid `1075C8EF…`). `:47989` is Decky KMS — black on Plasma **and** black (or mouse-only) in Game Mode. Do not debug Game Mode Cemu against Decky.
 
 2. Confirm the **running** pid is the installed binary (`pgrep -x sunshine-ds` only — never `pgrep -f` / `pkill -f`):
 
@@ -42,7 +43,7 @@ This is the working GameStream baseline. Do not “improve” it unless the user
 - Thor Cemu dual-screen: standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Type **Wii U GamePad**. Bind with `scripts/bind-gamepad.py`; place with `scripts/ensure-cemu-dual-screen.sh`. Recipe in **Cemu dual-screen (Thor)** below.
 - Thor Azahar dual-screen: standalone Flatpak `org.azahar_emu.Azahar`, Separate Windows, `QT_QPA_PLATFORM=xcb`. Primary Window → HDMI, Secondary Window → Virtual-sunshine-ds. Recipe in **Azahar dual-screen (Thor)** below.
 - Odin stacked checkpoint (user: “fixed!”): Portal only exposes Android `Display id=0`, so Auto is **STACKED** (TV + GamePad on that one screen), not Thor dual-panel. STACKED streams both GameStream videos. Dual-panel and stacked are alternate layouts, not a mix; Portal cannot target the other LCD until Android advertises a Presentation display. Moonlight `f4eca72d` (`cursor/stacked-secondary-surface-f15e`, tag `checkpoint-odin-stacked-dual-stream`) binds the in-layout `surfaceViewSecondary`. Settings: Dual display **Auto** or **Stack both**. GamePad only is the single-stream option. Do not rebuild sunshine-ds to “fix” the spinner.
-- Game Mode `:48200` Cemu GamePad touch checkpoint (2026-09-09, tag `checkpoint-2026-09-09-gamemode-cemu-touch-v2`, sunshine-ds `be45fc0f`): Odin **Stack both**, Thor **dual-panel**, and Odin **GamePad only** taps work on Wind Waker. Earlier tag `checkpoint-2026-09-09-gamemode-cemu-touch` (`1dfeb53c`) is stacked + Thor only. Host `sunshine-ds-kms`, `dual_display_source = gamescope-virtual`. Do not merge into play / `:48100`. Azahar Game Mode (`970550cd`) injects onto **Secondary Window** and restores **Primary Window**; overlay falls back to `STEAM_GAME=769` when BPM has no title.
+- Game Mode `:48200` Cemu dual-screen checkpoint (2026-09-09, user: working, tag `checkpoint-2026-09-09-gamemode-cemu-ds`, sunshine-ds `119d7452`): Thor **dual-panel** Wind Waker — HDMI picture + GamePad stream + Thor pad. Host `sunshine-ds-kms` (`cap_sys_admin=ep`), `capture = kms`, `dual_display_source = gamescope-virtual`. Recipe: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). HDMI DCC is decoded (`[kmsgrab] DMA-BUF copied` + I-frame ~17–23KB). Earlier touch-only tag `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is superseded for picture. Do not merge kms into play / `:48100`. Azahar Game Mode (`970550cd`) injects onto **Secondary Window** and restores **Primary Window**; overlay falls back to `STEAM_GAME=769` when BPM has no title.
 - Start env: Distrobox `steamos-tools`, `CONFIGURATION_DIRECTORY=/home/deck/.config/sunshine-ds-dev`, `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`, `WAYLAND_DISPLAY=wayland-0`, `unset DISPLAY`.
 - After `/launch` the log must contain `Skipping encoder re-probe; using [software]` (not a vulkan/vaapi walk).
 - Capture health: `cpu frame type=2` + high `pixel_diffs`. Probe I-frame ~1KB / 0% coded is `dummy_img()`, ignore it.
@@ -75,7 +76,7 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 |---|---|
 | Spectacle screenshot all black | KWin FBO wedged. **Last resort:** `qdbus org.kde.KWin /Compositor org.kde.kwin.Compositing.reinitialize`. That can restart `kwin_wayland`, kill the virtual-output helper, and crash Azahar. First: restart PipeWire (user bus, not `sudo systemctl --user`) then DS; respawn **one** helper if it died. Playbook: `scripts/ensure-kwin-screencast.sh`. |
 | Probe I-frame ~1200 bytes / 0% coded | `dummy_img()`, not live capture |
-| Game Mode `:48200` HDMI **black except the mouse**, I-frame ~700B / skip 100% | KMS `GetTextureSubImage` of AMD **DCC** HDMI FB is zeros; cursor plane is linear. Cemu/Steam still render (x11grab of the TV window has pixels). Fix: kmsgrab shader sample + ReadPixels (same as pwgrab). Stage `sunshine-ds-kms.new` + `sudo setcap cap_sys_admin+ep` + `--start`. Do not treat this as “wrong Moonlight app” first — but stock Moonlight on Decky `:47989` is also black here. Host **`:48200`**. |
+| Game Mode `:48200` HDMI **black except the mouse**, I-frame ~700B / skip 100% | Stale ELF without `119d7452` (or `getcap` missing). AMD **DCC** HDMI FB (`modifier=0x200000000082305`) used to download as zeros via `GetTextureSubImage`; cursor plane is linear. Proven fix: kmsgrab shader sample + ReadPixels. Live health: `[kmsgrab] DMA-BUF copied 1920x1080 nonzero=<large>` and HDMI I-frame **~17–23KB**. Stage `sunshine-ds-kms.new` + `sudo setcap cap_sys_admin+ep` + `--start`. Stock Moonlight on Decky `:47989` is still black here. Host **`:48200`**. |
 | Game Mode `:48200` **user saw moving yellow square on blue** | Dual-stream smoke proven 2026-09-09: KMS HDMI + pwgrab `gamescope-virtual`. Log `cpu frame type=2` `pixel_diffs=6400`, video/1 uv intra ≠ 0. Helper must keep damaging `:2`. |
 | Game Mode `:48200` **bottom pitch black**, log `cpu frame type=2` full nonzero, video/1 I-frame ~1KB / 0% coded | Capture has pixels; encoder still has `dummy_img()` zeros. Headless gamescope often emits **one** MemFd then goes silent (static blue / Cemu). Fix is in sunshine-ds `pipewire.cpp`: seed dummy from last CPU frame and re-present it. Solid-color smoke has `pixel_diffs=0` but must not look black. Stage `sunshine-ds-kms.new` + `setcap` + `--start`. |
 | Game Mode `:48200` bottom black, **no** `cpu frame type=2`, probe `nonzero=0` | PipeWire connected but gamescope sent nothing. Static tk on `:2` goes silent after the first buffer. `--start` now keeps a moving yellow square on the virtual display. Reconnect Moonlight; log should show `cpu frame type=2`. |
@@ -160,7 +161,14 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
-Game Mode `:48200` is not this path. After the moving-square smoke, run `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, GamePad `ffplay` `x11grab` onto headless `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
+Game Mode `:48200` is the **Cemu dual-screen checkpoint** (`checkpoint-2026-09-09-gamemode-cemu-ds`). Moonlight already on `sunshine-ds-kms` (not Decky). Close any Tender/rom-launcher Cemu that still has `-f`, then:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
+```
+
+That is SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, **no** `-f`, mappings only on `Sunshine (libvirtualhid) AYN_Thor`, GamePad `ffplay` `x11grab` onto headless `:2`. Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
 
 Or run the playbook script from the host; do not hand-edit XML.
 

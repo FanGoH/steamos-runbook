@@ -41,7 +41,7 @@ Eden INI: `~/.config/eden/qt-config.ini`. Maps for Azahar come from the active p
 
 Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine pad and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 
-Game Mode RetroDECK Cemu still auto-picks on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine). Use this skill for **desktop / GameStream** binds, explicit Thor/Odin, two-player assigns, and the Decky plugin. Dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
+Game Mode RetroDECK Cemu **local** tiles still auto-pick on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine). Game Mode **GameStream dual-screen** (`:48200`) must bind the live Sunshine client after that: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (or `--match Odin`). That script calls `bind-gamepad.py` on RetroDECK `controller0.xml` and puts mappings **only** on `Sunshine (libvirtualhid) AYN_Thor`. A leftover Tender `-f` Cemu will keep the Steam wrap. Use this skill for **desktop / GameStream** binds, explicit Thor/Odin, two-player assigns, and the Decky plugin. Desktop dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
 
 ## Why Thor failed
 

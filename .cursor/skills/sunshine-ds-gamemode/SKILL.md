@@ -7,7 +7,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint (user 2026-09-10: “it works!” + Cemu audio): `checkpoint-2026-09-10-gamemode-cemu-audio`.** Both screens, Steam overlay, bottom screensaver, Thor pad, Moonlight hears Cemu (`Capturing host sink [Virtual Surround Sound]`). Earlier `checkpoint-2026-09-10-gamemode-works` is the same minus stream audio. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
+**Checkpoint (user 2026-09-10: “amazing checkpoint”): `checkpoint-2026-09-10-gamemode-tender-ds`.** Tender Cemu Play while `:48200` is BUSY launches windowed dual-screen (`--attach`, no `-f`). Steam Exit restores the idle clock (leftover `:2` x11grab killed before `--paint`). Same Thor screens / overlay / pad / Cemu audio as `checkpoint-2026-09-10-gamemode-cemu-audio`. Local Play (kms FREE) stays `-f`. Steam menu clicks still **pending**. Do not “improve” it unless it breaks.
 
 ## What must be true
 

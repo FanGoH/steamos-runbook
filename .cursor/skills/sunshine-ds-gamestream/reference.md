@@ -19,7 +19,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 | Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
 | Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
 | Overlay | Hold Select 0.5s. sunshine-ds sets `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` (`:0`). Hide restores Cemu TV. Do not start `steam-guide-from-select.py` |
-| GamePad tap | Inject opens `:1` then `:0` (never `$DISPLAY` / `:2`). Cemu `FOCUS_DISPLAY=1` puts GamePad View on `:1`; `:0`-only warps fail and uinput clicks HDMI `0,0`. Log: `GamePad inject: using :1` |
+| GamePad tap | Inject opens `:1` then `:0` (never `$DISPLAY` / `:2`). Cemu `FOCUS_DISPLAY=1` puts GamePad View on `:1`; `:0`-only warps fail and uinput clicks HDMI `0,0`. Live 2026-09-10: `GamePad inject: using :1` then `abs unit=… px=310,200` / `960,540` / `1549,800` on GamePad GL child (not HDMI `0,0`) |
 | Thor pad | Bind **only** `Sunshine (libvirtualhid) AYN_Thor` (`--force`). Wait for js with `wait-appear` before bind. Cemu uuid `{sdl-index}_{guid}` — restart Cemu after bind if index changed. `_X360_SDL_MAP` is **15-button** libvirtualhid (`LB=b6` `Back=b10` `Start=b11`); do **not** write 11-button Steam xpad (`LB=b4` `Back=b6`). WW first-person look is **L bumper** (Wii U L), not Select |
 | HDMI health | `[kmsgrab] DMA-BUF copied 1920x1080 nonzero≈8.2M` |
 | video/1 health | `Connect PW stream PW_ID_ANY serial=` + `cpu frame type=2` `nonzero=8294400/8294400` + gamescope node **running** + a Link. `--smoke` PNG before blaming kms |

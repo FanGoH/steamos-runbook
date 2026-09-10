@@ -35,6 +35,21 @@ set_atoms() {
   DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
 }
 
+# HDMI/spinner follow xwayland 0 (:0). Cemu is on xwayland 1 (:1) and stays
+# InputOnly until FOCUS_DISPLAY's middle cardinal is 1.
+focus_game_xwayland() {
+  local cur a c
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}')"
+  a="$(printf '%s' "$cur" | awk -F',' '{gsub(/ /,"",$1); print $1}')"
+  c="$(printf '%s' "$cur" | awk -F',' '{gsub(/ /,"",$3); print $3}')"
+  [ -n "$a" ] || a=12346
+  [ -n "$c" ] || c=66
+  local vals="$a, 1, $c"
+  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
+    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "$vals" 2>/dev/null || true
+  done
+}
+
 tag_windows() {
   local d="$1" id name
   [ -S "/tmp/.X11-unix/X${d#:}" ] || return 0
@@ -60,6 +75,7 @@ while [ "$SECONDS" -lt "$end" ]; do
   # Spinner / HDMI follow :0. :1 is the game xwayland Cemu actually uses.
   set_atoms :0
   set_atoms :1
+  focus_game_xwayland
   tag_windows :0
   tag_windows :1
   sleep "$(awk -v ms="$INTERVAL_MS" 'BEGIN { printf "%.3f", ms/1000 }')"

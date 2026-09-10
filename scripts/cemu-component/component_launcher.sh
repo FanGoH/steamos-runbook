@@ -26,6 +26,11 @@ export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # :0 FOCUSED_APP is already the shortcut — use normal X11/Vulkan.
 unset GAMESCOPE_DISPLAY_DISABLED
 unset ENABLE_GAMESCOPE_WSI
+# Optional bisect: llvmpipe skips gamescope InputOnly GLX.
+if [ "${CEMU_SOFTWARE_GL:-}" = 1 ] || [ -f /home/deck/steamos-playbook/logs/cemu-software-gl ]; then
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export GALLIUM_DRIVER=llvmpipe
+fi
 # Steam overlay renderer can pin wx/GTK on an InputOnly 10x10 window.
 unset LD_PRELOAD
 unset LD_PRELOAD_64

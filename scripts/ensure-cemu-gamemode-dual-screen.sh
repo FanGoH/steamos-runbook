@@ -3,9 +3,10 @@
 # View mirrored onto the headless gamescope DISPLAY=:2 PipeWire node.
 #
 # Steam overlay identity: tag the Cemu window STEAM_GAME=<AppId>. Launch is
-# RetroDECK Cemu directly (CEMU_GAMEMODE_DS=1, no -f). steam://rungameid and
-# reaper SteamLaunch from GDS/SSH stay a 10x10 InputOnly stub. Does not
-# rewrite shortcuts.vdf.
+# SteamClient.Apps.RunGame (same as Tender Play) via scripts/steam-run-shortcut.py.
+# steam://rungameid, reaper SteamLaunch, and a host flatpak run from GDS/SSH
+# stay a 10x10 InputOnly stub (FOCUSED_APP stays 769). Does not rewrite
+# shortcuts.vdf. The want file keeps the wrapper in CEMU_GAMEMODE_DS=1 (no -f).
 # HDMI is gamescope's focused surface, not X11 stacking. Tag the Cemu TV
 # window STEAM_GAME and set GAMESCOPECTRL_BASELAYER_WINDOW or Steam BPM
 # stays on video/0 while GamePad View still mirrors. GamePad stays mapped
@@ -547,10 +548,6 @@ bind_cemu_pads
 write_rd_geometry || exit 1
 
 if ! cemu_running; then
-  if [ ! -x "$REAPER" ]; then
-    echo "Missing Steam reaper at $REAPER"
-    exit 1
-  fi
   export DISPLAY="$TV_DISPLAY"
   unset WAYLAND_DISPLAY
   unset ENABLE_GAMESCOPE_WSI
@@ -568,32 +565,15 @@ if ! cemu_running; then
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
   printf '%s\n' "$APPID" >"$DS_WANT"
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
   start_focus_nudge
-  # steam:// / SteamLaunch from GDS or SSH never become the gamescope
-  # focused app (BPM stays 769) so Cemu stays InputOnly 10x10. Launch
-  # RetroDECK Cemu ourselves; tag STEAM_GAME after the window exists.
-  echo "flatpak RetroDECK Cemu (CEMU_GAMEMODE_DS=1, no SteamLaunch, no gamescope WSI)."
-  nohup flatpak run \
-    --env=CEMU_GAMEMODE_DS=1 \
-    --env=DISPLAY="$TV_DISPLAY" \
-    --env=QT_QPA_PLATFORM=xcb \
-    --env=GDK_BACKEND=x11 \
-    --env=SDL_VIDEODRIVER=x11 \
-    --env=STEAM_OVERLAY=1 \
-    --env=SteamAppId="$APPID" \
-    --env=SteamGameId="$APPID" \
-    --env=SteamOverlayGameId="$APPID" \
-    --env=SDL_GAMECONTROLLERCONFIG_FILE="$SDLMAP" \
-    --unset-env=WAYLAND_DISPLAY \
-    --unset-env=ENABLE_GAMESCOPE_WSI \
-    --unset-env=GAMESCOPE_DISPLAY_DISABLED \
-    net.retrodeck.retrodeck \
-    -e "%EMULATOR_CEMU% -g %ROM%" \
-    "$ROM" \
-    >>"$LOG" 2>&1 &
-  echo "Launched pid $!"
+  # Tender Play: SteamClient.Apps.RunGame(gameId). steam:// and a host
+  # flatpak run never become FOCUSED_APP (Cemu stays 10x10 InputOnly).
+  echo "SteamClient.Apps.RunGame $GAMEID (shortcut $APPID); wrapper reads $DS_WANT."
+  if ! python3 "$ROOT/scripts/steam-run-shortcut.py" --gameid "$GAMEID"; then
+    stop_focus_nudge
+    echo "Steam RunGame failed (CDP). Press Play on the Wind Waker HD tile."
+    exit 1
+  fi
   if ! wait_cemu; then
     stop_focus_nudge
     echo "Cemu did not start. See $LOG"

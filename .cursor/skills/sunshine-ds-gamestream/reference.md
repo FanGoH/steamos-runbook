@@ -56,7 +56,7 @@ Moonlight: host `:48200` (pair again if uniqueid is new). Not `:48100`, not Deck
 
 2026-09-09 after `setcap` + `--start` of `f942497b`: two Moonlight connects still encoded video/1 `coded … 0.0%` with **no** `cpu frame type=2`. The helper’s static blue window had already gone silent. `scripts/sunshine-ds-gamemode-virtual.sh --start` now paints a moving yellow square on `:2` so gamescope keeps emitting.
 
-2026-09-09 **user confirmed** Game Mode dual-stream smoke on `:48200`: “I SEE THE SMALL SQUARE MOVING IN A BLUE SCREEN.” Log `cpu frame type=2` `nonzero=8268800/8294400` `pixel_diffs=6400`; video/1 `coded y,uvDC intra: 0.4% 7.9%` (chroma present, not dummy black); HDMI still ~17KB I-frames. Daily Thor/Odin dual-screen stays Plasma `:48100`. Do not merge this experiment into play yet. Next content on video/1 is Cemu GamePad via `scripts/ensure-cemu-gamemode-dual-screen.sh` (SteamLaunch + `ffplay` `x11grab` onto `:2`), not KWin placement.
+2026-09-09 **user confirmed** Game Mode dual-stream smoke on `:48200`: “I SEE THE SMALL SQUARE MOVING IN A BLUE SCREEN.” Log `cpu frame type=2` `nonzero=8268800/8294400` `pixel_diffs=6400`; video/1 `coded y,uvDC intra: 0.4% 7.9%` (chroma present, not dummy black); HDMI still ~17KB I-frames. Daily Thor/Odin dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Cemu GamePad on video/1 is now the **`checkpoint-2026-09-09-gamemode-cemu-ds`** recipe (`ensure-cemu-gamemode-dual-screen.sh`), not KWin placement.
 
 ## Game Mode Cemu GamePad touch (2026-09-09)
 
@@ -83,6 +83,40 @@ Host: `~/.local/bin/sunshine-ds-kms` `cap_sys_admin=ep`, RUNPATH `~/.local/lib/s
 sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
 ./scripts/ensure-sunshine-ds-gamemode.sh --start
 ```
+
+## Game Mode Cemu dual-screen + HDMI DCC (2026-09-09, user confirmed)
+
+User: Game Mode Cemu on Thor is working (HDMI picture, GamePad stream, Thor pad). Do not “improve” this unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`.
+
+| Item | Proven value |
+|---|---|
+| Tag | **`checkpoint-2026-09-09-gamemode-cemu-ds`** |
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/gamemode-pw-virtual-f15e` tip **`119d7452`** (kmsgrab shader download of AMD DCC) |
+| This playbook | this tree / same tag |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
+| Host ELF | `~/.local/bin/sunshine-ds-kms` sha `82a51040…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms` |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500` |
+| Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Not Decky `:47989`, not desktop `:48100` |
+| Cemu | RetroDECK `Cemu_relwithdebinfo -g <wux>` with `CEMU_GAMEMODE_DS=1` and **no** `-f`. TV on session `:0`. GamePad View `ffplay -window_id` onto headless `:2` |
+| Pad | `CEMU_PAD_MATCH=Thor` → mappings only on `Sunshine (libvirtualhid) AYN_Thor`. Steam wrap `28de:11ff` listed with empty mappings |
+| HDMI health | `[kmsgrab] DMA-BUF copied 1920x1080 nonzero=<~8.2M/8294400>` `modifier=144115188076389125` (`0x200000000082305` DCC). Live I-frame **~17–23KB**. Probe I ~1KB is still `dummy_img()` |
+
+```bash
+# ELF overwrite clears file caps. Distrobox cannot setcap.
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+getcap ~/.local/bin/sunshine-ds-kms
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+# Wrong instance is Tender/rom-launcher Cemu with -f (HDMI-only):
+./scripts/sunshine-app-stop.sh cemu
+CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
+```
+
+`--start` / the runner refuse without `cap_sys_admin`. `patchelf` and `cp` strip it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE). Do not start `steam-guide-from-select.py`.
+
+HDMI **black after Moonlight reconnect** (GamePad still fine, `GL: graphics.cpp:664: [00000501]` from 21:00:13): kmsgrab snapshot did not `eglMakeCurrent` (pwgrab does). sunshine-ds **`a1511259`**. Stage `sunshine-ds-kms.new` + setcap. A fresh kms pid restores the first session until the next reconnect.
+
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. Prefer **`checkpoint-2026-09-09-gamemode-cemu-ds`**.
 
 ## Logical order that got here
 

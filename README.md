@@ -42,6 +42,7 @@ Manual follow-ups (printed when needed):
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
+- Emu Pads Decky plugin (list/reorder/apply Cemu Azahar Eden) when `~/homebrew/plugins` is root-owned
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
@@ -79,10 +80,12 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
-| `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
+| `scripts/bind-gamepad.py` | List pads; bind Cemu/Azahar/Eden (`status` / `apply --emu … --pads jsN,jsM`); `profile` prints `GAMESTREAM_PAD_PROFILE` |
+| `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (list/reorder/apply Cemu Azahar Eden). `~/homebrew/plugins` may need sudo |
+| `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu: SteamLaunch RetroDECK Cemu windowed, `ffplay` `x11grab` GamePad View onto headless `:2` |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (Thor checkpoint): SteamLaunch RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, `ffplay` `x11grab` GamePad View onto headless `:2` |
 | `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |

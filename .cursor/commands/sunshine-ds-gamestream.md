@@ -1,5 +1,7 @@
 # sunshine-ds GameStream
 
-Diagnose or restore desktop GameStream on sunshine-ds `:48100` (not Decky `:47989`).
+Diagnose or restore GameStream. Follow `.cursor/skills/sunshine-ds-gamestream/SKILL.md`.
 
-Follow `.cursor/skills/sunshine-ds-gamestream/SKILL.md`. Bring-up: `scripts/ensure-sunshine-ds.sh`. Return to Game Mode: `scripts/switch-to-game-mode.sh`.
+- Plasma daily dual-screen: sunshine-ds `:48100` (`scripts/ensure-sunshine-ds.sh`). Not Decky `:47989`.
+- Game Mode Cemu dual-screen (Thor checkpoint): `sunshine-ds-kms` `:48200` (`scripts/ensure-sunshine-ds-gamemode.sh --start`), then `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh`.
+- Return to Game Mode from desktop: `scripts/switch-to-game-mode.sh`.

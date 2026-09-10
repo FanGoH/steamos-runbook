@@ -1,0 +1,10 @@
+{
+  "name": "Emu Pads",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["controller", "gamepad", "cemu", "azahar", "eden", "sunshine"],
+    "description": "List host pads (Sunshine client names included), reorder, and apply Cemu / Azahar / Eden binds."
+  }
+}

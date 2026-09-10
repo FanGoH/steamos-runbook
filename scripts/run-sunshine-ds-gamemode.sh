@@ -12,12 +12,22 @@ load_env "$ROOT"
 setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-if [ -S "${XDG_RUNTIME_DIR}/gamescope-1" ]; then
-  export WAYLAND_DISPLAY=gamescope-1
+# Session compositor is gamescope-0 (GAMESCOPE_WAYLAND_DISPLAY). Headless
+# :2 is gamescope-1. Preferring gamescope-1 after a virtual restart hangs
+# kms init (no XDG_OUTPUT, never binds :48200).
+SESSION_WL=""
+if [ -f "${XDG_RUNTIME_DIR}/gamescope-environment" ]; then
+  SESSION_WL="$(awk -F= '/^GAMESCOPE_WAYLAND_DISPLAY=/{print $2; exit}' \
+    "${XDG_RUNTIME_DIR}/gamescope-environment")"
+fi
+if [ -n "$SESSION_WL" ] && [ -S "${XDG_RUNTIME_DIR}/${SESSION_WL}" ]; then
+  export WAYLAND_DISPLAY="$SESSION_WL"
 elif [ -S "${XDG_RUNTIME_DIR}/gamescope-0" ]; then
   export WAYLAND_DISPLAY=gamescope-0
 elif [ -S "${XDG_RUNTIME_DIR}/wayland-0" ]; then
   export WAYLAND_DISPLAY=wayland-0
+elif [ -S "${XDG_RUNTIME_DIR}/gamescope-1" ]; then
+  export WAYLAND_DISPLAY=gamescope-1
 else
   unset WAYLAND_DISPLAY
 fi

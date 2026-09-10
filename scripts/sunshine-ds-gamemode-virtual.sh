@@ -8,7 +8,10 @@
 # PipeWire Video/Source. KMS cannot see that plane. sunshine-ds-kms video/1
 # grabs the node when dual_display_source = gamescope-virtual.
 #
-# Sidecar: $XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual (serial/node/size).
+# Sidecar: $XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual (serial/size).
+# Do not write `node=<id>`: sunshine-ds-kms built from f8d9968c then skips
+# AUTOCONNECT + TARGET_OBJECT, and video/1 stays dummy_img() black. Sep 9
+# checkpoint 119d7452 links by object.serial. Keep the node id as `pw_node=`.
 # Does not touch :48100, sunshine-ds-dev, or the KWin helper.
 # Does not restart gamescope-session.
 #
@@ -228,7 +231,7 @@ write_nodefile() {
   umask 077
   cat >"$NODEFILE" <<EOF
 serial=${serial}
-node=${node}
+pw_node=${node}
 width=${WIDTH}
 height=${HEIGHT}
 wayland=$(wayland_name || true)

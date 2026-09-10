@@ -29,6 +29,12 @@ unset ENABLE_GAMESCOPE_WSI
 export QT_QPA_PLATFORM=xcb
 export GDK_BACKEND=x11
 export SDL_VIDEODRIVER=x11
+# Game Mode exports GTK_IM_MODULE=Steam. wxGTK then deadlocks in gtk_init
+# (IME waits for a focused game window) and Cemu stays a 10x10 InputOnly stub.
+unset GTK_IM_MODULE
+export GTK_IM_MODULE=gtk-im-context-simple
+export GTK_A11Y=none
+export NO_AT_BRIDGE=1
 
 # Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1.
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
@@ -95,6 +101,15 @@ else
   if [ "$has_fs" -eq 0 ]; then
     args+=("-f")
   fi
+fi
+
+# Hold :0 FOCUSED_APP on the shortcut so HDMI / the Launching spinner
+# leave BPM. Focus atoms live on the Steam UI xwayland.
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
+  && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
+  appid="${SteamAppId:-2374129079}"
+  flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=25" \
+    /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
 fi
 
 exec /app/retrodeck/components/cemu/component_launcher.sh "${args[@]}"

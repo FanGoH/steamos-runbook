@@ -33,6 +33,8 @@ RD_SETTINGS="${CEMU_RD_SETTINGS:-/home/${STEAMOS_USER:-deck}/.var/app/net.retrod
 RD_CONTROLLER="${CEMU_RD_CONTROLLER:-/home/${STEAMOS_USER:-deck}/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml}"
 ROM="${CEMU_ROM:-/home/${STEAMOS_USER:-deck}/retrodeck/roms/wiiu/Legend of Zelda, The - The Wind Waker HD (USA, Asia) (En,Fr,Es).wux}"
 APPID="${CEMU_STEAM_APPID:-2374129079}"
+# Non-Steam shortcut GameID: appid in the high 32 bits, type 0x02 in the low half.
+GAMEID="${CEMU_STEAM_GAMEID:-$(python3 -c "print((int('${APPID}') << 32) | 0x02000000)")}"
 PAD_MATCH="${CEMU_PAD_MATCH:-Sunshine}"
 # Skip the Eden pad patcher in ensure-cemu-input.sh (Steam virtual first).
 export CEMU_GAMEMODE_DS=1
@@ -503,25 +505,59 @@ fi
 write_rd_geometry || exit 1
 
 if ! cemu_running; then
+  if [ ! -x "$REAPER" ]; then
+    echo "Missing Steam reaper at $REAPER"
+    exit 1
+  fi
   export DISPLAY="$TV_DISPLAY"
   unset WAYLAND_DISPLAY
+  unset ENABLE_GAMESCOPE_WSI
+  unset GAMESCOPE_DISPLAY_DISABLED
   export QT_QPA_PLATFORM=xcb
+  export GDK_BACKEND=x11
+  export SDL_VIDEODRIVER=x11
   export CEMU_GAMEMODE_DS=1
+  export STEAM_OVERLAY=1
+  export SteamAppId="$APPID"
+  export SteamGameId="$APPID"
+  export SteamOverlayGameId="$APPID"
   export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  # SteamLaunch from this script is not a Steam-spawned game, so BPM keeps
-  # FOCUSED_APP=769 and Cemu never leaves the InputOnly 10x10 stub. Ask Steam
-  # to run the Wind Waker HD shortcut; the wrapper want-file keeps no -f.
   : >"$DS_WANT"
-  echo "steam://rungameid/$APPID RetroDECK Cemu (CEMU_GAMEMODE_DS want-file, no -f)."
-  DISPLAY="$TV_DISPLAY" steam steam://rungameid/"$APPID" >>"$LOG" 2>&1 || true
+  echo "SteamLaunch AppId=$APPID RetroDECK Cemu (CEMU_GAMEMODE_DS=1, no -f, no gamescope WSI)."
+  nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
+    flatpak run \
+      --env=CEMU_GAMEMODE_DS=1 \
+      --env=DISPLAY="$TV_DISPLAY" \
+      --env=QT_QPA_PLATFORM=xcb \
+      --env=GDK_BACKEND=x11 \
+      --env=SDL_VIDEODRIVER=x11 \
+      --env=STEAM_OVERLAY=1 \
+      --env=SteamAppId="$APPID" \
+      --env=SteamGameId="$APPID" \
+      --env=SteamOverlayGameId="$APPID" \
+      --unset-env=WAYLAND_DISPLAY \
+      --unset-env=ENABLE_GAMESCOPE_WSI \
+      --unset-env=GAMESCOPE_DISPLAY_DISABLED \
+      net.retrodeck.retrodeck \
+      -e "%EMULATOR_CEMU% -g %ROM%" \
+      "$ROM" \
+    >>"$LOG" 2>&1 &
+  echo "Launched pid $!"
   if ! wait_cemu; then
-    echo "Cemu did not start via steam://. See $LOG"
+    echo "Cemu did not start. See $LOG"
     tail -40 "$LOG" || true
     exit 1
   fi
+  for d in :0 :1; do
+    if DISPLAY="$d" xdotool search --class Cemu >/dev/null 2>&1; then
+      TV_DISPLAY="$d"
+      echo "Cemu windows are on $TV_DISPLAY"
+      break
+    fi
+  done
   nudge_cemu_into_gamescope
 else
   echo "Cemu already running; mirroring GamePad View only."

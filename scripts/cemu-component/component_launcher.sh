@@ -28,6 +28,13 @@ if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "${CEMU_GAMEMODE_DS_FLAG:-/home/deck/s
 fi
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
+  # Steam injects gamescope WSI; Cemu then deadlocks on an InputOnly 10x10
+  # window and never opens /dev/dri. Dual-stream needs normal X11/Vulkan.
+  unset ENABLE_GAMESCOPE_WSI
+  unset GAMESCOPE_DISPLAY_DISABLED
+  export QT_QPA_PLATFORM=xcb
+  export GDK_BACKEND=x11
+  export SDL_VIDEODRIVER=x11
 fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"

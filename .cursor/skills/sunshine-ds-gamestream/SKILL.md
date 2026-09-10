@@ -140,6 +140,10 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 systemctl --user restart steamos-sunshine-ds-gamemode.service
 ./scripts/test-gds-lifecycle.sh
+# After a Distrobox rebuild, stage then cap (cp onto kms strips file caps):
+./scripts/ensure-sunshine-ds-gamemode.sh --replace-bin
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
 ```
 
 Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`. Game Mode `:48200` is `sunshine-ds-kms` via `steamos-sunshine-ds-gamemode.service` (user `deck`, no sudo).

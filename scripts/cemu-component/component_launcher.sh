@@ -23,7 +23,8 @@ export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # Agent/SSH SteamLaunch never becomes the gamescope focused app (BPM
 # resets FOCUSED_APP=769), so Cemu stays an InputOnly 10x10 stub. A want
 # file lets steam://rungameid take focus while keeping dual-stream (no -f).
-if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}" ]; then
+WANT="${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}"
+if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "$WANT" ]; then
   export CEMU_GAMEMODE_DS=1
 fi
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
@@ -35,6 +36,21 @@ if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export QT_QPA_PLATFORM=xcb
   export GDK_BACKEND=x11
   export SDL_VIDEODRIVER=x11
+  # RetroDECK's inner launch drops SteamAppId. gamescope then keeps BPM
+  # (769) and Cemu stays a 10x10 InputOnly stub.
+  appid="${SteamAppId:-}"
+  if [ -z "$appid" ] && [ -f "$WANT" ]; then
+    appid="$(head -n1 "$WANT" | tr -d '[:space:]')"
+  fi
+  appid="${appid:-2374129079}"
+  export SteamAppId="$appid"
+  export SteamGameId="${SteamGameId:-$appid}"
+  export SteamOverlayGameId="${SteamOverlayGameId:-$appid}"
+  sdlmap="${CEMU_GAMEMODE_SDLMAP:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.sdlmap}"
+  if [ -f "$sdlmap" ]; then
+    # Override community db "Xbox 360 EasySMX" for 045e:028e.
+    export SDL_GAMECONTROLLERCONFIG="$(cat "$sdlmap")"
+  fi
 fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"

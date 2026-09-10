@@ -51,6 +51,8 @@ sunshine-ds now names pads `Sunshine (libvirtualhid) <client>` (udev prefix kept
 
 Keep SteamInput-P1-style GameController button IDs (SDL_GameController enums, not raw joystick indices).
 
+Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e:028e`) — that name is SDL’s community `gamecontrollerdb` entry, not a wrong device. The host pad is still `Sunshine (libvirtualhid) AYN_Thor` (Thor wins over Odin / `SM-A546E`). `bind-gamepad.py sdl-mapping` writes `SDL_GAMECONTROLLERCONFIG` so the UI matches the client name. With two Sunshine pads, `--match Sunshine` uses Thor then Odin; a leftover Samsung/Odin bind is not kept.
+
 ## After bind
 
 Cemu reads uuid at start. If Cemu is running, restart standalone `info.cemu.Cemu` (keep sunshine-ds). Flatpak process `comm` is truncated to `Cemu_relwithdeb` — `pgrep -x Cemu_relwithdebinfo` misses it. Then re-place dual-screen with `scripts/ensure-cemu-dual-screen.sh`. Same restart rule for Azahar and Eden.

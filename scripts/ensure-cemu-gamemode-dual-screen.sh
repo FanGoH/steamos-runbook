@@ -27,13 +27,17 @@ LOG="${ROOT}/logs/cemu-gamemode-ds.log"
 MIRROR_PIDFILE="${ROOT}/logs/cemu-gamemode-pad-mirror.pid"
 FOCUS_PIDFILE="${ROOT}/logs/cemu-gamemode-focus.pid"
 GUIDE_PIDFILE="${ROOT}/logs/cemu-gamemode-guide.pid"
+NUDGE_PIDFILE="${ROOT}/logs/cemu-gamemode-nudge.pid"
 PAINT_PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE:-$ROOT/logs/sunshine-ds-gamemode-virtual-paint.pid}"
+SDLMAP="${CEMU_GAMEMODE_SDLMAP:-$ROOT/logs/cemu-gamemode-ds.sdlmap}"
+STANDALONE_CONTROLLER="${CEMU_STANDALONE_CONTROLLER:-/home/${STEAMOS_USER:-deck}/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml}"
 STEAM_CLIENT_ID=769
 RD_SETTINGS="${CEMU_RD_SETTINGS:-/home/${STEAMOS_USER:-deck}/.var/app/net.retrodeck.retrodeck/config/Cemu/settings.xml}"
 RD_CONTROLLER="${CEMU_RD_CONTROLLER:-/home/${STEAMOS_USER:-deck}/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml}"
 ROM="${CEMU_ROM:-/home/${STEAMOS_USER:-deck}/retrodeck/roms/wiiu/Legend of Zelda, The - The Wind Waker HD (USA, Asia) (En,Fr,Es).wux}"
 APPID="${CEMU_STEAM_APPID:-2374129079}"
 # Non-Steam shortcut GameID: appid in the high 32 bits, type 0x02 in the low half.
+# steam://rungameid/$APPID logs "Unknown GameID type" and never focuses Cemu.
 GAMEID="${CEMU_STEAM_GAMEID:-$(python3 -c "print((int('${APPID}') << 32) | 0x02000000)")}"
 PAD_MATCH="${CEMU_PAD_MATCH:-Sunshine}"
 # Skip the Eden pad patcher in ensure-cemu-input.sh (Steam virtual first).
@@ -109,6 +113,42 @@ stop_guide_watch() {
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$GUIDE_PIDFILE"
+}
+
+stop_focus_nudge() {
+  local pid
+  pid="$(cat "$NUDGE_PIDFILE" 2>/dev/null || true)"
+  if [ -n "${pid:-}" ] && [ -d "/proc/$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+  fi
+  rm -f "$NUDGE_PIDFILE"
+}
+
+start_focus_nudge() {
+  stop_focus_nudge
+  (
+    local i
+    for i in $(seq 1 80); do
+      DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+      DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+      nudge_cemu_into_gamescope
+      sleep 0.2
+    done
+  ) >>"$LOG" 2>&1 &
+  printf '%s\n' "$!" >"$NUDGE_PIDFILE"
+}
+
+bind_cemu_pads() {
+  local xml
+  for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
+    [ -f "$xml" ] || continue
+    if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
+      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
+    elif ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match "$PAD_MATCH" --force; then
+      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
+    fi
+  done
+  python3 "$ROOT/scripts/bind-gamepad.py" sdl-mapping --match "${PAD_MATCH:-Sunshine}" >"$SDLMAP" 2>/dev/null || true
 }
 
 write_rd_geometry() {
@@ -456,7 +496,8 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
   stop_guide_watch
-  rm -f "$DS_WANT"
+  stop_focus_nudge
+  rm -f "$DS_WANT" "$SDLMAP"
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi
@@ -494,13 +535,7 @@ bash "$ROOT/scripts/ensure-cemu-input.sh" >>"$LOG" 2>&1 || {
   exit 1
 }
 
-if [ -f "$RD_CONTROLLER" ]; then
-  if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
-    python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match Sunshine --force || true
-  elif ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match "$PAD_MATCH" --force; then
-    python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match Sunshine --force || true
-  fi
-fi
+bind_cemu_pads
 
 write_rd_geometry || exit 1
 
@@ -525,28 +560,38 @@ if ! cemu_running; then
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  : >"$DS_WANT"
-  echo "SteamLaunch AppId=$APPID RetroDECK Cemu (CEMU_GAMEMODE_DS=1, no -f, no gamescope WSI)."
-  nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
-    flatpak run \
-      --env=CEMU_GAMEMODE_DS=1 \
-      --env=DISPLAY="$TV_DISPLAY" \
-      --env=QT_QPA_PLATFORM=xcb \
-      --env=GDK_BACKEND=x11 \
-      --env=SDL_VIDEODRIVER=x11 \
-      --env=STEAM_OVERLAY=1 \
-      --env=SteamAppId="$APPID" \
-      --env=SteamGameId="$APPID" \
-      --env=SteamOverlayGameId="$APPID" \
-      --unset-env=WAYLAND_DISPLAY \
-      --unset-env=ENABLE_GAMESCOPE_WSI \
-      --unset-env=GAMESCOPE_DISPLAY_DISABLED \
-      net.retrodeck.retrodeck \
-      -e "%EMULATOR_CEMU% -g %ROM%" \
-      "$ROM" \
-    >>"$LOG" 2>&1 &
-  echo "Launched pid $!"
+  printf '%s\n' "$APPID" >"$DS_WANT"
+  start_focus_nudge
+  # Steam must own the launch or gamescope stays FOCUSED_APP=769 and Cemu
+  # is a 10x10 InputOnly stub. Use the 64-bit shortcut GameID (type 0x02).
+  echo "steam://rungameid/$GAMEID (shortcut $APPID); wrapper reads $DS_WANT for dual-stream."
+  if command -v steam >/dev/null 2>&1; then
+    steam -silent "steam://rungameid/$GAMEID" >>"$LOG" 2>&1 &
+    echo "Launched steam pid $!"
+  else
+    echo "steam not on PATH; falling back to reaper SteamLaunch (may stay 10x10)."
+    nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
+      flatpak run \
+        --env=CEMU_GAMEMODE_DS=1 \
+        --env=DISPLAY="$TV_DISPLAY" \
+        --env=QT_QPA_PLATFORM=xcb \
+        --env=GDK_BACKEND=x11 \
+        --env=SDL_VIDEODRIVER=x11 \
+        --env=STEAM_OVERLAY=1 \
+        --env=SteamAppId="$APPID" \
+        --env=SteamGameId="$APPID" \
+        --env=SteamOverlayGameId="$APPID" \
+        --unset-env=WAYLAND_DISPLAY \
+        --unset-env=ENABLE_GAMESCOPE_WSI \
+        --unset-env=GAMESCOPE_DISPLAY_DISABLED \
+        net.retrodeck.retrodeck \
+        -e "%EMULATOR_CEMU% -g %ROM%" \
+        "$ROM" \
+      >>"$LOG" 2>&1 &
+    echo "Launched pid $!"
+  fi
   if ! wait_cemu; then
+    stop_focus_nudge
     echo "Cemu did not start. See $LOG"
     tail -40 "$LOG" || true
     exit 1
@@ -565,12 +610,14 @@ fi
 
 echo "Waiting for GamePad View on $TV_DISPLAY..."
 if ! PAD_WID="$(wait_pad_wid)"; then
+  stop_focus_nudge
   echo "No GamePad View window. Cemu may still be on HDMI only. See $LOG"
   DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xwininfo -root -tree 2>/dev/null | grep -i -E 'cemu|pad|zelda' | head -20 || true
   exit 2
 fi
 
+stop_focus_nudge
 start_mirror "$PAD_WID"
 start_focus_watch
 stop_guide_watch

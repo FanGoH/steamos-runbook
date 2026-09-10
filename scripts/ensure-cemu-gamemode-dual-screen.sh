@@ -11,6 +11,7 @@
 # on-screen under the TV; ffplay x11grab -window_id copies that drawable
 # onto :2. Off-screen ximagesrc is MIT-SHM BadMatch. Hold-Select overlay
 # and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
+# --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -48,12 +49,14 @@ usage() {
 }
 
 DO_STOP=0
+DO_PLACE=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --place-only) DO_PLACE=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop]" >&2
+      echo "usage: $0 [--stop] [--place-only]" >&2
       exit 2
       ;;
   esac
@@ -186,7 +189,11 @@ place_pad_for_capture() {
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
-  present_cemu_tv || true
+  # Do not activate GamePad — that puts it on HDMI. Keep it under the TV for
+  # x11grab; ffplay on :2 is the bottom Moonlight panel.
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$wid" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
 }
 
 find_tv_wid() {
@@ -263,10 +270,74 @@ present_cemu_tv() {
   set_gamescope_focus "$tv" "$APPID"
 }
 
+find_ffplay_wid() {
+  DISPLAY="$PAD_DISPLAY" xdotool search --class ffplay 2>/dev/null | tail -1
+}
+
+present_virtual_gamepad() {
+  local ff
+  stop_paint
+  DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
+  ff="$(find_ffplay_wid || true)"
+  if [ -z "${ff:-}" ]; then
+    return 1
+  fi
+  DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add FULLSCREEN "$ff" 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add ABOVE "$ff" 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xdotool windowfocus "$ff" windowactivate "$ff" windowraise "$ff" 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$ff" 2>/dev/null || true
+  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$ff" 2>/dev/null || true
+}
+
+present_dual_layout() {
+  local pad
+  pad="$(find_pad_wid || true)"
+  if [ -n "${pad:-}" ]; then
+    place_pad_for_capture "$pad"
+  fi
+  present_cemu_tv || true
+  if ! present_virtual_gamepad; then
+    if [ -n "${pad:-}" ]; then
+      echo "ffplay missing on $PAD_DISPLAY; restarting GamePad mirror"
+      start_mirror "$pad"
+    else
+      return 1
+    fi
+  fi
+}
+
+needs_virtual_gamepad() {
+  local focus name ff vfocus
+  focus="$(DISPLAY="$TV_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
+  if [ -n "${focus:-}" ]; then
+    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$focus" 2>/dev/null || true)"
+    case "$name" in
+      GamePad*) return 0 ;;
+    esac
+  fi
+  if DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' >/dev/null 2>&1; then
+    return 0
+  fi
+  ff="$(find_ffplay_wid || true)"
+  if [ -z "${ff:-}" ]; then
+    return 0
+  fi
+  vfocus="$(DISPLAY="$PAD_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
+  if [ -n "${vfocus:-}" ] && [ "$vfocus" != "$ff" ]; then
+    return 0
+  fi
+  return 1
+}
+
 watch_cemu_focus_loop() {
   # HDMI reclaim must not fight Steam overlay. Hold-Select pulses Guide on the
   # Sunshine x360 pad (GDS back_button_timeout=500); Steam then sets
   # FOCUSED_APP=769. Re-activating Cemu every tick hides that overlay.
+  # Refocusing Cemu raises GamePad View on HDMI and can leave Tk paint on :2.
+  # Put GamePad back under the TV and ffplay on the virtual display.
   local overlay=0 steam_ticks=0 app
   while cemu_running; do
     app="$(focused_app)"
@@ -284,18 +355,22 @@ watch_cemu_focus_loop() {
       overlay=1
       steam_ticks=$((steam_ticks + 1))
       if [ "$steam_ticks" -ge 6 ]; then
-        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Cemu TV"
-        present_cemu_tv || true
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Cemu dual-screen"
+        present_dual_layout || true
         steam_ticks=0
         overlay=0
       fi
     elif [ "$app" != "$APPID" ]; then
       steam_ticks=0
       overlay=0
-      present_cemu_tv || true
+      present_dual_layout || true
     else
       steam_ticks=0
       overlay=0
+      if needs_virtual_gamepad; then
+        echo "Cemu focused — placing GamePad on $PAD_DISPLAY"
+        present_dual_layout || true
+      fi
     fi
     sleep 0.4
   done
@@ -304,9 +379,10 @@ watch_cemu_focus_loop() {
 start_focus_watch() {
   local pid
   stop_focus_watch
-  present_cemu_tv || true
+  present_dual_layout || true
   watch_cemu_focus_loop >>"$LOG" 2>&1 &
   pid=$!
+  disown "$pid" 2>/dev/null || true
   printf '%s\n' "$pid" >"$FOCUS_PIDFILE"
   echo "Cemu gamescope focus pid $pid"
 }
@@ -343,18 +419,10 @@ start_mirror() {
   printf '%s\n' "$!" >"$MIRROR_PIDFILE"
   echo "GamePad mirror pid $!"
   # Headless gamescope sometimes maps ffplay at 640x480, or leaves it unmapped.
-  local i ff
+  # Tk smoke paint from a kms restart covers it — present_virtual_gamepad kills that.
+  local i
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    ff="$(DISPLAY="$PAD_DISPLAY" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
-    if [ -n "${ff:-}" ]; then
-      DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowstate --add FULLSCREEN "$ff" 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowstate --add ABOVE "$ff" 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xdotool windowfocus "$ff" windowactivate "$ff" windowraise "$ff" 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$ff" 2>/dev/null || true
-      DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$ff" 2>/dev/null || true
+    if present_virtual_gamepad; then
       break
     fi
     sleep 0.2
@@ -366,6 +434,24 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_focus_watch
   stop_guide_watch
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
+  exit 0
+fi
+
+if [ "$DO_PLACE" -eq 1 ]; then
+  if ! cemu_running; then
+    echo "Cemu is not running."
+    exit 2
+  fi
+  ensure_virtual_display || {
+    echo "Headless gamescope $PAD_DISPLAY is not available."
+    exit 1
+  }
+  present_dual_layout || {
+    echo "Could not place GamePad on $PAD_DISPLAY. See $LOG"
+    exit 2
+  }
+  start_focus_watch
+  echo "Game Mode Cemu dual-stream: TV on $TV_DISPLAY (HDMI / video/0), GamePad on $PAD_DISPLAY (video/1)."
   exit 0
 fi
 

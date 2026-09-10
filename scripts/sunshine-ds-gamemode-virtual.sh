@@ -160,6 +160,12 @@ start_paint() {
     echo "Virtual paint already pid $(paint_pid)."
     return 0
   fi
+  # Cemu/Azahar ffplay already damages :2. Smoke paint covers the GamePad stream.
+  if command -v xdotool >/dev/null 2>&1 &&
+     DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1; then
+    echo "ffplay already on $x11; not starting smoke paint."
+    return 0
+  fi
   # Isolated: inheriting WAYLAND_DISPLAY=gamescope-0 puts this on the TV.
   nohup env -u WAYLAND_DISPLAY DISPLAY="$x11" python3 - >>"$LOG" 2>&1 <<'PY' &
 import tkinter as tk

@@ -22,6 +22,15 @@ if [ -f "$want" ]; then
   rm -f "$want"
 fi
 
+# Tender Play while Moonlight is on :48200 video/1: same windowed GamePad
+# path as the want file. Helper ignores Decky :47989 and desktop :48100.
+if [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
+  stream_chk="${STEAMOS_PLAYBOOK:-/home/deck/steamos-playbook}/scripts/gamemode-second-screen-streaming.sh"
+  if [ -x "$stream_chk" ] && "$stream_chk"; then
+    export CEMU_GAMEMODE_DS=1
+  fi
+fi
+
 # Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
 # virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
 # Moonlight-only session can still bind Sunshine when Steam virtual is gone.
@@ -151,6 +160,23 @@ if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   appid="${SteamAppId:-2374129079}"
   flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
     /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
+fi
+
+# Tender already launched Cemu. --attach waits for GamePad View, ffplay
+# onto :2, and a focus watcher that paints the idle clock on exit.
+if [ "${CEMU_GAMEMODE_DS:-}" = 1 ] && [ "${CEMU_GAMEMODE_DS_ATTACH:-1}" != 0 ]; then
+  attach_sh="${STEAMOS_PLAYBOOK:-/home/deck/steamos-playbook}/scripts/ensure-cemu-gamemode-dual-screen.sh"
+  attach_log="${CEMU_WRAPPER_LOG:-/home/deck/steamos-playbook/logs/cemu-wrapper.log}"
+  if [ -x "$attach_sh" ]; then
+    if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null; then
+      flatpak-spawn --host --env="CEMU_GAMEMODE_DS=1" \
+        --env="CEMU_PAD_MATCH=${CEMU_PAD_MATCH:-Thor}" \
+        "$attach_sh" --attach >>"$attach_log" 2>&1 &
+    else
+      env CEMU_GAMEMODE_DS=1 CEMU_PAD_MATCH="${CEMU_PAD_MATCH:-Thor}" \
+        "$attach_sh" --attach >>"$attach_log" 2>&1 &
+    fi
+  fi
 fi
 
 # Tender's rom-launcher cwd is homebrew/plugins/romm-tender/bin. Cemu writes

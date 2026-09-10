@@ -96,6 +96,7 @@ Do **not** `systemctl restart` the live pid to “clear” that — deploy non-b
 | Game Mode `:48200` systemd stop **SIGTRAP** / Moonlight **control establishment error** / reconnect **Initial Ping Timeout**, leftover `session::audio` + `session::join`, **no** `stream::controlBroadcast` | Pulse poll blocked; app exit killed the ENet thread while join still owned the broadcast. Record with non-blocking `pa_mainloop_iterate`; keep control loop while `running_sessions > 0`; SIGTERM timeout `_Exit(0)`. |
 | Game Mode `:48200` **TV has Cemu sound, Moonlight silent** | Log `Setting default sink to: [sink-sunshine-stereo]` then `PulseAudio record stream not ready`. Cemu Cubeb stays on **Virtual Surround Sound** (HDMI); the sunshine null sink is empty/SUSPENDED. Do not move Cemu off VSS. Do not `set_sink` to `sink-sunshine-stereo`. Capture the **HDMI** leaf monitor (VSS mixes into it). Live: `Capturing host sink [alsa_output…hdmi…]` and **no** `Unable to initialize audio capture`. |
 | Game Mode `:48200` **Cemu audible, Steam menu silent** | **PENDING (host/Steam, not Moonlight).** HDMI leaf capture + unsuspend is in place (`Capturing host sink [alsa_output…hdmi…]`, `sunshine-record` linked). Cemu Cubeb on that sink is audible. Steam still has **no** UI playback stream (`STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1`). `HostPlayAudio=0` is Remote Play `streaming_v2`, not Moonlight. Friends `Sounds_PlayIngame`/`Online` are toasts. WirePlumber `Output/Audio:media.role:Notification` is muted — do **not** unmute unless asked. Check TV speakers while clicking Steam menus: silent on TV = Game Mode **Settings → Audio**. Audible on TV / silent on Thor = revisit capture. |
+| Game Mode `:48200` **bottom GamePad frozen after Cemu Exit** | Leftover `ffplay` `x11grab` on `:2`. `--paint` used to skip when any ffplay was mapped. Focus watch must `stop_mirror` (pidfile **and** `pgrep -x ffplay` + x11grab argv) then `--paint` (kills leftover x11grab first). Tender `--attach` starts that watcher. Do not `pgrep -f` sunshine. |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing (animated content) |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |
@@ -186,14 +187,15 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
-Game Mode `:48200` is **`checkpoint-2026-09-10-gamemode-cemu-audio`**. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Moonlight already on `sunshine-ds-kms` (not Decky). Desktop app is `958645192`. Last client gone must leave Desktop `FREE`; then tap **Desktop** or **Cemu Dual-Screen** (`scripts/sunshine-app-cemu-gamemode.sh`). Close any Tender/rom-launcher Cemu that still has `-f`, then:
+Game Mode `:48200` is **`checkpoint-2026-09-10-gamemode-cemu-audio`**. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Moonlight already on `sunshine-ds-kms` (not Decky). Desktop app is `958645192`. Last client gone must leave Desktop `FREE`; then tap **Desktop** or the Tender Cemu tile (Wind Waker HD). While `:48200` is BUSY and `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual` has `serial=` / `pw_node=`, Tender Play sets `CEMU_GAMEMODE_DS=1` and `--attach` (no `-f`). Local Play (kms FREE) stays `-f`. Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh`. Close a leftover Tender `-f` Cemu with `scripts/sunshine-app-stop.sh cemu` before the first streaming Play.
 
 ```bash
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# optional manual (Tender tile does this when the second screen is live):
 CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 ```
 
-That is SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, **no** `-f`, mappings on the live Sunshine pad (Thor if present, else Odin), GamePad `ffplay` `x11grab` onto headless `:2`. Refocus Cemu: `./scripts/ensure-cemu-gamemode-dual-screen.sh --place-only` (GamePad under TV, ffplay on `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
+That is SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, **no** `-f`, mappings on the live Sunshine pad (Thor if present, else Odin), GamePad `ffplay` `x11grab` onto headless `:2`. Refocus Cemu: `./scripts/ensure-cemu-gamemode-dual-screen.sh --place-only`. On Exit, leftover `:2` x11grab must die before `--paint` or the bottom clock stays frozen. Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
 
 Or run the playbook script from the host; do not hand-edit XML.
 

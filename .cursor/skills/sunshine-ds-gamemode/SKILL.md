@@ -37,9 +37,9 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh   # no -f
 
 Cold start (no `:2`): `./scripts/ensure-sunshine-ds-gamemode.sh --start` then the Cemu line. **`--start` while `:2` is live can KillMode the helper.** Restart kms with `systemctl --user restart steamos-sunshine-ds-gamemode.service` or `--start-kms`.
 
-Cemu is Steam `RunGame` (same as Tender Play) + consume-on-read `logs/cemu-gamemode-ds.want` → `CEMU_GAMEMODE_DS=1`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub. Bind with `bind-gamepad.py wait-appear --match Thor` then `cemu --match Thor --force` (mappings only on `Sunshine (libvirtualhid) AYN_Thor`). Cemu uuid is `{sdl-index}_{guid}` — a stale `1_<guid>` when Thor is now index 0 means “controllers not mapped.” Cemu reads uuid at start; restart after bind.
+Cemu is Steam `RunGame` (same as Tender Play). Dual-screen when **either** consume-on-read `logs/cemu-gamemode-ds.want` is fresh **or** Tender Play sees `:48200` `SUNSHINE_SERVER_BUSY` plus the gamescope-virtual sidecar (`scripts/gamemode-second-screen-streaming.sh`) → `CEMU_GAMEMODE_DS=1` and `ensure-cemu-gamemode-dual-screen.sh --attach` (no second RunGame). Local Play (kms FREE) stays `-f`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. Tender plugin updates overwrite `rom-launcher`; re-run `ensure-eden-component.sh`. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub. Bind with `bind-gamepad.py wait-appear --match Thor` then `cemu --match Thor --force` (mappings only on `Sunshine (libvirtualhid) AYN_Thor`). Cemu uuid is `{sdl-index}_{guid}` — a stale `1_<guid>` when Thor is now index 0 means “controllers not mapped.” Cemu reads uuid at start; restart after bind.
 
-On Cemu/mirror exit: `./scripts/sunshine-ds-gamemode-virtual.sh --paint` restores the clock. `--place-only` re-asserts GamePad under TV + ffplay on `:2` without relaunch.
+On Cemu/mirror exit the focus watcher `stop_mirror`s leftover `:2` `ffplay` `x11grab` (pidfile **and** `pgrep -x ffplay` + argv) then `./scripts/sunshine-ds-gamemode-virtual.sh --paint` restores the clock. `--paint` must kill that x11grab first or it skips and the bottom stays frozen. `--place-only` re-asserts GamePad under TV + ffplay on `:2` without relaunch. `--attach` starts the same watcher so Tender Play exit always paints.
 
 ## Capture path that works
 
@@ -74,7 +74,8 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - `--start` kms while headless `:2` is already up
 - Write sidecar `node=` (use `pw_node=`)
 - `/launch` `881448767` or Low Res Desktop on kms
-- Leave `logs/cemu-gamemode-ds.want` after a failed launch
+- Leave `logs/cemu-gamemode-ds.want` after a failed launch (Tender auto-DS does **not** write that file)
+- Expect Tender Cemu Play to stay `-f` while `:48200` is BUSY and the virtual sidecar is up — that path is windowed `--attach`
 - Set `:0` `GAMESCOPECTRL_BASELAYER_WINDOW` to a 10×10 Cemu stub
 - RetroDECK `-f` / `ensure-cemu-dual-screen.sh` (KWin) in Game Mode
 - `sudo systemctl --user`, `POST /api/restart`, `kwin_wayland --replace`, Decky `:47989`

@@ -15,6 +15,7 @@
 # onto :2. Off-screen ximagesrc is MIT-SHM BadMatch. Hold-Select overlay
 # and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
 # --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
+# --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -55,18 +56,20 @@ mkdir -p "$ROOT/logs"
 : >>"$LOG"
 
 usage() {
-  sed -n '2,12p' "$0"
+  sed -n '2,20p' "$0"
 }
 
 DO_STOP=0
 DO_PLACE=0
+DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
     --place-only) DO_PLACE=1 ;;
+    --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop] [--place-only]" >&2
+      echo "usage: $0 [--stop] [--place-only] [--attach]" >&2
       exit 2
       ;;
   esac
@@ -88,6 +91,27 @@ stop_paint() {
   DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
 }
 
+# pgrep -x ffplay, then argv / DISPLAY. Never pgrep -f sunshine.
+kill_pad_x11grab() {
+  local pid cmd disp
+  command -v pgrep >/dev/null 2>&1 || return 0
+  for pid in $(pgrep -x ffplay || true); do
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *x11grab*) ;;
+      *) continue ;;
+    esac
+    disp="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1 || true)"
+    case "$disp" in
+      "$PAD_DISPLAY"|"${PAD_DISPLAY}.0"|":2"|":2.0")
+        echo "Stopping leftover GamePad x11grab ffplay pid $pid."
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
 stop_mirror() {
   local pid
   pid="$(cat "$MIRROR_PIDFILE" 2>/dev/null || true)"
@@ -96,6 +120,7 @@ stop_mirror() {
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$MIRROR_PIDFILE"
+  kill_pad_x11grab
 }
 
 stop_focus_watch() {
@@ -572,6 +597,44 @@ if [ "$DO_PLACE" -eq 1 ]; then
   }
   start_focus_watch
   echo "Game Mode Cemu dual-stream: TV on $TV_DISPLAY (HDMI / video/0), GamePad on $PAD_DISPLAY (video/1)."
+  exit 0
+fi
+
+# Tender / Steam already started Cemu. Do not RunGame and do not touch
+# the want file (a leftover want windowed-10x10s the next local Play).
+if [ "$DO_ATTACH" -eq 1 ]; then
+  focus_pid="$(cat "$FOCUS_PIDFILE" 2>/dev/null || true)"
+  if [ -n "${focus_pid:-}" ] && [ -d "/proc/$focus_pid" ]; then
+    echo "Cemu dual-stream already watching pid $focus_pid; placing only."
+    present_dual_layout || true
+    exit 0
+  fi
+  ensure_virtual_display || {
+    echo "Headless gamescope $PAD_DISPLAY is not available."
+    exit 1
+  }
+  if ! wait_cemu; then
+    echo "Cemu did not start (attach). See $LOG"
+    exit 1
+  fi
+  for d in :0 :1; do
+    if DISPLAY="$d" xdotool search --class Cemu >/dev/null 2>&1; then
+      TV_DISPLAY="$d"
+      echo "Cemu windows are on $TV_DISPLAY"
+      break
+    fi
+  done
+  bind_cemu_pads
+  write_rd_geometry || true
+  echo "Waiting for GamePad View on $TV_DISPLAY (attach)..."
+  if ! PAD_WID="$(wait_pad_wid)"; then
+    echo "No GamePad View window (attach). Watching for Cemu exit so :2 can screensaver."
+    start_focus_watch
+    exit 2
+  fi
+  start_mirror "$PAD_WID"
+  start_focus_watch
+  echo "Attached Game Mode Cemu dual-stream: TV on $TV_DISPLAY, GamePad on $PAD_DISPLAY."
   exit 0
 fi
 

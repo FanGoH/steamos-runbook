@@ -21,18 +21,18 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 # joysticks; blacklist the mouse on both hints.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # gamescope-session exports GAMESCOPE_DISPLAY_DISABLED=1, which leaves
-# Cemu UnMapped (spinning Steam logo). Always clear it. Keep Steam WSI
-# on a normal -f Play so gamescope can hand out a swapchain when Steam
-# focuses the shortcut. Dual-stream still drops WSI (windowed x11grab).
+# Cemu UnMapped (spinning Steam logo). Always clear it. gamescope WSI
+# deadlocks Cemu on an InputOnly 10x10 window (no /dev/dri) even when
+# :0 FOCUSED_APP is already the shortcut — use normal X11/Vulkan.
 unset GAMESCOPE_DISPLAY_DISABLED
+unset ENABLE_GAMESCOPE_WSI
 export QT_QPA_PLATFORM=xcb
 export GDK_BACKEND=x11
+export SDL_VIDEODRIVER=x11
 
 # Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1.
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
-  unset ENABLE_GAMESCOPE_WSI
-  export SDL_VIDEODRIVER=x11
   appid="${SteamAppId:-2374129079}"
   export SteamAppId="$appid"
   export SteamGameId="${SteamGameId:-$appid}"

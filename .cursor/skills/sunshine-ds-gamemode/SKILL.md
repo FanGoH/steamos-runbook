@@ -7,7 +7,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint (user 2026-09-10: “it works!”): `checkpoint-2026-09-10-gamemode-works`.** Both screens, Steam overlay (Cemu windows listed), bottom screensaver, Thor pad. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
+**Checkpoint (user 2026-09-10: “it works!” + Cemu audio): `checkpoint-2026-09-10-gamemode-cemu-audio`.** Both screens, Steam overlay, bottom screensaver, Thor pad, Moonlight hears Cemu (`Capturing host sink [Virtual Surround Sound]`). Earlier `checkpoint-2026-09-10-gamemode-works` is the same minus stream audio. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
 
 ## What must be true
 
@@ -16,6 +16,7 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 | HDMI / Thor top (video/0) | Steam Big Picture / focused game | Cemu TV (`------- Init Cemu`, 1920×1080 InputOutput) |
 | `:2` / Thor bottom (video/1) | Screensaver clock + moving bar (`sunshine-ds-bottom-screensaver.py`) | GamePad View via `ffplay` `x11grab` |
 | Overlay | Hold Select 0.5s → `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` | Same; hide restores Cemu TV. Overlay lists Cemu TV + GamePad View. Focus watcher must not reclaim while overlay is up |
+| Audio | Pulse default **Virtual Surround Sound** → HDMI | Same. Moonlight must capture `Virtual Surround Sound.monitor`, **not** `sink-sunshine-stereo` (Cemu Cubeb never follows `set-default-sink`; the null sink is SUSPENDED → `PulseAudio record stream not ready` and Thor is silent while the TV still plays). Log: `Capturing host sink [Virtual Surround Sound]` / `Found default monitor by name: Virtual Surround Sound.monitor`. Conf pins `audio_sink = Virtual Surround Sound` when that sink exists. |
 | Thor pad | Sunshine x360 present after connect | SteamInput-P1 maps on `Sunshine (libvirtualhid) AYN_Thor` only. Uuid `{live-index}_{guid}` (`0_0500b2ca…` when Thor is js3). SDL map **15-button** (`LB=b6` `Back=b10`), not xpad 11-button (`LB=b4` `Back=b6`). WW first-person look is **L bumper**, not Select |
 
 Moonlight host is **`:48200`** uniqueid `1075C8EF…`. App **Desktop** is `958645192`. Do **not** `/launch` desktop-DS `881448767` (kms: `Couldn't find app with ID`). Not Decky `:47989`. Two De-FanGoH tiles: white = `:48200`, grey warning = `:48100`.
@@ -61,7 +62,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 ## Health (ADB + host)
 
 - `pgrep -x sunshine-ds-kms` only. Never `pgrep -f` / `pkill -f` sunshine.
-- getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
+- getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Stage `sunshine-ds-kms.new`, `sudo setcap cap_sys_admin+ep` on **`.new`**, then `--promote-new` (mv keeps the xattr). Optional passwordless agent path: `sudoers/zzz-sunshine-ds-kms-setcap` → `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` (must sort after `wheel`). `scripts/ensure-sunshine-ds-kms-setcap.sh` from post-update. SteamOS readonly must be disabled to write that file; a SteamOS update can wipe it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
 - Cemu TV ≥64×64 InputOutput on session **`:1`**, title has `Init` / `TitleId` / FPS. GamePad View is the sibling on `:1` (`FOCUS_DISPLAY=1`). Steam BPM stays on `:0`. A 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER. GamePad inject log must be `using :1`, not `no GamePad View … on :0`. HDMI / top taps are a **separate** display-0 inject: Cemu TV on `:1` while playing, Steam Big Picture on `:0` while hold-Select overlay is up (`HDMI inject: overlay on :0`). Do not route top taps through GamePad View. Odin GamePad-only (`primary_from_secondary`) must not take the HDMI path. Live WW HD: TV frame `0x800003` 1920×1080, GL child ~1920×1051+0+29; GamePad frame `0x800016`, GL child `0x800040` 1920×1080.
 - Thor screencap: top `local:4630946441858561667`, bottom `local:4630946482288158084`. Bottom ~8KB PNG is pitch black. Clock / GamePad is tens–hundreds of KB.
 - Title-screen GamePad often matches TV; unique pad UI is in-game.

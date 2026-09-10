@@ -85,7 +85,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-works`): Steam `RunGame` RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1` via consume-on-read `logs/cemu-gamemode-ds.want`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` GamePad View onto headless `:2` |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-cemu-audio`): Steam `RunGame` RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1` via consume-on-read `logs/cemu-gamemode-ds.want`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` GamePad View onto headless `:2` |
 | `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
@@ -95,13 +95,14 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
 | `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/ensure-sunshine-ds-kms-setcap.sh` | Detect passwordless `setcap` for `sunshine-ds-kms` / `.new`. Drop-in must be `zzz-sunshine-ds-kms-setcap` (after `wheel`). Prints sudo lines after a SteamOS update. |
 | `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-10-gamemode-works`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-10-gamemode-cemu-audio`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

@@ -7,6 +7,7 @@
 #   scripts/ensure-sunshine-ds-gamemode.sh --stop    # stop process; keeps the boot unit enabled
 #   scripts/ensure-sunshine-ds-gamemode.sh --start   # gamescope up; also enables the boot unit
 #   scripts/ensure-sunshine-ds-gamemode.sh --replace-bin  # Distrobox build -> kms, kms unit only
+#   scripts/ensure-sunshine-ds-gamemode.sh --promote-new  # mv capped sunshine-ds-kms.new; keep :2
 #   scripts/ensure-sunshine-ds-gamemode.sh --start-kms    # start kms unit if cap_sys_admin; keep :2
 #   scripts/ensure-sunshine-ds-gamemode.sh               # install/enable boot unit
 #   scripts/ensure-sunshine-ds-gamemode.sh --install-service
@@ -65,6 +66,7 @@ DO_START=0
 DO_FORCE_DESKTOP=0
 DO_INSTALL_SERVICE=0
 DO_REPLACE_BIN=0
+DO_PROMOTE_NEW=0
 DO_START_KMS=0
 for arg in "$@"; do
   case "$arg" in
@@ -75,13 +77,14 @@ for arg in "$@"; do
     --install-service) DO_INSTALL_SERVICE=1 ;;
     --force-desktop-kms) DO_FORCE_DESKTOP=1 ;;
     --replace-bin) DO_REPLACE_BIN=1 ;;
+    --promote-new) DO_PROMOTE_NEW=1 ;;
     --start-kms) DO_START_KMS=1 ;;
     -h|--help)
       sed -n '2,16p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--status] [--stop] [--probe] [--start] [--start-kms] [--replace-bin] [--install-service] [--force-desktop-kms]" >&2
+      echo "usage: $0 [--status] [--stop] [--probe] [--start] [--start-kms] [--replace-bin] [--promote-new] [--install-service] [--force-desktop-kms]" >&2
       exit 2
       ;;
   esac
@@ -250,6 +253,10 @@ ask_kms_setcap() {
 # RUNPATH is already $KMS_LIB_DIR. Do not export LD_LIBRARY_PATH.
 # Never setcap ~/.local/bin/sunshine-ds (desktop Distrobox path).
 # Do not cp onto a live kms ELF (ETXTBSY, and cp strips capability xattrs).
+# Prefer setcap on the staged copy, then --promote-new (mv keeps the xattr):
+# Optional (once): sudoers/zzz-sunshine-ds-kms-setcap (after wheel) so agents can sudo -n.
+sudo setcap cap_sys_admin+ep ${KMS_BIN}.new
+getcap ${KMS_BIN}.new
 # After --replace-bin (or an in-place overwrite), cap the installed copy:
 sudo setcap cap_sys_admin+ep $KMS_BIN
 getcap $KMS_BIN
@@ -328,6 +335,46 @@ replace_kms_from_build() {
     return 2
   fi
   echo "getcap: $(getcap "$KMS_BIN")"
+  return 0
+}
+
+promote_kms_new() {
+  local new="${KMS_BIN}.new"
+  if [ ! -x "$new" ]; then
+    echo "Missing staged $new"
+    return 1
+  fi
+  if ! getcap "$new" 2>/dev/null | grep -q 'cap_sys_admin'; then
+    echo "Staged $new has no cap_sys_admin (inplace write / patchelf strip it)."
+    record_manual "setcap sunshine-ds-kms.new then --promote-new" <<EOF
+# mv keeps security.capability. Do not cp over the live ELF (strips caps).
+# Headless :2 stays; do not --start.
+sudo setcap cap_sys_admin+ep $new
+getcap $new
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
+cd $ROOT
+./scripts/ensure-sunshine-ds-gamemode.sh --promote-new
+EOF
+    return 2
+  fi
+  if [ -n "$(desktop_ds_pid)" ]; then
+    echo "Desktop sunshine-ds is running. Stop it with ensure-sunshine-ds.sh --stop first."
+    return 2
+  fi
+  if [ -n "$(kms_ds_pid)" ]; then
+    echo "Stopping $KMS_SERVICE only (headless :2 stays)."
+    systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true
+    stop_kms_process
+  fi
+  mv -f "$new" "$KMS_BIN"
+  chmod 0755 "$KMS_BIN"
+  if ! kms_has_sys_admin; then
+    echo "mv lost cap_sys_admin on $KMS_BIN."
+    ask_kms_setcap
+    return 2
+  fi
+  echo "Promoted $KMS_BIN ($(getcap "$KMS_BIN"))"
   return 0
 }
 
@@ -551,6 +598,23 @@ fi
 
 if [ "$DO_REPLACE_BIN" -eq 1 ]; then
   replace_kms_from_build
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    start_kms_unit_only || exit $?
+    if ! wait_for_kms; then
+      print_probe_log
+      print_status
+      assert_desktop_untouched "$BEFORE_HASH" || exit 1
+      exit 1
+    fi
+  fi
+  print_status
+  assert_desktop_untouched "$BEFORE_HASH" || exit 1
+  exit "$rc"
+fi
+
+if [ "$DO_PROMOTE_NEW" -eq 1 ]; then
+  promote_kms_new
   rc=$?
   if [ "$rc" -eq 0 ]; then
     start_kms_unit_only || exit $?

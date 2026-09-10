@@ -8,13 +8,13 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-10-gamemode-works`** (prefer). Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
+| Tag | **`checkpoint-2026-09-10-gamemode-cemu-audio`** (prefer: screens + overlay + pad + Moonlight Cemu audio). Earlier full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
 | Host ELF | `~/.local/bin/sunshine-ds-kms` sha `620e6aef…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Live pid may still be the `f8d9968c` skip build — sidecar must not write `node=` |
 | Sidecar | `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`: `serial=` + **`pw_node=`** (not `node=`). `f8d9968c` skips AUTOCONNECT when `node=` is set |
-| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500` |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink = Virtual Surround Sound` when Pulse has that sink (do not capture empty `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Desktop app **`958645192`**. Not `881448767`, not Decky `:47989`, not `:48100` |
 | Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
 | Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
@@ -127,7 +127,7 @@ User: Game Mode Cemu on Thor is working (HDMI picture, GamePad stream, Thor pad)
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
 | Host ELF | `~/.local/bin/sunshine-ds-kms` sha `82a51040…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms` |
-| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500` |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink = Virtual Surround Sound` when Pulse has that sink (do not capture empty `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Not Decky `:47989`, not desktop `:48100` |
 | Cemu | RetroDECK `Cemu_relwithdebinfo -g <wux>` with `CEMU_GAMEMODE_DS=1` and **no** `-f`. TV on session `:0`. GamePad View `ffplay -window_id` onto headless `:2` |
 | Pad | `CEMU_PAD_MATCH=Thor` → mappings only on `Sunshine (libvirtualhid) AYN_Thor`. Steam wrap `28de:11ff` listed with empty mappings |
@@ -148,7 +148,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. Prefer **`checkpoint-2026-09-10-gamemode-works`** for the full Thor experience (those plus the 15-button pad).
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). Prefer **`checkpoint-2026-09-10-gamemode-cemu-audio`** for the full Thor experience including Cemu on Virtual Surround Sound.monitor.
 
 ## Logical order that got here
 

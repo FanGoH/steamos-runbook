@@ -41,9 +41,15 @@ KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
 KMS_LOG="${SUNSHINE_DS_KMS_LOG:-$ROOT/logs/sunshine-ds-gamemode.log}"
 
 write_kms_conf() {
-  local apps
+  local apps audio_sink_line=""
   mkdir -p "$KMS_DIR/sunshine/credentials" "$(dirname "$KMS_LOG")"
   apps="$KMS_DIR/sunshine/apps.json"
+  # Cemu Cubeb stays on Virtual Surround Sound / HDMI. Pin that monitor when
+  # Pulse has it so a leftover sink-sunshine-stereo default is not captured
+  # (empty → "PulseAudio record stream not ready", Moonlight silent).
+  if pactl list short sinks 2>/dev/null | grep -q $'^[0-9][0-9]*\tVirtual Surround Sound\t'; then
+    audio_sink_line="audio_sink = Virtual Surround Sound"
+  fi
   if [ ! -f "$apps" ]; then
     cat >"$apps" <<'EOF'
 {
@@ -70,6 +76,7 @@ gamepad = x360
 # Hold Back/Select 500ms → HOME on the UHID x360. sunshine-ds then toggles
 # gamescope STEAM_OVERLAY (Steam ignores UHID Guide). Default is -1 (off).
 back_button_timeout = 500
+${audio_sink_line}
 min_log_level = info
 file_state = ${KMS_DIR}/sunshine/sunshine_state.json
 log_path = ${KMS_DIR}/sunshine/sunshine.log

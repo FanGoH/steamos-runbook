@@ -40,6 +40,7 @@ TV_DISPLAY="${CEMU_TV_DISPLAY:-:0}"
 PAD_DISPLAY="${CEMU_PAD_DISPLAY:-:2}"
 REAPER="${STEAM_REAPER:-/home/${STEAMOS_USER:-deck}/.local/share/Steam/ubuntu12_32/reaper}"
 VIRTUAL_HELPER="${ROOT}/scripts/sunshine-ds-gamemode-virtual.sh"
+DS_WANT="${CEMU_GAMEMODE_DS_FLAG:-$ROOT/logs/cemu-gamemode-ds.want}"
 
 mkdir -p "$ROOT/logs"
 : >>"$LOG"
@@ -453,6 +454,7 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
   stop_guide_watch
+  rm -f "$DS_WANT"
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi
@@ -501,46 +503,22 @@ fi
 write_rd_geometry || exit 1
 
 if ! cemu_running; then
-  if [ ! -x "$REAPER" ]; then
-    echo "Missing Steam reaper at $REAPER"
-    exit 1
-  fi
-  if [ -f /run/user/1000/gamescope-environment ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source /run/user/1000/gamescope-environment
-    set +a
-  fi
   export DISPLAY="$TV_DISPLAY"
   unset WAYLAND_DISPLAY
   export QT_QPA_PLATFORM=xcb
   export CEMU_GAMEMODE_DS=1
-  export STEAM_OVERLAY=1
-  export SteamAppId="$APPID"
-  export SteamGameId="$APPID"
-  export SteamOverlayGameId="$APPID"
   export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  echo "SteamLaunch AppId=$APPID RetroDECK Cemu (CEMU_GAMEMODE_DS=1, no -f)."
-  nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
-    flatpak run \
-      --env=CEMU_GAMEMODE_DS=1 \
-      --env=DISPLAY="$TV_DISPLAY" \
-      --env=QT_QPA_PLATFORM=xcb \
-      --env=STEAM_OVERLAY=1 \
-      --env=SteamAppId="$APPID" \
-      --env=SteamGameId="$APPID" \
-      --env=SteamOverlayGameId="$APPID" \
-      --unset-env=WAYLAND_DISPLAY \
-      net.retrodeck.retrodeck \
-      -e "%EMULATOR_CEMU% -g %ROM%" \
-      "$ROM" \
-    >>"$LOG" 2>&1 &
-  echo "Launched pid $!"
+  # SteamLaunch from this script is not a Steam-spawned game, so BPM keeps
+  # FOCUSED_APP=769 and Cemu never leaves the InputOnly 10x10 stub. Ask Steam
+  # to run the Wind Waker HD shortcut; the wrapper want-file keeps no -f.
+  : >"$DS_WANT"
+  echo "steam://rungameid/$APPID RetroDECK Cemu (CEMU_GAMEMODE_DS want-file, no -f)."
+  DISPLAY="$TV_DISPLAY" steam steam://rungameid/"$APPID" >>"$LOG" 2>&1 || true
   if ! wait_cemu; then
-    echo "Cemu did not start. See $LOG"
+    echo "Cemu did not start via steam://. See $LOG"
     tail -40 "$LOG" || true
     exit 1
   fi

@@ -20,6 +20,12 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 # GamePad sticks go there (inverted Y). IGNORE_DEVICES_EXCEPT does not hide
 # joysticks; blacklist the mouse on both hints.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
+# Agent/SSH SteamLaunch never becomes the gamescope focused app (BPM
+# resets FOCUSED_APP=769), so Cemu stays an InputOnly 10x10 stub. A want
+# file lets steam://rungameid take focus while keeping dual-stream (no -f).
+if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}" ]; then
+  export CEMU_GAMEMODE_DS=1
+fi
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
 fi

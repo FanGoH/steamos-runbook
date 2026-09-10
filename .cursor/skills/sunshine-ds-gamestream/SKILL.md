@@ -74,7 +74,12 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 
 Desktop placebo stayed `BUSY` and `rtsp_stream::session_count()` joined Pulse `pa_simple_read` on the nvhttp thread. Last client gone must `terminate_if_placebo()` so `/launch` is allowed. `rtsp::clear` joins in the background. Host gate: `scripts/test-gds-lifecycle.sh`. Close leftover BUSY with GDS `POST https://127.0.0.1:48201/api/apps/close` (`sunshine_gds_close_app`), not Decky `/api/restart`.
 
-The same `pa_simple_read` hang leaves `session::audio` + `session::join` after disconnect. Moonlight then logs **Initial Ping Timeout** with no `CLIENT CONNECTED`. systemd stop’s 10s handler used to `debug_trap` (**SIGTRAP** coredump). Do **not** `systemctl restart` the live pid to “clear” that — deploy the timed Pulse mainloop mic and SIGTERM `_Exit(0)`. Live ELF must contain `sunshine-record` and must **not** still export `pa_simple_read() failed`.
+The same `pa_simple_read` hang leaves `session::audio` + `session::join` after disconnect. Moonlight then logs **Initial Ping Timeout** with no `CLIENT CONNECTED` — that is **failed to start stream / control establishment error**. Two layers:
+
+1. Pulse `pa_mainloop_poll` can ignore its timeout on a silent Game Mode monitor, so join never finishes and `running_sessions` stays > 0.
+2. Cemu/app exit logged `Process terminated` and **left `stream::controlBroadcast`**. The broadcast object stayed alive (join still held a ref), so the next `/launch` reused a host that nobody called `enet_host_service` on.
+
+Do **not** `systemctl restart` the live pid to “clear” that — deploy non-blocking Pulse iterate (`pa_mainloop_iterate(..., 0)`) plus keep the control loop while `running_sessions > 0`, then SIGTERM timeout `_Exit(0)`. Live ELF must contain `sunshine-record`, must **not** still export `pa_simple_read() failed`, and after a disconnect+app-exit the next connect must log `CLIENT CONNECTED`. Host gate: leftover `session::join` fails `scripts/test-gds-lifecycle.sh`. Close leftover BUSY with GDS `POST https://127.0.0.1:48201/api/apps/close` (`sunshine_gds_close_app`), not Decky `/api/restart`.
 
 ### Black Moonlight / ~1KB I-frames
 
@@ -87,7 +92,7 @@ The same `pa_simple_read` hang leaves `session::audio` + `session::join` after d
 | Game Mode `:48200` **user saw moving yellow square on blue** | Dual-stream smoke proven 2026-09-09: KMS HDMI + pwgrab `gamescope-virtual`. Log `cpu frame type=2` `pixel_diffs=6400`, video/1 uv intra ≠ 0. Helper must keep damaging `:2`. |
 | Game Mode `:48200` **bottom pitch black**, log `cpu frame type=2` full nonzero, video/1 I-frame ~1KB / 0% coded | Capture has pixels; encoder still has `dummy_img()` zeros. Headless gamescope often emits **one** MemFd then goes silent (static blue / Cemu). Fix is in sunshine-ds `pipewire.cpp`: seed dummy from last CPU frame and re-present it. Solid-color smoke has `pixel_diffs=0` but must not look black. Stage `sunshine-ds-kms.new` + `setcap` + `--start`. |
 | Game Mode `:48200` **“second display ended”**, HDMI still live, log `[pipewire] stream stayed connecting for 3s; failing the second display` | Host aborted video/1. Game Mode `gamescope-virtual` stays `connecting` until the first buffer (DMA-BUF probe `nonzero=0`). Do **not** fail capture for that. Snapshot timeouts re-present. |
-| Game Mode `:48200` systemd stop **SIGTRAP** / reconnect **Initial Ping Timeout**, leftover `session::audio` + `session::join` | `pa_simple_read` blocked on a silent PipeWire-pulse monitor. SIGTERM’s 10s handler used to `debug_trap`. Record with a timed Pulse mainloop; SIGTERM timeout `_Exit(0)`. |
+| Game Mode `:48200` systemd stop **SIGTRAP** / Moonlight **control establishment error** / reconnect **Initial Ping Timeout**, leftover `session::audio` + `session::join`, **no** `stream::controlBroadcast` | Pulse poll blocked; app exit killed the ENet thread while join still owned the broadcast. Record with non-blocking `pa_mainloop_iterate`; keep control loop while `running_sessions > 0`; SIGTERM timeout `_Exit(0)`. |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing (animated content) |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |

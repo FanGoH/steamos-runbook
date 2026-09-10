@@ -1,4 +1,6 @@
 # Game Mode sunshine-ds-kms only. Never ~/.local/bin/sunshine-ds (desktop Distrobox).
 # Dest name must not contain a dot or sudo ignores the drop-in.
+# zzz- sorts after /etc/sudoers.d/wheel; a later %wheel ALL=(ALL) ALL
+# otherwise overrides this NOPASSWD (last match wins).
 # /usr/bin/setcap is what `sudo setcap` resolves via secure_path (not /usr/sbin).
 deck ALL=(root) NOPASSWD: /usr/bin/setcap cap_sys_admin+ep /home/deck/.local/bin/sunshine-ds-kms.new, /usr/bin/setcap cap_sys_admin+ep /home/deck/.local/bin/sunshine-ds-kms

@@ -48,7 +48,7 @@ ROM path is the user’s; Wind Waker HD often lives under `~/emulation/wiiu/wind
 
 If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script.
 
-## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-10-gamemode-works`
+## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-10-gamemode-cemu-audio`
 
 User confirmed 2026-09-10: “it works!” — Thor both screens, Steam overlay (Cemu windows listed), bottom screensaver, Thor pad. Do not “improve” this unless it breaks. Full recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`. Sep 9 `checkpoint-2026-09-09-gamemode-cemu-ds` is the HDMI DCC / Cemu-picture baseline.
 

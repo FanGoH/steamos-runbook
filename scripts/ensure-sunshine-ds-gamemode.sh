@@ -254,7 +254,7 @@ ask_kms_setcap() {
 # Never setcap ~/.local/bin/sunshine-ds (desktop Distrobox path).
 # Do not cp onto a live kms ELF (ETXTBSY, and cp strips capability xattrs).
 # Prefer setcap on the staged copy, then --promote-new (mv keeps the xattr):
-# Optional (once): install sudoers/sunshine-ds-kms-setcap so agents can sudo -n.
+# Optional (once): sudoers/zzz-sunshine-ds-kms-setcap (after wheel) so agents can sudo -n.
 sudo setcap cap_sys_admin+ep ${KMS_BIN}.new
 getcap ${KMS_BIN}.new
 # After --replace-bin (or an in-place overwrite), cap the installed copy:

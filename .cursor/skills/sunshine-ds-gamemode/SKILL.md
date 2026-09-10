@@ -7,7 +7,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint (user 2026-09-10: “it works!”): `checkpoint-2026-09-10-gamemode-works`.** Both screens, Steam overlay (Cemu windows listed), bottom screensaver, Thor pad. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
+**Checkpoint (user 2026-09-10: “it works!” + Cemu audio): `checkpoint-2026-09-10-gamemode-cemu-audio`.** Both screens, Steam overlay, bottom screensaver, Thor pad, Moonlight hears Cemu (`Capturing host sink [Virtual Surround Sound]`). Earlier `checkpoint-2026-09-10-gamemode-works` is the same minus stream audio. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
 
 ## What must be true
 
@@ -62,7 +62,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 ## Health (ADB + host)
 
 - `pgrep -x sunshine-ds-kms` only. Never `pgrep -f` / `pkill -f` sunshine.
-- getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Stage `sunshine-ds-kms.new`, `sudo setcap cap_sys_admin+ep` on **`.new`**, then `--promote-new` (mv keeps the xattr). Optional passwordless agent path: `sudoers/sunshine-ds-kms-setcap` → `/etc/sudoers.d/sunshine-ds-kms-setcap` (`/usr/bin/setcap` on `.new` and the live kms copy only). SteamOS readonly must be disabled to write that file; a SteamOS update can wipe it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
+- getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Stage `sunshine-ds-kms.new`, `sudo setcap cap_sys_admin+ep` on **`.new`**, then `--promote-new` (mv keeps the xattr). Optional passwordless agent path: `sudoers/zzz-sunshine-ds-kms-setcap` → `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` (must sort after `wheel`). `scripts/ensure-sunshine-ds-kms-setcap.sh` from post-update. SteamOS readonly must be disabled to write that file; a SteamOS update can wipe it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
 - Cemu TV ≥64×64 InputOutput on session **`:1`**, title has `Init` / `TitleId` / FPS. GamePad View is the sibling on `:1` (`FOCUS_DISPLAY=1`). Steam BPM stays on `:0`. A 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER. GamePad inject log must be `using :1`, not `no GamePad View … on :0`. HDMI / top taps are a **separate** display-0 inject: Cemu TV on `:1` while playing, Steam Big Picture on `:0` while hold-Select overlay is up (`HDMI inject: overlay on :0`). Do not route top taps through GamePad View. Odin GamePad-only (`primary_from_secondary`) must not take the HDMI path. Live WW HD: TV frame `0x800003` 1920×1080, GL child ~1920×1051+0+29; GamePad frame `0x800016`, GL child `0x800040` 1920×1080.
 - Thor screencap: top `local:4630946441858561667`, bottom `local:4630946482288158084`. Bottom ~8KB PNG is pitch black. Clock / GamePad is tens–hundreds of KB.
 - Title-screen GamePad often matches TV; unique pad UI is in-game.

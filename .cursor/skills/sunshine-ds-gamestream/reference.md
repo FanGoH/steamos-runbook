@@ -8,7 +8,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-10-gamemode-works`** (prefer). Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
+| Tag | **`checkpoint-2026-09-10-gamemode-cemu-audio`** (prefer: screens + overlay + pad + Moonlight Cemu audio). Earlier full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
@@ -148,7 +148,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. Prefer **`checkpoint-2026-09-10-gamemode-works`** for the full Thor experience (those plus the 15-button pad).
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). Prefer **`checkpoint-2026-09-10-gamemode-cemu-audio`** for the full Thor experience including Cemu on Virtual Surround Sound.monitor.
 
 ## Logical order that got here
 

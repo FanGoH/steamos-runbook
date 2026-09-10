@@ -143,9 +143,10 @@ else
 fi
 
 # Tender rom-launcher starts cemu-gamescope-focus.sh on the host before
-# RetroDECK. Dual-stream is windowed on :0 — do not hammer FOCUS_DISPLAY=1.
-if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -n "${FLATPAK_ID:-}" ] \
-  && command -v flatpak-spawn >/dev/null \
+# RetroDECK. Dual-stream is windowed but still needs FOCUSED_APP=<shortcut>
+# before gtk_init (769 deadlocks pango). The helper must not set HDMI
+# BASELAYER to the 10x10 stub.
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
   appid="${SteamAppId:-2374129079}"
   flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \

@@ -162,9 +162,8 @@ for arg in "$@"; do
       ;;
   esac
 done
-if [ "$is_cemu" -eq 1 ] && [ "${CEMU_GAMEMODE_DS:-}" != 1 ] \
-  && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; then
-  echo "rom-launcher: host cemu-gamescope-focus SteamAppId=${SteamAppId:-2374129079}" >&2
+if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; then
+  echo "rom-launcher: host cemu-gamescope-focus SteamAppId=${SteamAppId:-2374129079} DS=${CEMU_GAMEMODE_DS:-}" >&2
   CEMU_STEAM_APPID="${SteamAppId:-2374129079}" CEMU_FOCUS_SECONDS="${CEMU_FOCUS_SECONDS:-30}" \
     "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" >/dev/null 2>&1 &
 fi

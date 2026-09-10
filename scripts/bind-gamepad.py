@@ -121,8 +121,8 @@ def eden_guid(pad: dict[str, str]) -> str:
     return raw.hex()
 
 
-# SDL community db names generic 045e:028e "Xbox 360 EasySMX". Override both
-# the USB mapping GUID and the live Sunshine CRC GUID so Cemu's dropdown
+# SDL community db names generic 045e:028e "Xbox 360 EasySMX". Override every
+# GUID Cemu/SDL2 may use (USB, USB+version, BT, live CRC) so the dropdown
 # shows the Moonlight client, not EasySMX.
 _X360_SDL_MAP = (
     "a:b0,b:b1,back:b6,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,"
@@ -131,6 +131,9 @@ _X360_SDL_MAP = (
     "start:b7,x:b2,y:b3,platform:Linux,"
 )
 _EASYSMX_USB_GUID = "030000005e0400008e02000000010000"
+_X360_USB_VERSION_GUID = "030000005e0400008e02000014010000"
+_X360_BT_NOCRC_GUID = "050000005e0400008e02000014010000"
+_THOR_SUNSHINE_NAME = "Sunshine (libvirtualhid) AYN_Thor"
 
 
 def sdl_mapping_line(guid: str, name: str) -> str:
@@ -138,12 +141,47 @@ def sdl_mapping_line(guid: str, name: str) -> str:
     return f"{guid},{label},{_X360_SDL_MAP}"
 
 
+def sunshine_x360_pad(name: str, index: str = "0") -> dict[str, str]:
+    pad = {
+        "name": name,
+        "bustype": "0005",
+        "vendor": "045e",
+        "product": "028e",
+        "version": "0114",
+        "index": index,
+        "sunshine": "true",
+        "steam": "false",
+    }
+    pad["guid"] = sdl_guid(pad)
+    pad["eden_guid"] = eden_guid(pad)
+    pad["cemu_uuid"] = cemu_uuid(pad)
+    return pad
+
+
+def sdl_override_guids(pad: dict[str, str] | None) -> list[str]:
+    """Every 045e:028e GUID Cemu may look up, live CRC first."""
+    seen: list[str] = []
+
+    def add(guid: str | None) -> None:
+        if guid and guid not in seen:
+            seen.append(guid)
+
+    if pad:
+        add(pad.get("guid"))
+        add(pad.get("eden_guid"))
+    add(_EASYSMX_USB_GUID)
+    add(_X360_USB_VERSION_GUID)
+    add(_X360_BT_NOCRC_GUID)
+    add(sunshine_x360_pad(_THOR_SUNSHINE_NAME)["guid"])
+    return seen
+
+
+def sdl_mapping_for_name(name: str, pad: dict[str, str] | None = None) -> str:
+    return "".join(sdl_mapping_line(guid, name) + "\n" for guid in sdl_override_guids(pad))
+
+
 def sdl_mapping_for_pad(pad: dict[str, str]) -> str:
-    name = pad["name"]
-    lines = [sdl_mapping_line(pad["guid"], name)]
-    if pad.get("vendor") == "045e" and pad.get("product") == "028e":
-        lines.append(sdl_mapping_line(_EASYSMX_USB_GUID, name))
-    return "\n".join(lines) + "\n"
+    return sdl_mapping_for_name(pad["name"], pad)
 
 
 def _event_node(device: Path) -> str:
@@ -1217,7 +1255,7 @@ def cmd_sdl_mapping(args: argparse.Namespace) -> int:
     if pad is None:
         pad = pick_live_sunshine_pad(pads)
     if pad is None:
-        sys.stdout.write(sdl_mapping_line(_EASYSMX_USB_GUID, "Sunshine (libvirtualhid) AYN_Thor") + "\n")
+        sys.stdout.write(sdl_mapping_for_name(_THOR_SUNSHINE_NAME))
         return 0
     sys.stdout.write(sdl_mapping_for_pad(pad))
     return 0
@@ -1430,10 +1468,17 @@ def _self_test() -> int:
             "Sunshine (libvirtualhid) Odin2_Portal",
             "Sunshine (libvirtualhid) SM-A546E",
         ], pads
-        mapping = sdl_mapping_for_pad(next(p for p in pads if "Thor" in p["name"]))
+        thor_pad = next(p for p in pads if "Thor" in p["name"])
+        mapping = sdl_mapping_for_pad(thor_pad)
         assert "AYN_Thor" in mapping
         assert "EasySMX" not in mapping
         assert _EASYSMX_USB_GUID in mapping
+        assert thor_pad["guid"] in mapping
+        assert _X360_USB_VERSION_GUID in mapping
+        fallback = sdl_mapping_for_name(_THOR_SUNSHINE_NAME)
+        assert thor_pad["guid"] in fallback
+        assert _EASYSMX_USB_GUID in fallback
+        assert "EasySMX" not in fallback
         thor = match_pad(pads, "Thor")
         odin = match_pad(pads, "Odin")
         assert thor is not None and odin is not None

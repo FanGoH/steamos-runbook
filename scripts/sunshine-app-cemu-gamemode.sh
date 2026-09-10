@@ -15,8 +15,8 @@ setup_user_dbus
 mkdir -p "$ROOT/logs"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-if ! wait_for_sunshine_pad Sunshine "${SUNSHINE_APP_PAD_WAIT:-45}"; then
-  echo "No Sunshine pad yet; binding after Cemu starts may still work."
+if ! wait_for_sunshine_pad Sunshine "${SUNSHINE_APP_PAD_WAIT:-8}"; then
+  echo "No Sunshine pad yet; keeping Thor XML and launching Cemu anyway."
 fi
 
 export CEMU_PAD_MATCH="${CEMU_PAD_MATCH:-Sunshine}"

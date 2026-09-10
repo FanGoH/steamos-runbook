@@ -46,11 +46,15 @@ if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SteamAppId="$appid"
   export SteamGameId="${SteamGameId:-$appid}"
   export SteamOverlayGameId="${SteamOverlayGameId:-$appid}"
-  sdlmap="${CEMU_GAMEMODE_SDLMAP:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.sdlmap}"
-  if [ -f "$sdlmap" ]; then
-    # Override community db "Xbox 360 EasySMX" for 045e:028e.
-    export SDL_GAMECONTROLLERCONFIG="$(cat "$sdlmap")"
-  fi
+fi
+
+# Always override community db "Xbox 360 EasySMX" (045e:028e). Cemu reads
+# SDL_GameControllerName at startup; the file form survives Flatpak env
+# flattening that drops multiline SDL_GAMECONTROLLERCONFIG.
+sdlmap="${CEMU_GAMEMODE_SDLMAP:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.sdlmap}"
+if [ -f "$sdlmap" ]; then
+  export SDL_GAMECONTROLLERCONFIG_FILE="$sdlmap"
+  export SDL_GAMECONTROLLERCONFIG="$(tr '\n' '@' <"$sdlmap" | tr '@' '\n')"
 fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"

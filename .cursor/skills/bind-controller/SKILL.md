@@ -51,7 +51,7 @@ sunshine-ds now names pads `Sunshine (libvirtualhid) <client>` (udev prefix kept
 
 Keep SteamInput-P1-style GameController button IDs (SDL_GameController enums, not raw joystick indices).
 
-Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e:028e`) — that name is SDL’s community `gamecontrollerdb` entry, not a wrong device. The host pad is still `Sunshine (libvirtualhid) AYN_Thor` (Thor wins over Odin / `SM-A546E`). `bind-gamepad.py sdl-mapping` writes `SDL_GAMECONTROLLERCONFIG` so the UI matches the client name. With two Sunshine pads, `--match Sunshine` uses Thor then Odin; a leftover Samsung/Odin bind is not kept.
+Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e:028e`) — that name is SDL’s community `gamecontrollerdb` entry, not a wrong device. The host pad is still `Sunshine (libvirtualhid) AYN_Thor` (Thor wins over Odin / `SM-A546E`). `bind-gamepad.py sdl-mapping` writes every x360 GUID variant (USB, USB+version, BT, live CRC) into `SDL_GAMECONTROLLERCONFIG_FILE` so the UI matches the client name. With two Sunshine pads, `--match Sunshine` uses Thor then Odin; a leftover Samsung/Odin bind is not kept.
 
 ## After bind
 

@@ -69,26 +69,6 @@ def display_has_app(display: str) -> bool:
     return bool(ff)
 
 
-def set_baselayer(display: str, xid: int | None) -> None:
-    if xid is None:
-        return
-    env = os.environ.copy()
-    env["DISPLAY"] = display
-    _run(
-        [
-            "xprop",
-            "-root",
-            "-f",
-            "GAMESCOPECTRL_BASELAYER_WINDOW",
-            "32c",
-            "-set",
-            "GAMESCOPECTRL_BASELAYER_WINDOW",
-            str(xid),
-        ],
-        env,
-    )
-
-
 def _self_test() -> int:
     tree = """
   Root window id: 0x345
@@ -160,10 +140,6 @@ def run_screensaver(display: str) -> int:
         root.lift()
         state["hidden"] = False
         root.update_idletasks()
-        try:
-            set_baselayer(display, int(root.winfo_id()))
-        except tk.TclError:
-            pass
 
     def hide():
         if state["hidden"]:
@@ -188,16 +164,7 @@ def run_screensaver(display: str) -> int:
         root.after(200, tick)
 
     canvas.bind("<Configure>", layout)
-
-    def first_map():
-        root.update_idletasks()
-        try:
-            set_baselayer(display, int(root.winfo_id()))
-        except tk.TclError:
-            pass
-
     root.after(50, tick)
-    root.after(80, first_map)
     root.mainloop()
     return 0
 

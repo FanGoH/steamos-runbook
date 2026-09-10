@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Hold gamescope focus on the Steam UI xwayland (:0) so Cemu can leave the
-# 10x10 InputOnly stub. HDMI / the Launching spinner follow :0, even when
-# the Cemu window lives on :1. Safe to re-run; one instance at a time.
+# Keep HDMI on Steam's Launching / Big Picture until Cemu has a real window.
+# Tagging the 10x10 InputOnly stub STEAM_GAME makes gamescope present that
+# empty surface — black instead of the stream logo. Safe to re-run; one
+# instance at a time.
 set -uo pipefail
 
 APPID="${CEMU_STEAM_APPID:-${SteamAppId:-2374129079}}"
+STEAM_CLIENT_ID="${CEMU_STEAM_CLIENT_ID:-769}"
 SECONDS_HOLD="${CEMU_FOCUS_SECONDS:-20}"
 INTERVAL_MS="${CEMU_FOCUS_INTERVAL_MS:-20}"
 PIDFILE="${CEMU_FOCUS_PIDFILE:-/home/deck/steamos-playbook/logs/cemu-gamescope-focus.pid}"
@@ -29,55 +31,64 @@ if [ -n "${old:-}" ] && [ -d "/proc/$old" ] && [ "$old" != "$$" ]; then
 fi
 printf '%s\n' "$$" >"$PIDFILE"
 
-set_atoms() {
-  local d="$1"
-  DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
-  DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+cemu_window_is_stub() {
+  local d="$1" id="$2" w h cls
+  w="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Width:/{print $2; exit}')"
+  h="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Height:/{print $2; exit}')"
+  cls="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Class:/{print $2; exit}')"
+  if [ "${cls:-}" = "InputOnly" ]; then
+    return 0
+  fi
+  [ -n "${w:-}" ] && [ -n "${h:-}" ] || return 0
+  [ "$w" -lt 64 ] || [ "$h" -lt 64 ]
 }
 
-# HDMI/spinner follow xwayland 0 (:0). Cemu is on xwayland 1 (:1) and stays
-# InputOnly until FOCUS_DISPLAY's middle cardinal is 1.
-focus_game_xwayland() {
-  local cur a c
-  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}')"
-  a="$(printf '%s' "$cur" | awk -F',' '{gsub(/ /,"",$1); print $1}')"
-  c="$(printf '%s' "$cur" | awk -F',' '{gsub(/ /,"",$3); print $3}')"
-  [ -n "$a" ] || a=12346
-  [ -n "$c" ] || c=66
-  local vals="$a, 1, $c"
-  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
-    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "$vals" 2>/dev/null || true
-  done
+hold_steam_launch_logo() {
+  local bpm bpm_dec
+  bpm="$(DISPLAY=:0 xwininfo -root -tree 2>/dev/null | awk '/"Steam Big Picture Mode"/{print $1; exit}')"
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_CLIENT_ID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_CLIENT_ID" 2>/dev/null || true
+  if [ -n "${bpm:-}" ]; then
+    bpm_dec="$(printf '%d' "$bpm" 2>/dev/null || printf '%s' "$bpm")"
+    DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$bpm_dec" 2>/dev/null || true
+    DISPLAY=:0 xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$bpm_dec" 2>/dev/null || true
+  fi
 }
 
-tag_windows() {
+promote_real_cemu() {
   local d="$1" id name
-  [ -S "/tmp/.X11-unix/X${d#:}" ] || return 0
-  command -v xdotool >/dev/null 2>&1 || return 0
+  [ -S "/tmp/.X11-unix/X${d#:}" ] || return 1
+  command -v xdotool >/dev/null 2>&1 || return 1
   for id in $(DISPLAY="$d" xdotool search --class Cemu 2>/dev/null || true) \
             $(DISPLAY="$d" xdotool search --name 'Cemu' 2>/dev/null || true); do
     name="$(DISPLAY="$d" xdotool getwindowname "$id" 2>/dev/null || true)"
     case "$name" in
       GamePad*) continue ;;
     esac
+    if cemu_window_is_stub "$d" "$id"; then
+      continue
+    fi
     DISPLAY="$d" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
     DISPLAY="$d" xdotool windowmap "$id" 2>/dev/null || true
-    if [ "$d" = ":0" ]; then
-      DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-      DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
-    fi
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+    return 0
   done
+  return 1
 }
 
 end=$((SECONDS + SECONDS_HOLD))
-echo "$(date -Iseconds) hold appid=$APPID ${SECONDS_HOLD}s interval=${INTERVAL_MS}ms" >>"$LOG"
+echo "$(date -Iseconds) hold steam logo until real Cemu window appid=$APPID ${SECONDS_HOLD}s" >>"$LOG"
 while [ "$SECONDS" -lt "$end" ]; do
-  # Spinner / HDMI follow :0. :1 is the game xwayland Cemu actually uses.
-  set_atoms :0
-  set_atoms :1
-  focus_game_xwayland
-  tag_windows :0
-  tag_windows :1
+  if promote_real_cemu :0 || promote_real_cemu :1; then
+    echo "$(date -Iseconds) promoted real Cemu window" >>"$LOG"
+    break
+  fi
+  hold_steam_launch_logo
   sleep "$(awk -v ms="$INTERVAL_MS" 'BEGIN { printf "%.3f", ms/1000 }')"
 done
 echo "$(date -Iseconds) done :0=$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}')" >>"$LOG"

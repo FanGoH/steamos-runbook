@@ -122,8 +122,8 @@ else
   fi
 fi
 
-# Hold :0 FOCUSED_APP on the shortcut so HDMI / the Launching spinner
-# leave BPM. Focus atoms live on the Steam UI xwayland.
+# Keep HDMI on Steam's Launching logo until Cemu has a real window.
+# Promoting the 10x10 InputOnly stub blacks the stream.
 if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
   appid="${SteamAppId:-2374129079}"

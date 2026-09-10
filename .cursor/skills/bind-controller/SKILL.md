@@ -41,7 +41,7 @@ Eden INI: `~/.config/eden/qt-config.ini`. Maps for Azahar come from the active p
 
 Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine pad and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 
-Game Mode RetroDECK Cemu **local** tiles still auto-pick on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine). Game Mode **GameStream dual-screen** (`:48200`) must bind the live Sunshine client after that: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (or `--match Odin`). That script calls `bind-gamepad.py` on RetroDECK `controller0.xml` and puts mappings **only** on `Sunshine (libvirtualhid) AYN_Thor`. A leftover Tender `-f` Cemu will keep the Steam wrap. Use this skill for **desktop / GameStream** binds, explicit Thor/Odin, two-player assigns, and the Decky plugin. Desktop dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
+Game Mode RetroDECK Cemu **local** tiles still auto-pick on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine). Game Mode **GameStream dual-screen** (`:48200`, `checkpoint-2026-09-10-gamemode-works`) must bind the live Sunshine client after that: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (or `--match Odin`). Capture/overlay/screensaver: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. That script calls `bind-gamepad.py` on RetroDECK `controller0.xml` and puts mappings **only** on `Sunshine (libvirtualhid) AYN_Thor`. A leftover Tender `-f` Cemu will keep the Steam wrap. Use this skill for **desktop / GameStream** binds, explicit Thor/Odin, two-player assigns, and the Decky plugin. Desktop dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
 
 ## Why Thor failed
 
@@ -51,7 +51,7 @@ sunshine-ds now names pads `Sunshine (libvirtualhid) <client>` (udev prefix kept
 
 Keep SteamInput-P1-style GameController button IDs (SDL_GameController enums, not raw joystick indices).
 
-Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e:028e`) — that name is SDL’s community `gamecontrollerdb` entry, not a wrong device. The host pad is still `Sunshine (libvirtualhid) AYN_Thor` (Thor wins over Odin / `SM-A546E`). `bind-gamepad.py sdl-mapping` writes every x360 GUID variant (USB, USB+version, BT, live CRC) into `SDL_GAMECONTROLLERCONFIG_FILE` so the UI matches the client name. With two Sunshine pads, `--match Sunshine` uses Thor then Odin; a leftover Samsung/Odin bind is not kept.
+Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e:028e`) — that name is SDL’s community `gamecontrollerdb` entry, not a wrong device. The host pad is still `Sunshine (libvirtualhid) AYN_Thor` (Thor wins over Odin / `SM-A546E`). `bind-gamepad.py sdl-mapping` writes every x360 GUID variant (USB, USB+version, BT, live CRC) into `SDL_GAMECONTROLLERCONFIG_FILE` so the UI matches the client name. That map must be **15-button** libvirtualhid (`LB=b6`, `Back=b10`), not Steam xpad 11-button (`LB=b4`, `Back=b6`) — the 11-button file makes Thor bumpers fire Wii U Select/Start. With two Sunshine pads, `--match Sunshine` uses Thor then Odin; a leftover Samsung/Odin bind is not kept.
 
 ## After bind
 
@@ -65,4 +65,5 @@ Type must stay **Wii U GamePad** for the GamePad View. Do not bind `libvirtualhi
 - Reorder Sunshine first while Steam still has mappings
 - `pgrep -f` / `pkill -f` sunshine (use `pgrep -x sunshine-ds`)
 - Inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`
+- Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button
 - Pair/unpair Moonlight just to rename a pad (launch `devicename` updates the label)

@@ -8,11 +8,15 @@
 # PipeWire Video/Source. KMS cannot see that plane. sunshine-ds-kms video/1
 # grabs the node when dual_display_source = gamescope-virtual.
 #
-# Sidecar: $XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual (serial/node/size).
+# Sidecar: $XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual (serial/size).
+# Do not write `node=<id>`: sunshine-ds-kms built from f8d9968c then skips
+# AUTOCONNECT + TARGET_OBJECT, and video/1 stays dummy_img() black. Sep 9
+# checkpoint 119d7452 links by object.serial. Keep the node id as `pw_node=`.
 # Does not touch :48100, sunshine-ds-dev, or the KWin helper.
 # Does not restart gamescope-session.
 #
-#   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + damaging paint
+#   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + idle screensaver
+#   scripts/sunshine-ds-gamemode-virtual.sh --paint   # restart screensaver only (:2 stays)
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
 #   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # one PNG from the PipeWire node
 #   scripts/sunshine-ds-gamemode-virtual.sh --stop
@@ -38,18 +42,20 @@ DO_STATUS=0
 DO_STOP=0
 DO_START=0
 DO_SMOKE=0
+DO_PAINT=0
 for arg in "$@"; do
   case "$arg" in
     --status) DO_STATUS=1 ;;
     --stop) DO_STOP=1 ;;
     --start) DO_START=1 ;;
+    --paint) DO_PAINT=1 ;;
     --smoke) DO_SMOKE=1 ;;
     -h|--help)
-      sed -n '2,20p' "$0"
+      sed -n '2,22p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--start] [--status] [--smoke] [--stop]" >&2
+      echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
       exit 2
       ;;
   esac
@@ -125,7 +131,7 @@ paint_pid() {
 }
 
 stop_paint() {
-  local pid
+  local pid x11
   pid="$(paint_pid || true)"
   if [ -n "${pid:-}" ]; then
     kill "$pid" 2>/dev/null || true
@@ -139,64 +145,73 @@ stop_paint() {
     fi
   fi
   rm -f "$PAINT_PIDFILE"
+  # Leftover Tk stays mapped after the python pid dies and covers :2.
+  x11="$(x11_display || true)"
+  if [ -n "${x11:-}" ] && command -v xdotool >/dev/null 2>&1; then
+    DISPLAY="$x11" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
+  fi
 }
 
 # Static fullscreen publishes one PipeWire buffer then goes silent. Sunshine
-# video/1 then encodes dummy_img() black. Keep a moving square so gamescope
-# keeps damaging (Cemu/Azahar will do this for real content).
+# video/1 then encodes dummy_img() black. Keep damaging :2 when idle
+# (Cemu/Azahar ffplay does this for real GamePad content). Title stays
+# sunshine-ds-kms-virtual so existing windowkill paths still work.
 start_paint() {
-  local gs_pid x11
+  local gs_pid x11 saver
   gs_pid="$(virtual_pid || true)"
   if [ -z "${gs_pid:-}" ]; then
-    echo "No headless gamescope; not starting paint."
+    echo "No headless gamescope; not starting screensaver."
     return 1
   fi
   x11="$(x11_display "$gs_pid")"
   if [ -z "$x11" ]; then
-    echo "No Xwayland display for paint."
+    echo "No Xwayland display for screensaver."
     return 1
   fi
   if paint_pid >/dev/null; then
-    echo "Virtual paint already pid $(paint_pid)."
+    echo "Bottom screensaver already pid $(paint_pid)."
+    present_idle_screensaver "$x11" || true
     return 0
   fi
-  # Cemu/Azahar ffplay already damages :2. Smoke paint covers the GamePad stream.
+  # Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
   if command -v xdotool >/dev/null 2>&1 &&
      DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1; then
-    echo "ffplay already on $x11; not starting smoke paint."
+    echo "ffplay already on $x11; not starting screensaver."
     return 0
   fi
+  saver="$ROOT/scripts/sunshine-ds-bottom-screensaver.py"
+  if [ ! -f "$saver" ]; then
+    echo "Missing $saver"
+    return 1
+  fi
   # Isolated: inheriting WAYLAND_DISPLAY=gamescope-0 puts this on the TV.
-  nohup env -u WAYLAND_DISPLAY DISPLAY="$x11" python3 - >>"$LOG" 2>&1 <<'PY' &
-import tkinter as tk
-
-root = tk.Tk()
-root.configure(bg="#2244ff")
-root.attributes("-fullscreen", True)
-root.title("sunshine-ds-kms-virtual")
-canvas = tk.Canvas(root, highlightthickness=0, bg="#2244ff")
-canvas.pack(fill="both", expand=True)
-box = canvas.create_rectangle(0, 0, 160, 160, fill="#ffcc00", outline="")
-state = {"x": 40, "dx": 18}
-
-
-def tick():
-    width = max(canvas.winfo_width(), 320)
-    height = max(canvas.winfo_height(), 320)
-    state["x"] += state["dx"]
-    if state["x"] <= 0 or state["x"] >= width - 160:
-        state["dx"] *= -1
-        state["x"] += state["dx"]
-    y = max(height // 2 - 80, 0)
-    canvas.coords(box, state["x"], y, state["x"] + 160, y + 160)
-    root.after(200, tick)
-
-
-root.after(50, tick)
-root.mainloop()
-PY
+  nohup env -u WAYLAND_DISPLAY DISPLAY="$x11" \
+    python3 "$saver" --display "$x11" >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$PAINT_PIDFILE"
-  echo "Virtual paint pid $! on $x11 (damaging so PipeWire keeps emitting)."
+  echo "Bottom screensaver pid $! on $x11 (idle clock; withdraws for ffplay)."
+  present_idle_screensaver "$x11" || true
+}
+
+# PipeWire / Moonlight video/1 encodes the gamescope root. A mapped Tk with
+# pixels is still black on Thor until it is GAMESCOPECTRL_BASELAYER_WINDOW.
+present_idle_screensaver() {
+  local x11="${1:-}" wid i
+  if [ -z "$x11" ]; then
+    x11="$(x11_display "$(virtual_pid || true)" || true)"
+  fi
+  [ -n "$x11" ] || return 1
+  command -v xdotool >/dev/null 2>&1 || return 1
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    wid="$(DISPLAY="$x11" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+    if [ -n "${wid:-}" ]; then
+      DISPLAY="$x11" xdotool windowmap "$wid" windowraise "$wid" 2>/dev/null || true
+      DISPLAY="$x11" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$wid" 2>/dev/null || true
+      DISPLAY="$x11" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$wid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 write_nodefile() {
@@ -216,7 +231,7 @@ write_nodefile() {
   umask 077
   cat >"$NODEFILE" <<EOF
 serial=${serial}
-node=${node}
+pw_node=${node}
 width=${WIDTH}
 height=${HEIGHT}
 wayland=$(wayland_name || true)
@@ -240,7 +255,7 @@ print_status() {
     echo "wayland: ${wl:-unknown}"
     echo "x11: ${x11:-unknown}"
     echo "pipewire: ${node:-none}"
-    echo "paint pid: $(paint_pid || echo none)"
+    echo "screensaver pid: $(paint_pid || echo none)"
     echo "note: KMS cannot capture this plane. Set dual_display_source=gamescope-virtual on sunshine-ds-kms."
   elif [ -n "${pid:-}" ]; then
     echo "pid $pid is not a headless gamescope; ignoring pidfile."
@@ -388,10 +403,17 @@ if [ "$DO_SMOKE" -eq 1 ]; then
   exit 0
 fi
 
+if [ "$DO_PAINT" -eq 1 ]; then
+  stop_paint
+  start_paint || exit $?
+  print_status
+  exit 0
+fi
+
 if [ "$DO_START" -eq 1 ]; then
   start_virtual || exit $?
   exit 0
 fi
 
-echo "usage: $0 [--start] [--status] [--smoke] [--stop]" >&2
+echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
 exit 2

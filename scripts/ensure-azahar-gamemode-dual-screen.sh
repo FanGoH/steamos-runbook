@@ -8,8 +8,8 @@
 # STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
-# Kill leftover Tk paint on :2 (sunshine-ds-kms-virtual) before ffplay or
-# Moonlight video/1 stays the blue/yellow smoke. --mirror-only remirrors
+# Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
+# ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors
 # without restarting Azahar (needed after kms --start recreates :2).
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
@@ -298,6 +298,9 @@ watch_azahar_focus_loop() {
     fi
     sleep 0.4
   done
+  echo "Azahar exited — stopping bottom mirror so :2 can screensaver again."
+  stop_mirror
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
@@ -364,6 +367,7 @@ minimize_library() {
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   echo "Left Azahar running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi

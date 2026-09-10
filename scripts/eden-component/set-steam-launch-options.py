@@ -219,6 +219,8 @@ def _tender_launch_options(platform: str, dump: Path) -> str:
         inner = "%EMULATOR_PCSX2% -batch %ROM%"
     elif platform == "ps3":
         inner = "%EMULATOR_RPCS3% --no-gui %ROM%"
+    elif platform in ("wiiu", "wii-u"):
+        inner = "%EMULATOR_CEMU% -g %ROM%"
     else:
         inner = "%EMULATOR_RYUBING% %ROM%"
     return f'flatpak run net.retrodeck.retrodeck -e "{inner}" "{dump}"'
@@ -609,6 +611,9 @@ def _self_test() -> None:
         iso.write_bytes(b"i" * 12)
         assert pick_launchable_dump(ps2_dir) == iso
         assert "%EMULATOR_PCSX2%" in _tender_launch_options("ps2", iso)
+        wux = Path("/tmp/dummy.wux")
+        assert "%EMULATOR_CEMU%" in _tender_launch_options("wiiu", wux)
+        assert "%EMULATOR_RYUBING%" not in _tender_launch_options("wiiu", wux)
 
 
 if __name__ == "__main__":

@@ -122,4 +122,50 @@ if [ "$is_retrodeck" -eq 1 ] \
   fi
 fi
 
+# Steam RunGame does not inherit CEMU_GAMEMODE_DS. The dual-screen script
+# touches logs/cemu-gamemode-ds.want immediately before Play; consume it
+# here (and pass --env into Flatpak) so windowed GamePad launch works.
+# Delete after read so a leftover file cannot turn the next tile Play
+# into windowed 10x10 (spinning logo).
+want="${CEMU_GAMEMODE_DS_FLAG:-$PLAYBOOK/logs/cemu-gamemode-ds.want}"
+if [ -f "$want" ]; then
+  want_mtime="$(stat -c %Y "$want" 2>/dev/null || echo 0)"
+  now="$(date +%s)"
+  if [ $((now - want_mtime)) -lt 120 ]; then
+    export CEMU_GAMEMODE_DS=1
+    new_args=()
+    injected=0
+    for arg in "$@"; do
+      new_args+=("$arg")
+      if [ "$injected" -eq 0 ] && [ "$arg" = "run" ]; then
+        new_args+=(--env=CEMU_GAMEMODE_DS=1)
+        injected=1
+      fi
+    done
+    set -- "${new_args[@]}"
+  fi
+  rm -f "$want"
+fi
+
+# Wii U / Cemu: gamescope leaves Cemu as a 10x10 InputOnly stub unless
+# FOCUSED_APP + STEAM_GAME + FOCUS_DISPLAY=1 are set *before* gtk_init.
+# Dual-stream is windowed on :0; do not hammer FOCUS_DISPLAY=1.
+# The RetroDECK wrapper also starts this helper; a second start is a no-op.
+is_cemu=0
+for arg in "$@"; do
+  case "$arg" in
+    *EMULATOR_CEMU*|*Cemu-wrapper*|*.wux|*.WUX|*.wud|*.WUD|*.wua|*.WUA)
+      is_cemu=1
+      ;;
+    */wiiu/*|*/wii-u/*|*/WiiU/*)
+      is_cemu=1
+      ;;
+  esac
+done
+if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; then
+  echo "rom-launcher: host cemu-gamescope-focus SteamAppId=${SteamAppId:-2374129079} DS=${CEMU_GAMEMODE_DS:-}" >&2
+  CEMU_STEAM_APPID="${SteamAppId:-2374129079}" CEMU_FOCUS_SECONDS="${CEMU_FOCUS_SECONDS:-30}" \
+    "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" >/dev/null 2>&1 &
+fi
+
 exec "$@"

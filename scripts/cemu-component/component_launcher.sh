@@ -8,6 +8,20 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# Steam RunGame does not inherit CEMU_GAMEMODE_DS from the dual-screen
+# script. Touch logs/cemu-gamemode-ds.want immediately before RunGame;
+# consume it here so a leftover file cannot turn the next Tender Play
+# into windowed 10x10 (spinning logo).
+want="${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}"
+if [ -f "$want" ]; then
+  want_mtime="$(stat -c %Y "$want" 2>/dev/null || echo 0)"
+  now="$(date +%s)"
+  if [ $((now - want_mtime)) -lt 120 ]; then
+    export CEMU_GAMEMODE_DS=1
+  fi
+  rm -f "$want"
+fi
+
 # Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
 # virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
 # Moonlight-only session can still bind Sunshine when Steam virtual is gone.
@@ -21,23 +35,22 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 # joysticks; blacklist the mouse on both hints.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # gamescope-session exports GAMESCOPE_DISPLAY_DISABLED=1, which leaves
-# Cemu UnMapped (spinning Steam logo). Always clear it. gamescope WSI
-# deadlocks Cemu on an InputOnly 10x10 window (no /dev/dri) even when
-# :0 FOCUSED_APP is already the shortcut — use normal X11/Vulkan.
+# Cemu UnMapped (spinning Steam logo). Always clear it.
+# Tender / Steam Play -f needs ENABLE_GAMESCOPE_WSI so gamescope can hand
+# out a nested swapchain once FOCUSED_APP is the shortcut and FOCUS_DISPLAY
+# is xwayland 1. Unsetting WSI leaves a 10x10 InputOnly stub forever.
+# Dual-stream still drops WSI (windowed x11grab on :0 / :2).
 unset GAMESCOPE_DISPLAY_DISABLED
-unset ENABLE_GAMESCOPE_WSI
+if [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
+  export ENABLE_GAMESCOPE_WSI="${ENABLE_GAMESCOPE_WSI:-1}"
+fi
 # Optional bisect: llvmpipe skips gamescope InputOnly GLX.
 if [ "${CEMU_SOFTWARE_GL:-}" = 1 ] || [ -f /home/deck/steamos-playbook/logs/cemu-software-gl ]; then
   export LIBGL_ALWAYS_SOFTWARE=1
   export GALLIUM_DRIVER=llvmpipe
 fi
-# Steam overlay renderer can pin wx/GTK on an InputOnly 10x10 window.
-unset LD_PRELOAD
-unset LD_PRELOAD_64
-unset LD_PRELOAD_32
 export QT_QPA_PLATFORM=xcb
 export GDK_BACKEND=x11
-export SDL_VIDEODRIVER=x11
 # Game Mode exports GTK_IM_MODULE=Steam. wxGTK then deadlocks in gtk_init
 # (IME waits for a focused game window) and Cemu stays a 10x10 InputOnly stub.
 unset GTK_IM_MODULE
@@ -50,14 +63,21 @@ export GTK_PATH="${GTK_PATH:-}"
 if [ -f "${CEMU_TEST_DISPLAY_FLAG:-/home/deck/steamos-playbook/logs/cemu-test-display}" ]; then
   export DISPLAY="$(cat "${CEMU_TEST_DISPLAY_FLAG:-/home/deck/steamos-playbook/logs/cemu-test-display}")"
 fi
-# Flatpak+gamescope has hung Cemu in pango/fontconfig before "Init Cemu".
-if [ -f "$here/fonts.conf" ]; then
+# FONTCONFIG_FILE pointing at a tiny fonts.conf was added while bisecting
+# the 10x10 hang. The live hung process has a stuck "[pango] fontcon"
+# thread, so do not force a custom config on Tender Play.
+if [ "${CEMU_CUSTOM_FONTCONFIG:-}" = 1 ] && [ -f "$here/fonts.conf" ]; then
   export FONTCONFIG_FILE="$here/fonts.conf"
 fi
 
 # Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1.
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
+  unset ENABLE_GAMESCOPE_WSI
+  export SDL_VIDEODRIVER=x11
+  unset LD_PRELOAD
+  unset LD_PRELOAD_64
+  unset LD_PRELOAD_32
   appid="${SteamAppId:-2374129079}"
   export SteamAppId="$appid"
   export SteamGameId="${SteamGameId:-$appid}"
@@ -122,12 +142,14 @@ else
   fi
 fi
 
-# Hold :0 FOCUSED_APP on the shortcut so HDMI / the Launching spinner
-# leave BPM. Focus atoms live on the Steam UI xwayland.
+# Tender rom-launcher starts cemu-gamescope-focus.sh on the host before
+# RetroDECK. Dual-stream is windowed but still needs FOCUSED_APP=<shortcut>
+# before gtk_init (769 deadlocks pango). The helper must not set HDMI
+# BASELAYER to the 10x10 stub.
 if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
   appid="${SteamAppId:-2374129079}"
-  flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=25" \
+  flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
     /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
 fi
 
@@ -141,7 +163,7 @@ cd "$cemu_data"
 cemu_log="${CEMU_WRAPPER_LOG:-/home/deck/steamos-playbook/logs/cemu-wrapper.log}"
 mkdir -p "$(dirname "$cemu_log")"
 {
-  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} args:${args[*]} ----"
+  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} args:${args[*]} ----"
   echo "GTK_IM_MODULE=${GTK_IM_MODULE:-} GDK_BACKEND=${GDK_BACKEND:-} WSI=${ENABLE_GAMESCOPE_WSI:-} DISABLED=${GAMESCOPE_DISPLAY_DISABLED:-}"
 } >>"$cemu_log"
 

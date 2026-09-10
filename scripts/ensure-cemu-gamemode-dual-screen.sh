@@ -132,8 +132,6 @@ start_focus_nudge() {
   (
     local i
     for i in $(seq 1 80); do
-      DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
-      DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
       nudge_cemu_into_gamescope
       sleep 0.2
     done
@@ -143,6 +141,11 @@ start_focus_nudge() {
 
 bind_cemu_pads() {
   local xml
+  # Moonlight's Sunshine pad often appears after /launch. Binding before
+  # that keeps a stale Cemu uuid index (1_<guid> vs live 0_<guid>) and
+  # player 0 has no device. Same wait-appear as desktop dual-screen.
+  python3 "$ROOT/scripts/bind-gamepad.py" wait-appear --match "${PAD_MATCH:-Sunshine}" --timeout 20 \
+    >/dev/null || true
   for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
     [ -f "$xml" ] || continue
     if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
@@ -199,7 +202,18 @@ PY
 
 find_pad_wid() {
   # Off-screen GamePad (1920,0 on a 1920-wide :0) is mapped but not "visible".
-  DISPLAY="$TV_DISPLAY" xdotool search --name 'GamePad' 2>/dev/null | head -1
+  # Steam RunGame often puts Cemu on :1; do not assume TV_DISPLAY=:0.
+  local d wid
+  for d in "$TV_DISPLAY" :1 :0; do
+    [ -n "$d" ] || continue
+    wid="$(DISPLAY="$d" xdotool search --name 'GamePad' 2>/dev/null | head -1 || true)"
+    if [ -n "${wid:-}" ]; then
+      TV_DISPLAY="$d"
+      printf '%s\n' "$wid"
+      return 0
+    fi
+  done
+  return 1
 }
 
 wait_cemu() {
@@ -222,20 +236,51 @@ ensure_virtual_display() {
   bash "$VIRTUAL_HELPER" --start
 }
 
-# Steam Big Picture stays FOCUSED_APP=769 until something tags the Cemu
-# window STEAM_GAME. Without that, Cemu keeps an InputOnly 10x10 stub and
-# never opens GamePad View (agent/SSH SteamLaunch).
+# A 10x10 InputOnly stub tagged STEAM_GAME becomes the HDMI surface — black
+# instead of Steam's Launching logo. Only promote a real Cemu window.
+cemu_window_is_stub() {
+  local d="$1" id="$2" w h cls
+  w="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Width:/{print $2; exit}')"
+  h="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Height:/{print $2; exit}')"
+  cls="$(DISPLAY="$d" xwininfo -id "$id" 2>/dev/null | awk '/^  Class:/{print $2; exit}')"
+  if [ "${cls:-}" = "InputOnly" ]; then
+    return 0
+  fi
+  [ -n "${w:-}" ] && [ -n "${h:-}" ] || return 0
+  [ "$w" -lt 64 ] || [ "$h" -lt 64 ]
+}
+
+hold_steam_launch_logo() {
+  local bpm bpm_dec
+  bpm="$(DISPLAY=:0 xwininfo -root -tree 2>/dev/null | awk '/"Steam Big Picture Mode"/{print $1; exit}')"
+  if [ -n "${bpm:-}" ]; then
+    bpm_dec="$(printf '%d' "$bpm" 2>/dev/null || printf '%s' "$bpm")"
+    DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$bpm_dec" 2>/dev/null || true
+    DISPLAY=:0 xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$bpm_dec" 2>/dev/null || true
+  fi
+}
+
 nudge_cemu_into_gamescope() {
-  local id
+  local id name
   for id in $(DISPLAY="$TV_DISPLAY" xdotool search --class Cemu 2>/dev/null || true) \
             $(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true); do
+    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$id" 2>/dev/null || true)"
+    case "$name" in
+      GamePad*) continue ;;
+    esac
     DISPLAY="$TV_DISPLAY" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
     DISPLAY="$TV_DISPLAY" xdotool windowmap "$id" 2>/dev/null || true
+    if cemu_window_is_stub "$TV_DISPLAY" "$id"; then
+      continue
+    fi
     set_gamescope_focus "$id" "$APPID"
     return 0
   done
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+  hold_steam_launch_logo
 }
 
 wait_pad_wid() {
@@ -345,12 +390,12 @@ find_ffplay_wid() {
 
 present_virtual_gamepad() {
   local ff
-  stop_paint
-  DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
   ff="$(find_ffplay_wid || true)"
   if [ -z "${ff:-}" ]; then
     return 1
   fi
+  stop_paint
+  DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
@@ -443,9 +488,9 @@ watch_cemu_focus_loop() {
     fi
     sleep 0.4
   done
-  echo "Cemu exited — stopping GamePad mirror so :2 can paint again."
+  echo "Cemu exited — stopping GamePad mirror so :2 can screensaver again."
   stop_mirror
-  bash "$VIRTUAL_HELPER" --start >/dev/null 2>&1 || true
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
@@ -473,7 +518,6 @@ start_guide_watch() {
 start_mirror() {
   local wid="$1"
   stop_mirror
-  stop_paint
   place_pad_for_capture "$wid"
   echo "Mirroring GamePad xid $wid from $TV_DISPLAY onto $PAD_DISPLAY (ffplay x11grab)."
   # gst ximagesrc MIT-SHM BadMatch on off-screen GL windows and grabs a black
@@ -507,6 +551,8 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_guide_watch
   stop_focus_nudge
   rm -f "$DS_WANT" "$SDLMAP"
+  hold_steam_launch_logo
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi
@@ -565,7 +611,10 @@ if ! cemu_running; then
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  rm -f "$DS_WANT"
+  # Steam does not pass CEMU_GAMEMODE_DS into RunGame. Touch a 120s
+  # consume-on-read flag for rom-launcher / Cemu-wrapper, then launch.
+  mkdir -p "$(dirname "$DS_WANT")"
+  date -Iseconds >"$DS_WANT"
   start_focus_nudge
   # Tender Play: SteamClient.Apps.RunGame(gameId). steam:// and a host
   # flatpak run never become FOCUSED_APP (Cemu stays 10x10 InputOnly).

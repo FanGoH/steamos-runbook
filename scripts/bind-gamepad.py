@@ -214,6 +214,24 @@ def match_pad(pads: list[dict[str, str]], needle: str) -> dict[str, str] | None:
     return None
 
 
+def pick_live_sunshine_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
+    """The Sunshine pad currently injected (not Mouse, not Steam virtual)."""
+    live = [
+        p
+        for p in pads
+        if p.get("sunshine") == "true" and "mouse" not in p["name"].lower()
+    ]
+    if not live:
+        return None
+    if len(live) == 1:
+        return live[0]
+    for needle in ("thor", "odin"):
+        hits = [p for p in live if needle in p["name"].lower()]
+        if len(hits) == 1:
+            return hits[0]
+    return live[0]
+
+
 def wait_button(pads: list[dict[str, str]], timeout: float) -> dict[str, str] | None:
     event_fmt = struct.Struct("llHHi")
     fds: dict[int, dict[str, str]] = {}
@@ -1147,14 +1165,20 @@ def _pick_for_cemu(args: argparse.Namespace) -> dict[str, str] | None:
     if args.wait:
         print("Press a button on the pad to bind…", file=sys.stderr)
         return wait_button(pads, args.timeout)
-    if args.match:
-        pad = match_pad(pads, args.match)
-        if pad is None:
-            names = ", ".join(p["name"] for p in pads) or "(none)"
-            print(f"No pad matched {args.match!r}. Connected: {names}", file=sys.stderr)
-        return pad
-    print("Pass --match NAME or --wait.", file=sys.stderr)
-    return None
+    needle = (getattr(args, "match", None) or "").strip()
+    if needle.lower() in ("", "sunshine", "auto"):
+        pad = pick_live_sunshine_pad(pads)
+        if pad is not None:
+            return pad
+        if needle.lower() == "sunshine":
+            return next((p for p in pads if p.get("sunshine") == "true"), None)
+        print("No live Sunshine pad.", file=sys.stderr)
+        return None
+    pad = match_pad(pads, needle)
+    if pad is None:
+        names = ", ".join(p["name"] for p in pads) or "(none)"
+        print(f"No pad matched {needle!r}. Connected: {names}", file=sys.stderr)
+    return pad
 
 
 def cmd_cemu(args: argparse.Namespace) -> int:
@@ -1347,6 +1371,10 @@ def _self_test() -> int:
         ], pads
         thor = match_pad(pads, "Thor")
         odin = match_pad(pads, "Odin")
+        assert thor is not None and odin is not None
+        auto = pick_live_sunshine_pad(pads)
+        assert auto is not None
+        assert auto["name"] == thor["name"]
         assert thor is not None and thor["index"] == "0", thor
         assert odin is not None and odin["index"] == "1", odin
         assert thor["guid"] != odin["guid"]

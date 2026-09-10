@@ -374,6 +374,9 @@ watch_cemu_focus_loop() {
     fi
     sleep 0.4
   done
+  echo "Cemu exited — stopping GamePad mirror so :2 can paint again."
+  stop_mirror
+  bash "$VIRTUAL_HELPER" --start >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
@@ -471,7 +474,9 @@ bash "$ROOT/scripts/ensure-cemu-input.sh" >>"$LOG" 2>&1 || {
 }
 
 if [ -f "$RD_CONTROLLER" ]; then
-  if ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match "$PAD_MATCH" --force; then
+  if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
+    python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match Sunshine --force || true
+  elif ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match "$PAD_MATCH" --force; then
     python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$RD_CONTROLLER" --match Sunshine --force || true
   fi
 fi

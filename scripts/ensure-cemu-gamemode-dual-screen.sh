@@ -170,9 +170,26 @@ ensure_virtual_display() {
   bash "$VIRTUAL_HELPER" --start
 }
 
+# Steam Big Picture stays FOCUSED_APP=769 until something tags the Cemu
+# window STEAM_GAME. Without that, Cemu keeps an InputOnly 10x10 stub and
+# never opens GamePad View (agent/SSH SteamLaunch).
+nudge_cemu_into_gamescope() {
+  local id
+  for id in $(DISPLAY="$TV_DISPLAY" xdotool search --class Cemu 2>/dev/null || true) \
+            $(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true); do
+    DISPLAY="$TV_DISPLAY" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+    DISPLAY="$TV_DISPLAY" xdotool windowmap "$id" 2>/dev/null || true
+    set_gamescope_focus "$id" "$APPID"
+    return 0
+  done
+  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+}
+
 wait_pad_wid() {
   local i=0 wid
   while [ "$i" -lt 90 ]; do
+    nudge_cemu_into_gamescope
     wid="$(find_pad_wid || true)"
     if [ -n "${wid:-}" ]; then
       printf '%s\n' "$wid"
@@ -527,6 +544,7 @@ if ! cemu_running; then
     tail -40 "$LOG" || true
     exit 1
   fi
+  nudge_cemu_into_gamescope
 else
   echo "Cemu already running; mirroring GamePad View only."
 fi

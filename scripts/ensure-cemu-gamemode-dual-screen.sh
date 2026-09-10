@@ -141,6 +141,11 @@ start_focus_nudge() {
 
 bind_cemu_pads() {
   local xml
+  # Moonlight's Sunshine pad often appears after /launch. Binding before
+  # that keeps a stale Cemu uuid index (1_<guid> vs live 0_<guid>) and
+  # player 0 has no device. Same wait-appear as desktop dual-screen.
+  python3 "$ROOT/scripts/bind-gamepad.py" wait-appear --match "${PAD_MATCH:-Sunshine}" --timeout 20 \
+    >/dev/null || true
   for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
     [ -f "$xml" ] || continue
     if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
@@ -197,7 +202,18 @@ PY
 
 find_pad_wid() {
   # Off-screen GamePad (1920,0 on a 1920-wide :0) is mapped but not "visible".
-  DISPLAY="$TV_DISPLAY" xdotool search --name 'GamePad' 2>/dev/null | head -1
+  # Steam RunGame often puts Cemu on :1; do not assume TV_DISPLAY=:0.
+  local d wid
+  for d in "$TV_DISPLAY" :1 :0; do
+    [ -n "$d" ] || continue
+    wid="$(DISPLAY="$d" xdotool search --name 'GamePad' 2>/dev/null | head -1 || true)"
+    if [ -n "${wid:-}" ]; then
+      TV_DISPLAY="$d"
+      printf '%s\n' "$wid"
+      return 0
+    fi
+  done
+  return 1
 }
 
 wait_cemu() {

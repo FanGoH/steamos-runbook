@@ -35,7 +35,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh   # no -f
 
 Cold start (no `:2`): `./scripts/ensure-sunshine-ds-gamemode.sh --start` then the Cemu line. **`--start` while `:2` is live can KillMode the helper.** Restart kms with `systemctl --user restart steamos-sunshine-ds-gamemode.service` or `--start-kms`.
 
-Cemu is Steam `RunGame` (same as Tender Play) + consume-on-read `logs/cemu-gamemode-ds.want` → `CEMU_GAMEMODE_DS=1`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub.
+Cemu is Steam `RunGame` (same as Tender Play) + consume-on-read `logs/cemu-gamemode-ds.want` → `CEMU_GAMEMODE_DS=1`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub. Bind with `bind-gamepad.py wait-appear --match Thor` then `cemu --match Thor --force` (mappings only on `Sunshine (libvirtualhid) AYN_Thor`). Cemu uuid is `{sdl-index}_{guid}` — a stale `1_<guid>` when Thor is now index 0 means “controllers not mapped.” Cemu reads uuid at start; restart after bind.
 
 On Cemu/mirror exit: `./scripts/sunshine-ds-gamemode-virtual.sh --paint` restores the clock. `--place-only` re-asserts GamePad under TV + ffplay on `:2` without relaunch.
 

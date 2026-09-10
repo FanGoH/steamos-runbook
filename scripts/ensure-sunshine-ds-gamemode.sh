@@ -282,7 +282,8 @@ ensure_kms_binary() {
 }
 
 write_kms_bytes_inplace() {
-  # GNU cp copies source xattrs onto the dest inode and strips cap_sys_admin.
+  # Kernel clears security.capability when an unprivileged process writes
+  # the ELF. This only keeps the dest inode (no ETXTBSY after stop).
   python3 - "$1" "$2" <<'PY'
 from pathlib import Path
 import sys

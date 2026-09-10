@@ -121,6 +121,69 @@ def eden_guid(pad: dict[str, str]) -> str:
     return raw.hex()
 
 
+# SDL community db names generic 045e:028e "Xbox 360 EasySMX". Override every
+# GUID Cemu/SDL2 may use (USB, USB+version, BT, live CRC) so the dropdown
+# shows the Moonlight client, not EasySMX.
+_X360_SDL_MAP = (
+    "a:b0,b:b1,back:b6,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,"
+    "guide:b8,leftshoulder:b4,leftstick:b9,lefttrigger:a2,leftx:a0,lefty:a1,"
+    "rightshoulder:b5,rightstick:b10,righttrigger:a5,rightx:a3,righty:a4,"
+    "start:b7,x:b2,y:b3,platform:Linux,"
+)
+_EASYSMX_USB_GUID = "030000005e0400008e02000000010000"
+_X360_USB_VERSION_GUID = "030000005e0400008e02000014010000"
+_X360_BT_NOCRC_GUID = "050000005e0400008e02000014010000"
+_THOR_SUNSHINE_NAME = "Sunshine (libvirtualhid) AYN_Thor"
+
+
+def sdl_mapping_line(guid: str, name: str) -> str:
+    label = name.replace(",", " ").replace("\n", " ").strip() or "Sunshine pad"
+    return f"{guid},{label},{_X360_SDL_MAP}"
+
+
+def sunshine_x360_pad(name: str, index: str = "0") -> dict[str, str]:
+    pad = {
+        "name": name,
+        "bustype": "0005",
+        "vendor": "045e",
+        "product": "028e",
+        "version": "0114",
+        "index": index,
+        "sunshine": "true",
+        "steam": "false",
+    }
+    pad["guid"] = sdl_guid(pad)
+    pad["eden_guid"] = eden_guid(pad)
+    pad["cemu_uuid"] = cemu_uuid(pad)
+    return pad
+
+
+def sdl_override_guids(pad: dict[str, str] | None) -> list[str]:
+    """Every 045e:028e GUID Cemu may look up, live CRC first."""
+    seen: list[str] = []
+
+    def add(guid: str | None) -> None:
+        if guid and guid not in seen:
+            seen.append(guid)
+
+    if pad:
+        add(pad.get("guid"))
+        add(pad.get("eden_guid"))
+    add(_EASYSMX_USB_GUID)
+    add(_X360_USB_VERSION_GUID)
+    add(_X360_BT_NOCRC_GUID)
+    add(sunshine_x360_pad(_THOR_SUNSHINE_NAME)["guid"])
+    return seen
+
+
+def sdl_mapping_for_name(name: str, pad: dict[str, str] | None = None) -> str:
+    return "".join(sdl_mapping_line(guid, name) + "\n" for guid in sdl_override_guids(pad))
+
+
+def sdl_mapping_for_pad(pad: dict[str, str]) -> str:
+    return sdl_mapping_for_name(pad["name"], pad)
+
+
 def _event_node(device: Path) -> str:
     try:
         children = list(device.iterdir())
@@ -210,8 +273,30 @@ def match_pad(pads: list[dict[str, str]], needle: str) -> dict[str, str] | None:
         named = [p for p in hits if n in p["name"].lower()]
         if len(named) == 1:
             return named[0]
+        # Two Sunshine pads can share one client name (Thor + Thor wrap).
+        names = {p["name"] for p in named or hits}
+        if len(names) == 1:
+            return (named or hits)[0]
         return None
     return None
+
+
+def pick_live_sunshine_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
+    """The Sunshine pad currently injected (not Mouse, not Steam virtual)."""
+    live = [
+        p
+        for p in pads
+        if p.get("sunshine") == "true" and "mouse" not in p["name"].lower()
+    ]
+    if not live:
+        return None
+    if len(live) == 1:
+        return live[0]
+    for needle in ("thor", "odin"):
+        hits = [p for p in live if needle in p["name"].lower()]
+        if len(hits) == 1:
+            return hits[0]
+    return live[0]
 
 
 def wait_button(pads: list[dict[str, str]], timeout: float) -> dict[str, str] | None:
@@ -1147,14 +1232,37 @@ def _pick_for_cemu(args: argparse.Namespace) -> dict[str, str] | None:
     if args.wait:
         print("Press a button on the pad to bind…", file=sys.stderr)
         return wait_button(pads, args.timeout)
-    if args.match:
-        pad = match_pad(pads, args.match)
-        if pad is None:
-            names = ", ".join(p["name"] for p in pads) or "(none)"
-            print(f"No pad matched {args.match!r}. Connected: {names}", file=sys.stderr)
-        return pad
-    print("Pass --match NAME or --wait.", file=sys.stderr)
-    return None
+    needle = (getattr(args, "match", None) or "").strip()
+    if needle.lower() in ("", "sunshine", "auto"):
+        pad = pick_live_sunshine_pad(pads)
+        if pad is not None:
+            return pad
+        if needle.lower() == "sunshine":
+            return next((p for p in pads if p.get("sunshine") == "true"), None)
+        print("No live Sunshine pad.", file=sys.stderr)
+        return None
+    pad = match_pad(pads, needle)
+    if pad is None:
+        names = ", ".join(p["name"] for p in pads) or "(none)"
+        print(f"No pad matched {needle!r}. Connected: {names}", file=sys.stderr)
+    return pad
+
+
+def cmd_sdl_mapping(args: argparse.Namespace) -> int:
+    pads = list_joysticks(Path(args.sysfs))
+    needle = (args.match or "Sunshine").strip()
+    pad = None
+    if needle.lower() in ("", "sunshine", "auto"):
+        pad = pick_live_sunshine_pad(pads)
+    else:
+        pad = match_pad(pads, needle)
+    if pad is None:
+        pad = pick_live_sunshine_pad(pads)
+    if pad is None:
+        sys.stdout.write(sdl_mapping_for_name(_THOR_SUNSHINE_NAME))
+        return 0
+    sys.stdout.write(sdl_mapping_for_pad(pad))
+    return 0
 
 
 def cmd_cemu(args: argparse.Namespace) -> int:
@@ -1170,11 +1278,20 @@ def cmd_cemu(args: argparse.Namespace) -> int:
         except ET.ParseError:
             return 2
         kept = None
-        for controller in root.findall("controller"):
-            name = controller.findtext("display_name") or ""
-            if "Sunshine" in name and "Mouse" not in name:
-                kept = controller
+        for needle in ("Thor", "Odin"):
+            for controller in root.findall("controller"):
+                name = controller.findtext("display_name") or ""
+                if needle.lower() in name.lower() and "Mouse" not in name:
+                    kept = controller
+                    break
+            if kept is not None:
                 break
+        if kept is None:
+            for controller in root.findall("controller"):
+                name = controller.findtext("display_name") or ""
+                if "Sunshine" in name and "Mouse" not in name:
+                    kept = controller
+                    break
         if kept is None:
             return 2
         uuid = kept.findtext("uuid") or ""
@@ -1340,13 +1457,38 @@ def _self_test() -> int:
             version="0114",
             bustype="0005",
         )
+        _write_js(
+            root,
+            "js5",
+            name="Sunshine (libvirtualhid) SM-A546E",
+            vendor="045e",
+            product="028e",
+            version="0114",
+            bustype="0005",
+        )
         pads = list_joysticks(root)
         assert [p["name"] for p in pads] == [
             "Sunshine (libvirtualhid) AYN_Thor",
             "Sunshine (libvirtualhid) Odin2_Portal",
+            "Sunshine (libvirtualhid) SM-A546E",
         ], pads
+        thor_pad = next(p for p in pads if "Thor" in p["name"])
+        mapping = sdl_mapping_for_pad(thor_pad)
+        assert "AYN_Thor" in mapping
+        assert "EasySMX" not in mapping
+        assert _EASYSMX_USB_GUID in mapping
+        assert thor_pad["guid"] in mapping
+        assert _X360_USB_VERSION_GUID in mapping
+        fallback = sdl_mapping_for_name(_THOR_SUNSHINE_NAME)
+        assert thor_pad["guid"] in fallback
+        assert _EASYSMX_USB_GUID in fallback
+        assert "EasySMX" not in fallback
         thor = match_pad(pads, "Thor")
         odin = match_pad(pads, "Odin")
+        assert thor is not None and odin is not None
+        auto = pick_live_sunshine_pad(pads)
+        assert auto is not None
+        assert auto["name"] == thor["name"]
         assert thor is not None and thor["index"] == "0", thor
         assert odin is not None and odin["index"] == "1", odin
         assert thor["guid"] != odin["guid"]
@@ -1563,6 +1705,13 @@ def main(argv: list[str] | None = None) -> int:
     p_appear.add_argument("--match", default="Sunshine", help="Name substring (default Sunshine)")
     p_appear.add_argument("--timeout", type=float, default=45.0)
     p_appear.set_defaults(func=cmd_wait_appear)
+
+    p_map = sub.add_parser(
+        "sdl-mapping",
+        help="Print SDL_GAMECONTROLLERCONFIG so Cemu does not label x360 as EasySMX",
+    )
+    p_map.add_argument("--match", default="Sunshine", help="Substring (default live Sunshine)")
+    p_map.set_defaults(func=cmd_sdl_mapping)
 
     p_cemu = sub.add_parser("cemu", help="Bind Cemu player 0 in controller0.xml")
     p_cemu.add_argument("--match", help="Substring of the device name (Thor, Odin, Sunshine)")

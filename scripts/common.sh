@@ -38,7 +38,10 @@ load_env() {
   SUNSHINE_STATE="${SUNSHINE_STATE:-/home/${STEAMOS_USER}/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine_state.json}"
   SUNSHINE_GAMESTREAM_URL="${SUNSHINE_GAMESTREAM_URL:-http://127.0.0.1:47989}"
   SUNSHINE_UI_URL="${SUNSHINE_UI_URL:-https://127.0.0.1:47990}"
-  DECKY_SUNSHINE_SETTINGS="${DECKY_SUNSHINE_SETTINGS:-/home/${STEAMOS_USER}/homebrew/settings/decky-sunshine/decky-sunshine.json}"
+  # .env may set this to empty and override the default; GDS close needs the file.
+  if [ -z "${DECKY_SUNSHINE_SETTINGS:-}" ]; then
+    DECKY_SUNSHINE_SETTINGS="/home/${STEAMOS_USER}/homebrew/settings/decky-sunshine/decky-sunshine.json"
+  fi
   DECKY_LOADER_URL="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
   DECKY_SUNSHINE_PLUGIN_NAME="${DECKY_SUNSHINE_PLUGIN_NAME:-Decky Sunshine}"
   SUNSHINE_WATCH_SERVICE="${SUNSHINE_WATCH_SERVICE:-steamos-sunshine-watch.service}"
@@ -59,6 +62,7 @@ load_env() {
   SUNSHINE_DS_KMS_CONFIG_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-gamemode}"
   SUNSHINE_DS_KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
   SUNSHINE_DS_KMS_URL="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:${SUNSHINE_DS_KMS_PORT}}"
+  SUNSHINE_DS_KMS_UI_URL="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:48201}"
   SUNSHINE_DS_KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
   SUNSHINE_DS_KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
@@ -552,6 +556,47 @@ PY
 # on Decky's setuid instance — it kills listeners and leaves a defunct bwrap.
 sunshine_close_app_via_api() {
   sunshine_ui_post "/api/apps/close"
+}
+
+# POST a Game Mode GDS Web UI path (HTTPS :48201). Same Basic auth as Decky.
+# CSRF is skipped when Origin/Referer are omitted. Never prints the header.
+sunshine_gds_ui_post() {
+  local path="$1"
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  local ui="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:48201}"
+  if [ -z "$settings" ]; then
+    settings="/home/${STEAMOS_USER:-deck}/homebrew/settings/decky-sunshine/decky-sunshine.json"
+  fi
+  [ -n "$path" ] && [ -f "$settings" ] || return 1
+  python3 - "$settings" "$ui" "$path" <<'PY'
+import json, ssl, sys, urllib.error, urllib.request
+
+settings, ui, path = sys.argv[1], sys.argv[2], sys.argv[3]
+if not path.startswith("/"):
+    path = "/" + path
+try:
+    hdr = json.loads(open(settings, encoding="utf-8").read()).get("lastAuthHeader") or ""
+except OSError:
+    sys.exit(1)
+if not hdr.startswith("Basic "):
+    sys.exit(1)
+ctx = ssl._create_unverified_context()
+req = urllib.request.Request(ui.rstrip("/") + path, method="POST", data=b"")
+req.add_header("Authorization", hdr)
+req.add_header("User-Agent", "steamos-playbook")
+req.add_header("Content-Type", "application/json")
+try:
+    with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+        sys.exit(0 if 200 <= resp.status < 400 else 1)
+except urllib.error.HTTPError as e:
+    sys.exit(0 if e.code in (200, 204) else 1)
+except (urllib.error.URLError, TimeoutError, OSError):
+    sys.exit(1)
+PY
+}
+
+sunshine_gds_close_app() {
+  sunshine_gds_ui_post "/api/apps/close"
 }
 
 # Resolved path to the Cursor `agent` CLI, if present.

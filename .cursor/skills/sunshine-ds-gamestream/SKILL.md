@@ -70,6 +70,17 @@ Encoder probe opened a KWin screencast; destructor did not Close before PipeWire
 
 If it returns, the running pid is older than the skip-reprobe / async-teardown install.
 
+### Game Mode `:48200` Starting Desktop (no new log)
+
+Desktop placebo stayed `BUSY` and `rtsp_stream::session_count()` joined Pulse `pa_simple_read` on the nvhttp thread. Last client gone must `terminate_if_placebo()` so `/launch` is allowed. `rtsp::clear` joins in the background. Host gate: `scripts/test-gds-lifecycle.sh`. Close leftover BUSY with GDS `POST https://127.0.0.1:48201/api/apps/close` (`sunshine_gds_close_app`), not Decky `/api/restart`.
+
+The same `pa_simple_read` hang leaves `session::audio` + `session::join` after disconnect. Moonlight then logs **Initial Ping Timeout** with no `CLIENT CONNECTED` — that is **failed to start stream / control establishment error**. Two layers:
+
+1. Pulse `pa_mainloop_poll` can ignore its timeout on a silent Game Mode monitor, so join never finishes and `running_sessions` stays > 0.
+2. Cemu/app exit logged `Process terminated` and **left `stream::controlBroadcast`**. The broadcast object stayed alive (join still held a ref), so the next `/launch` reused a host that nobody called `enet_host_service` on.
+
+Do **not** `systemctl restart` the live pid to “clear” that — deploy non-blocking Pulse iterate (`pa_mainloop_iterate(..., 0)`) plus keep the control loop while `running_sessions > 0`, then SIGTERM timeout `_Exit(0)`. Live ELF must contain `sunshine-record`, must **not** still export `pa_simple_read() failed`, and after a disconnect+app-exit the next connect must log `CLIENT CONNECTED`. Host gate: leftover `session::join` fails `scripts/test-gds-lifecycle.sh`. Close leftover BUSY with GDS `POST https://127.0.0.1:48201/api/apps/close` (`sunshine_gds_close_app`), not Decky `/api/restart`.
+
 ### Black Moonlight / ~1KB I-frames
 
 | Check | Meaning |
@@ -80,7 +91,8 @@ If it returns, the running pid is older than the skip-reprobe / async-teardown i
 | Game Mode `:48200` HDMI **went black after reconnect**, GamePad still fine, log `GL: graphics.cpp:664: [00000501]` | Last client destroyed kmsgrab EGL; the next capture thread imported DCC with no current context. **Proven 2026-09-09 evening** (`checkpoint-2026-09-09-hdmi-reconnect`): pin HDMI capture + `eglMakeCurrent` every snapshot. Live pid must be newer than the ELF mtime. Healthy reconnect: `HDMI capture idle` then `HDMI capture resumed`, `[kmsgrab] DMA-BUF copied`, I-frame ~17–23KB. |
 | Game Mode `:48200` **user saw moving yellow square on blue** | Dual-stream smoke proven 2026-09-09: KMS HDMI + pwgrab `gamescope-virtual`. Log `cpu frame type=2` `pixel_diffs=6400`, video/1 uv intra ≠ 0. Helper must keep damaging `:2`. |
 | Game Mode `:48200` **bottom pitch black**, log `cpu frame type=2` full nonzero, video/1 I-frame ~1KB / 0% coded | Capture has pixels; encoder still has `dummy_img()` zeros. Headless gamescope often emits **one** MemFd then goes silent (static blue / Cemu). Fix is in sunshine-ds `pipewire.cpp`: seed dummy from last CPU frame and re-present it. Solid-color smoke has `pixel_diffs=0` but must not look black. Stage `sunshine-ds-kms.new` + `setcap` + `--start`. |
-| Game Mode `:48200` bottom black, **no** `cpu frame type=2`, probe `nonzero=0` | PipeWire connected but gamescope sent nothing. Static tk on `:2` goes silent after the first buffer. `--start` now keeps a moving yellow square on the virtual display. Reconnect Moonlight; log should show `cpu frame type=2`. |
+| Game Mode `:48200` **“second display ended”**, HDMI still live, log `[pipewire] stream stayed connecting for 3s; failing the second display` | Host aborted video/1. Game Mode `gamescope-virtual` stays `connecting` until the first buffer (DMA-BUF probe `nonzero=0`). Do **not** fail capture for that. Snapshot timeouts re-present. |
+| Game Mode `:48200` systemd stop **SIGTRAP** / Moonlight **control establishment error** / reconnect **Initial Ping Timeout**, leftover `session::audio` + `session::join`, **no** `stream::controlBroadcast` | Pulse poll blocked; app exit killed the ENet thread while join still owned the broadcast. Record with non-blocking `pa_mainloop_iterate`; keep control loop while `running_sessions > 0`; SIGTERM timeout `_Exit(0)`. |
 | `cpu frame type=2` + high `pixel_diffs` | SHM/MemFd is capturing (animated content) |
 | DMA-BUF DCC modifier + mmap EPERM | Do not offer DMA-BUF for software encode |
 | PipeWire `connecting` forever, no `cpu frame type=2` | Second client opened another screencast of `Virtual-sunshine-ds`. Restart PipeWire + DS; keep exactly one helper. Do not compositor-reinitialize first. |
@@ -131,6 +143,15 @@ scripts/switch-to-game-mode.sh           # --stop, set login mode game, steamosc
 scripts/ensure-sunshine-ds-gamemode.sh --install-service  # :48200 boot unit (gamescope-session)
 scripts/ensure-sunshine-ds-gamemode.sh --start
 scripts/ensure-sunshine-ds-gamemode.sh --status
+# Live Game Mode with headless :2 already up — do not --start (KillMode can kill the helper):
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+systemctl --user restart steamos-sunshine-ds-gamemode.service
+./scripts/test-gds-lifecycle.sh
+# After a Distrobox rebuild, stage then cap (cp onto kms strips file caps):
+./scripts/ensure-sunshine-ds-gamemode.sh --replace-bin
+sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
 ```
 
 Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`. Game Mode `:48200` is `sunshine-ds-kms` via `steamos-sunshine-ds-gamemode.service` (user `deck`, no sudo).
@@ -162,14 +183,14 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
 
-Game Mode `:48200` is the **Cemu dual-screen checkpoint** (`checkpoint-2026-09-09-gamemode-cemu-ds`). Moonlight already on `sunshine-ds-kms` (not Decky). Close any Tender/rom-launcher Cemu that still has `-f`, then:
+Game Mode `:48200` is the **Cemu dual-screen checkpoint** (`checkpoint-2026-09-09-gamemode-cemu-ds`). Moonlight already on `sunshine-ds-kms` (not Decky). Last client gone must leave Desktop `FREE`; then tap **Desktop** or **Cemu Dual-Screen** (`scripts/sunshine-app-cemu-gamemode.sh`). Close any Tender/rom-launcher Cemu that still has `-f`, then:
 
 ```bash
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
-CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
+CEMU_PAD_MATCH=Sunshine ./scripts/ensure-cemu-gamemode-dual-screen.sh
 ```
 
-That is SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, **no** `-f`, mappings only on `Sunshine (libvirtualhid) AYN_Thor`, GamePad `ffplay` `x11grab` onto headless `:2`. Refocus Cemu: `./scripts/ensure-cemu-gamemode-dual-screen.sh --place-only` (GamePad under TV, ffplay on `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
+That is SteamLaunch RetroDECK Cemu, `CEMU_GAMEMODE_DS=1`, **no** `-f`, mappings on the live Sunshine pad (Thor if present, else Odin), GamePad `ffplay` `x11grab` onto headless `:2`. Refocus Cemu: `./scripts/ensure-cemu-gamemode-dual-screen.sh --place-only` (GamePad under TV, ffplay on `:2`). Do not run `ensure-cemu-dual-screen.sh` in Game Mode.
 
 Or run the playbook script from the host; do not hand-edit XML.
 
@@ -267,3 +288,4 @@ Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and 
 - `setcap` `~/.local/bin/sunshine-ds` (desktop Distrobox path). Game Mode KMS is the `sunshine-ds-kms` copy on `:48200` only
 - `sudo` `sunshine-ds-kms` or `sudo systemctl --user` (start as `deck`; sudo is only `setcap`)
 - Set `dual_display_source = virtual` on `:48200` (KWin helper). Game Mode video/1 is `gamescope-virtual` plus `scripts/sunshine-ds-gamemode-virtual.sh`
+- `ensure-sunshine-ds-gamemode.sh --start` while headless `:2` is already up (`KillMode=mixed` can kill the helper). Restart kms with `systemctl --user restart steamos-sunshine-ds-gamemode.service`

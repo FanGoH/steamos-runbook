@@ -78,6 +78,32 @@ pkey = ${KMS_DIR}/sunshine/credentials/cakey.pem
 cert = ${KMS_DIR}/sunshine/credentials/cacert.pem
 credentials_file = ${KMS_DIR}/sunshine/sunshine_state.json
 EOF
+  python3 - "$apps" "$ROOT/scripts/sunshine-app-cemu-gamemode.sh" "$ROOT/scripts/sunshine-app-stop.sh" "$ROOT/logs" <<'PY'
+import json, sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+cemu_cmd, stop_cmd, log_dir = sys.argv[2], sys.argv[3], sys.argv[4]
+data = json.loads(path.read_text()) if path.is_file() else {"env": {}, "apps": []}
+apps = data.setdefault("apps", [])
+spec = {
+    "name": "Cemu Dual-Screen",
+    "cmd": cemu_cmd,
+    "working-dir": str(Path(cemu_cmd).parent.parent),
+    "output": str(Path(log_dir) / "sunshine-app-cemu-gamemode.log"),
+    "image-path": "desktop.png",
+    "auto-detach": False,
+    "wait-all": True,
+    "exit-timeout": 10,
+    "prep-cmd": [{"do": "", "undo": f"{stop_cmd} cemu"}],
+}
+by_name = {a.get("name"): i for i, a in enumerate(apps) if isinstance(a, dict)}
+if "Cemu Dual-Screen" in by_name:
+    apps[by_name["Cemu Dual-Screen"]] = spec
+else:
+    apps.append(spec)
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
 }
 
 if [ "${1:-}" = "--write-conf" ]; then

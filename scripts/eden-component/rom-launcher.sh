@@ -122,4 +122,24 @@ if [ "$is_retrodeck" -eq 1 ] \
   fi
 fi
 
+# Wii U / Cemu: gamescope leaves Cemu as a 10x10 InputOnly stub unless
+# FOCUSED_APP + STEAM_GAME + FOCUS_DISPLAY=1 are set *before* gtk_init.
+# The RetroDECK wrapper also starts this helper; a second start is a no-op.
+is_cemu=0
+for arg in "$@"; do
+  case "$arg" in
+    *EMULATOR_CEMU*|*Cemu-wrapper*|*.wux|*.WUX|*.wud|*.WUD|*.wua|*.WUA)
+      is_cemu=1
+      ;;
+    */wiiu/*|*/wii-u/*|*/WiiU/*)
+      is_cemu=1
+      ;;
+  esac
+done
+if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; then
+  echo "rom-launcher: host cemu-gamescope-focus SteamAppId=${SteamAppId:-2374129079}" >&2
+  CEMU_STEAM_APPID="${SteamAppId:-2374129079}" CEMU_FOCUS_SECONDS="${CEMU_FOCUS_SECONDS:-30}" \
+    "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" >/dev/null 2>&1 &
+fi
+
 exec "$@"

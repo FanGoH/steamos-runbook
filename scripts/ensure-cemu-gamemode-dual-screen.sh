@@ -237,10 +237,6 @@ cemu_window_is_stub() {
 hold_steam_launch_logo() {
   local bpm bpm_dec
   bpm="$(DISPLAY=:0 xwininfo -root -tree 2>/dev/null | awk '/"Steam Big Picture Mode"/{print $1; exit}')"
-  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
-  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_CLIENT_ID" 2>/dev/null || true
-  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
-  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_CLIENT_ID" 2>/dev/null || true
   if [ -n "${bpm:-}" ]; then
     bpm_dec="$(printf '%d' "$bpm" 2>/dev/null || printf '%s' "$bpm")"
     DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$bpm_dec" 2>/dev/null || true
@@ -256,14 +252,18 @@ nudge_cemu_into_gamescope() {
     case "$name" in
       GamePad*) continue ;;
     esac
+    DISPLAY="$TV_DISPLAY" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+    DISPLAY="$TV_DISPLAY" xdotool windowmap "$id" 2>/dev/null || true
     if cemu_window_is_stub "$TV_DISPLAY" "$id"; then
       continue
     fi
-    DISPLAY="$TV_DISPLAY" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-    DISPLAY="$TV_DISPLAY" xdotool windowmap "$id" 2>/dev/null || true
     set_gamescope_focus "$id" "$APPID"
     return 0
   done
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+  DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
+  DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
   hold_steam_launch_logo
 }
 

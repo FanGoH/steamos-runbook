@@ -122,12 +122,12 @@ else
   fi
 fi
 
-# Keep HDMI on Steam's Launching logo until Cemu has a real window.
-# Promoting the 10x10 InputOnly stub blacks the stream.
+# Tender rom-launcher starts cemu-gamescope-focus.sh on the host before
+# RetroDECK. A second start here is a no-op unless that helper died.
 if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   && [ -x /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh ]; then
   appid="${SteamAppId:-2374129079}"
-  flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=25" \
+  flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
     /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
 fi
 

@@ -27,6 +27,9 @@ mkdir -p "$COMPONENT_DIR" "$BIN_DIR" "$CUSTOM_SYSTEMS"
 install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
 install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-cemu-input.py"
 install -m 0755 "$WRAPPER_SRC" "$BIN_DIR/Cemu-wrapper"
+if [ -f "$ROOT/scripts/cemu-component/fonts.conf" ]; then
+  install -m 0644 "$ROOT/scripts/cemu-component/fonts.conf" "$COMPONENT_DIR/fonts.conf"
+fi
 
 if [ -f "$FIND_SRC" ]; then
   install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"

@@ -114,7 +114,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 `--start` / the runner refuse without `cap_sys_admin`. `patchelf` and `cp` strip it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE). Do not start `steam-guide-from-select.py`.
 
-HDMI **black after Moonlight reconnect** (GamePad still fine, `GL: graphics.cpp:664: [00000501]`): last client used to destroy `capture_thread_async` / kmsgrab EGL. Pin the HDMI capture thread, wait idle without dropping the display, `eglMakeCurrent` every snapshot (`a1511259` + reconnect keepalive). Healthy log: `HDMI capture idle; waiting for the next Moonlight session` then `HDMI capture resumed`. Do not restart `sunshine-ds-kms` just to reconnect.
+HDMI **black after Moonlight reconnect** (GamePad still fine, `GL: graphics.cpp:664: [00000501]`): last client used to destroy `capture_thread_async` / kmsgrab EGL. Pin the HDMI capture thread, wait idle without dropping the display, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** on `cursor/hdmi-reconnect-f15e`, includes `a1511259`). Healthy log: `Keeping HDMI capture thread alive` then later `HDMI capture idle; waiting for the next Moonlight session` and `HDMI capture resumed`. Do not restart `sunshine-ds-kms` just to reconnect. Stage `sunshine-ds-kms.new` + `sudo setcap cap_sys_admin+ep` + `mv` after the current stream is not BUSY.
 
 Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. Prefer **`checkpoint-2026-09-09-gamemode-cemu-ds`**.
 

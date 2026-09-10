@@ -114,6 +114,8 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 `--start` / the runner refuse without `cap_sys_admin`. `patchelf` and `cp` strip it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE). Do not start `steam-guide-from-select.py`.
 
+HDMI **black after Moonlight reconnect** (GamePad still fine, `GL: graphics.cpp:664: [00000501]` from 21:00:13): kmsgrab snapshot did not `eglMakeCurrent` (pwgrab does). sunshine-ds **`a1511259`**. Stage `sunshine-ds-kms.new` + setcap. A fresh kms pid restores the first session until the next reconnect.
+
 Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. Prefer **`checkpoint-2026-09-09-gamemode-cemu-ds`**.
 
 ## Logical order that got here

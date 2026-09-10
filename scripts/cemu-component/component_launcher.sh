@@ -29,13 +29,24 @@ if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "$WANT" ]; then
 fi
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
-  # Steam injects gamescope WSI; Cemu then deadlocks on an InputOnly 10x10
-  # window and never opens /dev/dri. Dual-stream needs normal X11/Vulkan.
-  unset ENABLE_GAMESCOPE_WSI
-  unset GAMESCOPE_DISPLAY_DISABLED
-  export QT_QPA_PLATFORM=xcb
-  export GDK_BACKEND=x11
-  export SDL_VIDEODRIVER=x11
+  # Host/GDS flatpak without Steam focus: WSI deadlocks on InputOnly 10x10.
+  # Tender/RunGame already set FOCUSED_APP on :1 and SteamGameId to the
+  # 64-bit shortcut — keep the injected WSI so Cemu can open /dev/dri.
+  steam_owned=0
+  case "${SteamGameId:-}" in
+    ''|"${SteamAppId:-}"|2374129079) ;;
+    *) steam_owned=1 ;;
+  esac
+  if [ "$steam_owned" != 1 ]; then
+    unset ENABLE_GAMESCOPE_WSI
+    unset GAMESCOPE_DISPLAY_DISABLED
+    export QT_QPA_PLATFORM=xcb
+    export GDK_BACKEND=x11
+    export SDL_VIDEODRIVER=x11
+  else
+    unset GAMESCOPE_DISPLAY_DISABLED
+    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+  fi
   # RetroDECK's inner launch drops SteamAppId. gamescope then keeps BPM
   # (769) and Cemu stays a 10x10 InputOnly stub.
   appid="${SteamAppId:-}"

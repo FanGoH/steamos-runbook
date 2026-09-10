@@ -62,7 +62,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 
 - `pgrep -x sunshine-ds-kms` only. Never `pgrep -f` / `pkill -f` sunshine.
 - getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
-- Cemu TV ≥64×64 InputOutput, title has `Init` / `TitleId` / FPS. A sibling 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER.
+- Cemu TV ≥64×64 InputOutput on session **`:1`**, title has `Init` / `TitleId` / FPS. GamePad View is the sibling on `:1` (`FOCUS_DISPLAY=1`). Steam BPM stays on `:0`. A 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER. GamePad inject log must be `using :1`, not `no GamePad View … on :0`.
 - Thor screencap: top `local:4630946441858561667`, bottom `local:4630946482288158084`. Bottom ~8KB PNG is pitch black. Clock / GamePad is tens–hundreds of KB.
 - Title-screen GamePad often matches TV; unique pad UI is in-game.
 
@@ -80,3 +80,4 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - Start `steam-guide-from-select.py` as a watcher (`--hide` is debug-only)
 - Rewrite `shortcuts.vdf` while Game Mode is running
 - Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button
+- `XOpenDisplay(":0")` only for GamePad inject — Cemu is on `:1`. Never `$DISPLAY` / `:2`

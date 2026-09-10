@@ -40,15 +40,31 @@ KMS_CONF="$KMS_DIR/sunshine/sunshine.conf"
 KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
 KMS_LOG="${SUNSHINE_DS_KMS_LOG:-$ROOT/logs/sunshine-ds-gamemode.log}"
 
+# Leaf HDMI (not VSS, not sink-sunshine-*). Steam Game Mode has
+# STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1 and plays UI to the Pulse default
+# HDMI sink. Cemu Cubeb stays on Virtual Surround Sound, which mixes into
+# that same HDMI port — capturing HDMI.monitor hears both. VSS.monitor
+# alone misses Steam menu sounds.
+kms_audio_sink() {
+  local name=""
+  name="$(pactl list short sinks 2>/dev/null | awk -F'\t' '
+    $2 ~ /hdmi/ && $2 !~ /sink-sunshine-/ { print $2; exit }
+  ')"
+  if [ -z "$name" ]; then
+    name="$(pactl list short sinks 2>/dev/null | awk -F'\t' '
+      $2 == "Virtual Surround Sound" { print $2; exit }
+    ')"
+  fi
+  printf '%s' "$name"
+}
+
 write_kms_conf() {
-  local apps audio_sink_line=""
+  local apps audio_sink_line="" audio_sink_name=""
   mkdir -p "$KMS_DIR/sunshine/credentials" "$(dirname "$KMS_LOG")"
   apps="$KMS_DIR/sunshine/apps.json"
-  # Cemu Cubeb stays on Virtual Surround Sound / HDMI. Pin that monitor when
-  # Pulse has it so a leftover sink-sunshine-stereo default is not captured
-  # (empty → "PulseAudio record stream not ready", Moonlight silent).
-  if pactl list short sinks 2>/dev/null | grep -q $'^[0-9][0-9]*\tVirtual Surround Sound\t'; then
-    audio_sink_line="audio_sink = Virtual Surround Sound"
+  audio_sink_name="$(kms_audio_sink)"
+  if [ -n "$audio_sink_name" ]; then
+    audio_sink_line="audio_sink = ${audio_sink_name}"
   fi
   if [ ! -f "$apps" ]; then
     cat >"$apps" <<'EOF'

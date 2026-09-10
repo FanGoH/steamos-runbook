@@ -2,6 +2,35 @@
 
 Proven dual-stream GameStream as of 2026-09-08. Personal IPs/uniqueids stay in `host.md` / `rules_of_the_land.md`.
 
+## Game Mode dual-stream + overlay + screensaver (2026-09-10, user confirmed)
+
+User: “amazing checkpoint… both screens, steam overlay works properly, I saw the screensaver for bottom.” Do not “improve” this unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+
+| Item | Proven value |
+|---|---|
+| Tag | **`checkpoint-2026-09-10-gamemode-dual-stream`** |
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
+| This playbook | this tree / same tag |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
+| Host ELF | `~/.local/bin/sunshine-ds-kms` sha `620e6aef…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Live pid may still be the `f8d9968c` skip build — sidecar must not write `node=` |
+| Sidecar | `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`: `serial=` + **`pw_node=`** (not `node=`). `f8d9968c` skips AUTOCONNECT when `node=` is set |
+| Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500` |
+| Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Desktop app **`958645192`**. Not `881448767`, not Decky `:47989`, not `:48100` |
+| Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
+| Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
+| Overlay | Hold Select 0.5s. sunshine-ds sets `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769`. Hide restores Cemu TV. Do not start `steam-guide-from-select.py` |
+| HDMI health | `[kmsgrab] DMA-BUF copied 1920x1080 nonzero≈8.2M` |
+| video/1 health | `Connect PW stream PW_ID_ANY serial=` + `cpu frame type=2` `nonzero=8294400/8294400` + gamescope node **running** + a Link. `--smoke` PNG before blaming kms |
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# :2 already up — do not --start (KillMode can kill the helper):
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
+CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
+```
+
+If a new headless gamescope never logs `stream available on node ID`: `systemctl --user restart pipewire.service pipewire-pulse.service` (not `sudo systemctl --user`), then `--paint`. Prefer this tag over **`checkpoint-2026-09-09-gamemode-cemu-ds`** (`119d7452`) for the full Thor experience; that tag is still the HDMI DCC / Cemu-picture baseline.
+
 ## Checkpoint SHAs
 
 | Repo | Integration branch | Tip | Tag |
@@ -116,7 +145,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. Prefer **`checkpoint-2026-09-09-gamemode-cemu-ds`**.
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. Prefer **`checkpoint-2026-09-10-gamemode-dual-stream`** for Thor both-screens + overlay + bottom screensaver.
 
 ## Logical order that got here
 

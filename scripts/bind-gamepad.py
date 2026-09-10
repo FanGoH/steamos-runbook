@@ -273,6 +273,10 @@ def match_pad(pads: list[dict[str, str]], needle: str) -> dict[str, str] | None:
         named = [p for p in hits if n in p["name"].lower()]
         if len(named) == 1:
             return named[0]
+        # Two Sunshine pads can share one client name (Thor + Thor wrap).
+        names = {p["name"] for p in named or hits}
+        if len(names) == 1:
+            return (named or hits)[0]
         return None
     return None
 

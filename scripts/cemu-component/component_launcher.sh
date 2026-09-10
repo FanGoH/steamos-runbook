@@ -20,40 +20,18 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x0
 # GamePad sticks go there (inverted Y). IGNORE_DEVICES_EXCEPT does not hide
 # joysticks; blacklist the mouse on both hints.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
-# Agent/SSH SteamLaunch never becomes the gamescope focused app (BPM
-# resets FOCUSED_APP=769), so Cemu stays an InputOnly 10x10 stub. A want
-# file lets steam://rungameid take focus while keeping dual-stream (no -f).
-WANT="${CEMU_GAMEMODE_DS_FLAG:-/home/deck/steamos-playbook/logs/cemu-gamemode-ds.want}"
-if [ -z "${CEMU_GAMEMODE_DS:-}" ] && [ -f "$WANT" ]; then
-  export CEMU_GAMEMODE_DS=1
-fi
+# Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1. A leftover
+# want file used to flip this on for every Wind Waker Play and Steam sat
+# on the spinning logo (windowed 10x10 InputOnly).
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
   export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
-  # Host/GDS flatpak without Steam focus: WSI deadlocks on InputOnly 10x10.
-  # Tender/RunGame already set FOCUSED_APP on :1 and SteamGameId to the
-  # 64-bit shortcut — keep the injected WSI so Cemu can open /dev/dri.
-  steam_owned=0
-  case "${SteamGameId:-}" in
-    ''|"${SteamAppId:-}"|2374129079) ;;
-    *) steam_owned=1 ;;
-  esac
-  if [ "$steam_owned" != 1 ]; then
-    unset ENABLE_GAMESCOPE_WSI
-    unset GAMESCOPE_DISPLAY_DISABLED
-    export QT_QPA_PLATFORM=xcb
-    export GDK_BACKEND=x11
-    export SDL_VIDEODRIVER=x11
-  else
-    unset GAMESCOPE_DISPLAY_DISABLED
-    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
-  fi
-  # RetroDECK's inner launch drops SteamAppId. gamescope then keeps BPM
-  # (769) and Cemu stays a 10x10 InputOnly stub.
-  appid="${SteamAppId:-}"
-  if [ -z "$appid" ] && [ -f "$WANT" ]; then
-    appid="$(head -n1 "$WANT" | tr -d '[:space:]')"
-  fi
-  appid="${appid:-2374129079}"
+  # Steam-injected WSI + windowed/no -f deadlocks on InputOnly 10x10.
+  unset ENABLE_GAMESCOPE_WSI
+  unset GAMESCOPE_DISPLAY_DISABLED
+  export QT_QPA_PLATFORM=xcb
+  export GDK_BACKEND=x11
+  export SDL_VIDEODRIVER=x11
+  appid="${SteamAppId:-2374129079}"
   export SteamAppId="$appid"
   export SteamGameId="${SteamGameId:-$appid}"
   export SteamOverlayGameId="${SteamOverlayGameId:-$appid}"

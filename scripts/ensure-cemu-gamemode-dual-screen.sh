@@ -6,7 +6,8 @@
 # SteamClient.Apps.RunGame (same as Tender Play) via scripts/steam-run-shortcut.py.
 # steam://rungameid, reaper SteamLaunch, and a host flatpak run from GDS/SSH
 # stay a 10x10 InputOnly stub (FOCUSED_APP stays 769). Does not rewrite
-# shortcuts.vdf. The want file keeps the wrapper in CEMU_GAMEMODE_DS=1 (no -f).
+# shortcuts.vdf. Do not leave a want file that flips every Steam Play into
+# windowed DS — that is the spinning Steam logo.
 # HDMI is gamescope's focused surface, not X11 stacking. Tag the Cemu TV
 # window STEAM_GAME and set GAMESCOPECTRL_BASELAYER_WINDOW or Steam BPM
 # stays on video/0 while GamePad View still mirrors. GamePad stays mapped
@@ -564,11 +565,11 @@ if ! cemu_running; then
   export SDL_JOYSTICK_HIDAPI=0
   export SDL_HIDAPI_JOYSTICK=0
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-  printf '%s\n' "$APPID" >"$DS_WANT"
+  rm -f "$DS_WANT"
   start_focus_nudge
   # Tender Play: SteamClient.Apps.RunGame(gameId). steam:// and a host
   # flatpak run never become FOCUSED_APP (Cemu stays 10x10 InputOnly).
-  echo "SteamClient.Apps.RunGame $GAMEID (shortcut $APPID); wrapper reads $DS_WANT."
+  echo "SteamClient.Apps.RunGame $GAMEID (shortcut $APPID)."
   if ! python3 "$ROOT/scripts/steam-run-shortcut.py" --gameid "$GAMEID"; then
     stop_focus_nudge
     echo "Steam RunGame failed (CDP). Press Play on the Wind Waker HD tile."

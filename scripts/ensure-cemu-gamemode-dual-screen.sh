@@ -443,9 +443,9 @@ watch_cemu_focus_loop() {
     fi
     sleep 0.4
   done
-  echo "Cemu exited — stopping GamePad mirror so :2 can paint again."
+  echo "Cemu exited — stopping GamePad mirror so :2 can screensaver again."
   stop_mirror
-  bash "$VIRTUAL_HELPER" --start >/dev/null 2>&1 || true
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
@@ -507,6 +507,7 @@ if [ "$DO_STOP" -eq 1 ]; then
   stop_guide_watch
   stop_focus_nudge
   rm -f "$DS_WANT" "$SDLMAP"
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
   exit 0
 fi

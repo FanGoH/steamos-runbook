@@ -7,7 +7,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint (user 2026-09-10: “amazing… both screens, steam overlay, screensaver”): `checkpoint-2026-09-10-gamemode-dual-stream`.** Do not “improve” it unless it breaks.
+**Checkpoint (user 2026-09-10: “it works!”): `checkpoint-2026-09-10-gamemode-works`.** Both screens, Steam overlay (Cemu windows listed), bottom screensaver, Thor pad. Do not “improve” it unless it breaks. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`.
 
 ## What must be true
 
@@ -15,7 +15,8 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 |---|---|---|
 | HDMI / Thor top (video/0) | Steam Big Picture / focused game | Cemu TV (`------- Init Cemu`, 1920×1080 InputOutput) |
 | `:2` / Thor bottom (video/1) | Screensaver clock + moving bar (`sunshine-ds-bottom-screensaver.py`) | GamePad View via `ffplay` `x11grab` |
-| Overlay | Hold Select 0.5s → `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` | Same; hide restores Cemu TV. Focus watcher must not reclaim while overlay is up |
+| Overlay | Hold Select 0.5s → `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` | Same; hide restores Cemu TV. Overlay lists Cemu TV + GamePad View. Focus watcher must not reclaim while overlay is up |
+| Thor pad | Sunshine x360 present after connect | SteamInput-P1 maps on `Sunshine (libvirtualhid) AYN_Thor` only. Uuid `{live-index}_{guid}` (`0_0500b2ca…` when Thor is js3). SDL map **15-button** (`LB=b6` `Back=b10`), not xpad 11-button (`LB=b4` `Back=b6`). WW first-person look is **L bumper**, not Select |
 
 Moonlight host is **`:48200`** uniqueid `1075C8EF…`. App **Desktop** is `958645192`. Do **not** `/launch` desktop-DS `881448767` (kms: `Couldn't find app with ID`). Not Decky `:47989`. Two De-FanGoH tiles: white = `:48200`, grey warning = `:48100`.
 
@@ -78,3 +79,4 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - `sudo systemctl --user`, `POST /api/restart`, `kwin_wayland --replace`, Decky `:47989`
 - Start `steam-guide-from-select.py` as a watcher (`--hide` is debug-only)
 - Rewrite `shortcuts.vdf` while Game Mode is running
+- Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button

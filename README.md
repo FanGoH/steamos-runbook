@@ -85,7 +85,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-dual-stream`): Steam `RunGame` RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1` via consume-on-read `logs/cemu-gamemode-ds.want`, no `-f`), bind `--match Thor`, `ffplay` `x11grab` GamePad View onto headless `:2` |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-works`): Steam `RunGame` RetroDECK Cemu **windowed** (`CEMU_GAMEMODE_DS=1` via consume-on-read `logs/cemu-gamemode-ds.want`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` GamePad View onto headless `:2` |
 | `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
@@ -101,7 +101,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-10-gamemode-dual-stream`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-10-gamemode-works`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

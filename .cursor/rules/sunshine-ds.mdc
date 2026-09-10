@@ -7,7 +7,7 @@ alwaysApply: true
 
 Two servers: Decky Flatpak `:47989` (KMS) and Distrobox sunshine-ds `:48100` (`capture = kwin`). Pin Thor/Odin Moonlight to `:48100` on Plasma. Dual-stream is Plasma/KWin only.
 
-Game Mode dual-stream is a **third** server: `sunshine-ds-kms` `:48200` (`capture = kms`, `dual_display_source = gamescope-virtual`). Checkpoint `checkpoint-2026-09-10-gamemode-dual-stream`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+Game Mode dual-stream is a **third** server: `sunshine-ds-kms` `:48200` (`capture = kms`, `dual_display_source = gamescope-virtual`). Checkpoint `checkpoint-2026-09-10-gamemode-works`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Sunshine x360 is **15-button** libvirtualhid (`LB=b6` `Back=b10`); do not write Steam xpad 11-button maps.
 
 - `pgrep -x sunshine-ds` / `pgrep -x sunshine-ds-kms` only. Never `pgrep -f` / `pkill -f` sunshine. Never put `sunshine-ds-virtual-output` in a `pgrep -f` pattern; kill leftover helpers by numeric PID.
 - Exactly one long-lived `sunshine-ds-virtual-output --name sunshine-ds` at 1920×1080 during Plasma dual-stream. `--stop` kills it before Game Mode.

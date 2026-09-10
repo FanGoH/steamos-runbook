@@ -2,13 +2,13 @@
 
 Proven dual-stream GameStream as of 2026-09-08. Personal IPs/uniqueids stay in `host.md` / `rules_of_the_land.md`.
 
-## Game Mode dual-stream + overlay + screensaver (2026-09-10, user confirmed)
+## Game Mode dual-stream + overlay + screensaver + Thor pad (2026-09-10, user confirmed)
 
-User: “amazing checkpoint… both screens, steam overlay works properly, I saw the screensaver for bottom.” Do not “improve” this unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver; then Thor bumpers/Select). Do not “improve” this unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-10-gamemode-dual-stream`** |
+| Tag | **`checkpoint-2026-09-10-gamemode-works`** (prefer). Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |
@@ -19,6 +19,7 @@ User: “amazing checkpoint… both screens, steam overlay works properly, I saw
 | Idle bottom | `scripts/sunshine-ds-bottom-screensaver.py` on `:2` (clock + moving bar). `--paint` after Cemu/ffplay exit |
 | Cemu | `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (**no** `-f`). Steam `RunGame` + `logs/cemu-gamemode-ds.want`. TV on session `:1` (1920×1080 InputOutput, `------- Init Cemu`). GamePad `ffplay -window_id` onto `:2` |
 | Overlay | Hold Select 0.5s. sunshine-ds sets `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769`. Hide restores Cemu TV. Do not start `steam-guide-from-select.py` |
+| Thor pad | Bind **only** `Sunshine (libvirtualhid) AYN_Thor` (`--force`). Wait for js with `wait-appear` before bind. Cemu uuid `{sdl-index}_{guid}` — restart Cemu after bind if index changed. `_X360_SDL_MAP` is **15-button** libvirtualhid (`LB=b6` `Back=b10` `Start=b11`); do **not** write 11-button Steam xpad (`LB=b4` `Back=b6`). WW first-person look is **L bumper** (Wii U L), not Select |
 | HDMI health | `[kmsgrab] DMA-BUF copied 1920x1080 nonzero≈8.2M` |
 | video/1 health | `Connect PW stream PW_ID_ANY serial=` + `cpu frame type=2` `nonzero=8294400/8294400` + gamescope node **running** + a Link. `--smoke` PNG before blaming kms |
 
@@ -145,7 +146,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. Prefer **`checkpoint-2026-09-10-gamemode-dual-stream`** for Thor both-screens + overlay + bottom screensaver.
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. Prefer **`checkpoint-2026-09-10-gamemode-works`** for the full Thor experience (those plus the 15-button pad).
 
 ## Logical order that got here
 

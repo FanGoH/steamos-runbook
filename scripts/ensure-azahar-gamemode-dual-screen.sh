@@ -5,7 +5,8 @@
 # Standalone Flatpak org.azahar_emu.Azahar (not RetroDECK azahar-launcher).
 # Steam overlay: reaper SteamLaunch with the game shortcut AppId, tag the
 # Primary Window STEAM_GAME, and a focus watcher that yields HDMI when
-# STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up.
+# STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up
+# or while FOCUSED_APP=769 (qAM / overlay atom flicker).
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before

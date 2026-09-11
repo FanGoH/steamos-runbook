@@ -80,8 +80,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
-| `scripts/bind-gamepad.py` | List pads; bind Cemu/Azahar/Eden (`status` / `apply --emu … --pads jsN,jsM`); `profile` prints `GAMESTREAM_PAD_PROFILE` |
-| `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (list/reorder/apply Cemu Azahar Eden). `~/homebrew/plugins` may need sudo |
+| `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
+| `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
+| `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
 | `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |

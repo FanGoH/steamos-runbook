@@ -51,6 +51,7 @@ function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [order, setOrder] = SP_REACT.useState([]);
   const [included, setIncluded] = SP_REACT.useState({});
+  const [mode, setMode] = SP_REACT.useState("shared");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
 
@@ -61,6 +62,9 @@ function Content() {
       setError(next?.ok === false ? next.message || "status failed" : "");
       const pads = next?.pads || [];
       setOrder((prev) => mergeOrder(prev, pads));
+      if (next?.mux?.mode === "multi" || next?.mux?.mode === "shared") {
+        setMode(next.mux.mode);
+      }
       setIncluded((prev) => {
         const out = { ...prev };
         for (const pad of pads) {
@@ -109,16 +113,18 @@ function Content() {
       return;
     }
     setBusy(true);
-    const pads = selected.map((p) => p.js).join(",");
+    const allOn =
+      orderedPads.length > 0 && orderedPads.every((p) => included[p.js] !== false);
+    const pads = allOn ? "" : selected.map((p) => p.js).join(",");
     try {
-      const result = await applyBinds(emu, pads);
+      const result = await applyBinds(emu, pads, mode);
       const body = (result?.messages || [result?.message || ""])
         .filter(Boolean)
         .join(" ")
         .slice(0, 220);
       toaster.toast({
         title: result?.ok === false ? "Bind failed" : "Applied",
-        body: body || `${emu}: ${selected.map((p) => p.name).join(" → ")}`,
+        body: body || `${emu}: ${mode} ${selected.map((p) => p.name).join(" → ")}`,
         duration: result?.ok === false ? 7000 : 5000,
       });
       await refresh();
@@ -146,7 +152,11 @@ function Content() {
               SP_JSX.jsx("div", { children: `Player 1: ${playerLine(players, 0)}` }),
               SP_JSX.jsx("div", { children: `Player 2: ${playerLine(players, 1)}` }),
               emu.running
-                ? SP_JSX.jsx("div", { children: "Running — restart after apply." })
+                ? SP_JSX.jsx("div", {
+                    children: /EmuPads/.test(playerLine(players, 0))
+                      ? "Running — routing is live (no restart)."
+                      : "Running — restart after the first sink bind.",
+                  })
                 : null,
               extra
                 ? SP_JSX.jsx("div", { style: { opacity: 0.7, fontSize: "0.85em" }, children: extra })
@@ -176,7 +186,36 @@ function Content() {
               style: { opacity: 0.75, fontSize: "0.88em" },
               children: [
                 error ||
-                  `Order is player 1, then player 2. Sunshine pads keep the client name (${selected.length} selected).`,
+                  (mode === "multi"
+                    ? `Multi: first selected is P1, second is P2 (${selected.length} selected).`
+                    : `Shared P1: last pad used wins. Every host pad is a source (${selected.length} selected).`),
+              ],
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { opacity: 0.75, fontSize: "0.88em" },
+              children: [
+                `Mux ${status?.mux?.running ? "up" : "down"} · ${status?.mux?.mode || mode}${
+                  status?.mux?.muted ? " · muted" : ""
+                }`,
+              ],
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { display: "flex", gap: 8, flexWrap: "wrap" },
+              children: [
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  onClick: () => setMode("shared"),
+                  children: mode === "shared" ? "Shared P1 ✓" : "Shared P1",
+                }),
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  onClick: () => setMode("multi"),
+                  children: mode === "multi" ? "Multiplayer ✓" : "Multiplayer",
+                }),
               ],
             }),
           }),

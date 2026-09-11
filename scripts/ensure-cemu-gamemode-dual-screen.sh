@@ -185,18 +185,11 @@ start_focus_nudge() {
 
 bind_cemu_pads() {
   local xml
-  # Moonlight's Sunshine pad often appears after /launch. Binding before
-  # that keeps a stale Cemu uuid index (1_<guid> vs live 0_<guid>) and
-  # player 0 has no device. Same wait-appear as desktop dual-screen.
   python3 "$ROOT/scripts/bind-gamepad.py" wait-appear --match "${PAD_MATCH:-Sunshine}" --timeout 20 \
     >/dev/null || true
   for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
     [ -f "$xml" ] || continue
-    if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
-      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
-    elif ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match "$PAD_MATCH" --force; then
-      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
-    fi
+    python3 "$ROOT/scripts/bind-gamepad.py" apply --emu cemu --xml "$xml" --force || true
   done
   python3 "$ROOT/scripts/bind-gamepad.py" sdl-mapping --match "${PAD_MATCH:-Sunshine}" >"$SDLMAP" 2>/dev/null || true
   # Flatpak Cemu also reads this next to its config if the playbook path is hidden.

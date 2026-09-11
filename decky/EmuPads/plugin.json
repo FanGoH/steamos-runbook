@@ -5,6 +5,6 @@
   "api_version": 1,
   "publish": {
     "tags": ["controller", "gamepad", "cemu", "azahar", "eden", "sunshine"],
-    "description": "List host pads (Sunshine client names included), reorder, and apply Cemu / Azahar / Eden binds."
+    "description": "Always-on EmuPads mux: every host pad (Sunshine, phone, Thor/Odin, local) routes to P1/P2. Shared last-active P1 or multiplayer P1+P2."
   }
 }

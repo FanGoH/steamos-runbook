@@ -99,7 +99,9 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_JOYSTICK_HIDAPI=0
     export SDL_HIDAPI_JOYSTICK=0
     unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
+    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
     if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true

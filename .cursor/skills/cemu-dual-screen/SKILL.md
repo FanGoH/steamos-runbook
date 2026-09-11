@@ -23,7 +23,7 @@ Read live sizes from `kscreen-doctor`. Current Thor checkpoint is HDMI-A-1 **192
 The script:
 
 1. Writes `settings.xml` from live kscreen (`fullscreen` false, `open_pad` true).
-2. Binds player 0 with `python3 scripts/bind-gamepad.py cemu --match "${CEMU_PAD_MATCH:-Thor}" --force` (fallback `--match Sunshine`). Mappings go **only** on the named Sunshine pad; Steam wrap may stay listed with empty `<mappings>`. Last-write-wins: do not reorder Sunshine first while Steam still has mappings. Drop `AYN20Thor`. Pad type is `GAMESTREAM_PAD_PROFILE` (default x360).
+2. Binds player 0 with `python3 scripts/bind-gamepad.py apply --emu cemu --force` onto **EmuPads P1** (mux). Do not `--match Thor` into XML (that would narrow mux sources). Pad type is `GAMESTREAM_PAD_PROFILE` (default x360).
 3. KWin-places GamePad View → virtual output, other `info.cemu.Cemu` → HDMI, `noBorder` + `keepAbove`. Minimizes Steam.
 
 `controller0.xml` type must stay **Wii U GamePad**. Do not hand-edit the XML. Do not hardcode uuid `0_050017945e0400008e02000014010000` or generic `X-Box 360 Controller`. Cemu uuid is `{guid-index}_{sdl2-crc16-of-kernel-name}`. Named pads: `Sunshine (libvirtualhid) AYN_Thor` / `Odin2_Portal`. SDL GameControllerName is still `Xbox 360 Controller`.
@@ -50,7 +50,7 @@ If uuid/mappings changed, restart Cemu (keep sunshine-ds) then re-run the script
 
 ## Game Mode (`:48200`) — checkpoint `checkpoint-2026-09-11-gamemode-tender-ds`
 
-User confirmed 2026-09-11: “amazing, cemu works correctly” — Tender Cemu **tiles** while streaming `:48200` put GamePad on the Thor bottom (`ffplay` x11grab from session `:1`, not `:0`). Overlay/QAM SIGSTOP; Steam Exit `--quit`s immediately. Earlier `checkpoint-2026-09-10-gamemode-tender-ds` attached but grabbed `:0` for a `:1` xid. Do not “improve” this unless it breaks. Full recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`. Sep 9 `checkpoint-2026-09-09-gamemode-cemu-ds` is the HDMI DCC / Cemu-picture baseline.
+User confirmed 2026-09-11: “amazing, cemu works correctly” — Tender Cemu **tiles** while streaming `:48200` put GamePad on the Thor bottom (`ffplay` x11grab from session `:1`, not `:0`). Overlay/QAM mute EmuPads sinks; Steam Exit `--quit`s immediately. Earlier `checkpoint-2026-09-10-gamemode-tender-ds` attached but grabbed `:0` for a `:1` xid. Do not “improve” this unless it breaks. Full recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Screens-only subset: `checkpoint-2026-09-10-gamemode-dual-stream`. Sep 9 `checkpoint-2026-09-09-gamemode-cemu-ds` is the HDMI DCC / Cemu-picture baseline.
 
 One Cemu process cannot place windows on session gamescope (`:0`) and headless gamescope (`:2`). TV stays on `:0` (HDMI / video/0). GamePad View is opened windowed (`CEMU_GAMEMODE_DS=1`, no `-f`), kept mapped on-screen under the raised TV (off-screen `ximagesrc` is MIT-SHM `BadMatch`), and ffplay `-window_id` mirrors that drawable onto `:2` (video/1). Force `SDL_VIDEODRIVER=x11` and **windowmap** ffplay plus `GAMESCOPECTRL_BASELAYER_WINDOW` on `:2` — SDL Wayland leaves the X11 window `IsUnMapped` and PipeWire encodes a black root even though the GamePad pixmap has pixels. Kill leftover `sunshine-ds-kms-virtual` Tk (idle screensaver) or it covers the mirror. On Cemu/mirror exit, `sunshine-ds-gamemode-virtual.sh --paint` restores the clock on video/1. Title screen GamePad often matches TV; unique pad UI is in-game.
 
@@ -69,7 +69,7 @@ The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYE
 
 Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad layout). They are copied onto the named Sunshine pad; the Steam virtual uuid is **not** copied. `moonlight.xml` is a Wii U Pro profile — using it on GamePad type leaves analog 7/8 looking fine while d-pad and axis-splits fight the sticks.
 
-`--stop` kills the pad mirror and the gamescope focus watcher only. Overlay/QAM SIGSTOP; Steam Exit (`FOCUSED_APP=769` after 8s, or SIGTERM pending) `--quit`s on the first tick. Moonlight Quit / `sunshine-app-stop.sh cemu` / `--quit` end the game.
+`--stop` kills the pad mirror and the gamescope focus watcher only. Overlay/QAM mute EmuPads sinks; Steam Exit (`FOCUSED_APP=769` after 8s, or SIGTERM pending) `--quit`s on the first tick. Moonlight Quit / `sunshine-app-stop.sh cemu` / `--quit` end the game.
 
 ## Do not
 

@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""Bind Eden player 0 to whichever real pad is plugged in at launch.
+"""Bind Eden player 0 to EmuPads P1 (mux sink).
 
-Skip motherboard LED and gamescope mouse js nodes. Prefer a physical
-Xbox (not Sunshine), then Switch Pro, then Steam's virtual pad (the
-wrapped held controller), then Sunshine, then the first remaining
-joystick. Sunshine is a fallback — it is injected even during local
-play, and Steam hides that Xbox ID from SDL. SDL GUID is USB bus +
-vendor/product/version with no name-CRC — the form Eden's UI writes
-for Xbox One.
+Skip motherboard LED and the libvirtualhid mouse. Prefer the EmuPads P1
+uinput sink — do not fall back to Sunshine / Steam virtual. SDL GUID is
+USB bus + vendor/product/version with no name-CRC.
 
-If nothing is present, leave the existing player-0 GUID (last session)
-and only keep the Joy-Con HID driver off.
+If P1 is missing, leave the existing player-0 GUID and only keep the
+Joy-Con HID driver off.
 """
 from __future__ import annotations
 
@@ -22,6 +18,7 @@ import sys
 
 INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
+SKIP_PRODUCTS = {("1209", "0003")}
 
 
 def _read(path: Path) -> str:
@@ -40,6 +37,8 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
         name = _read(js / "name")
         if not vendor or vendor in SKIP_VENDORS:
             continue
+        if (vendor, product) in SKIP_PRODUCTS:
+            continue
         pads.append(
             {
                 "vendor": vendor,
@@ -56,21 +55,12 @@ def _is_sunshine(pad: dict[str, str]) -> bool:
 
 
 def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
-    if not pads:
-        return None
     for pad in pads:
-        if pad["vendor"] == "045e" and not _is_sunshine(pad):
+        if pad.get("name") == "EmuPads P1" or (
+            pad.get("vendor") == "1209" and pad.get("product") == "e301"
+        ):
             return pad
-    for pad in pads:
-        if pad["vendor"] == "057e" and pad["product"] == "2009":
-            return pad
-    for pad in pads:
-        if pad["vendor"] == "28de" and pad["product"] == "11ff":
-            return pad
-    for pad in pads:
-        if _is_sunshine(pad):
-            return pad
-    return pads[0]
+    return None
 
 
 def sdl_guid(vendor: str, product: str, version: str = "0000") -> str:

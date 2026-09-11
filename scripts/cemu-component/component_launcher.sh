@@ -31,17 +31,15 @@ if [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
   fi
 fi
 
-# Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
-# virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
-# Moonlight-only session can still bind Sunshine when Steam virtual is gone.
+# Emulators bind EmuPads P1/P2. Mux copies Sunshine / local / Steam pads.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
-# Sunshine always injects a 1209:0003 mouse. Cemu lists it as player-0 and
-# GamePad sticks go there (inverted Y). IGNORE_DEVICES_EXCEPT does not hide
-# joysticks; blacklist the mouse on both hints.
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+# Sunshine always injects a 1209:0003 mouse. EXCEPT hides it from GameController
+# but not from the joystick list unless blacklist-except is honored.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # gamescope-session exports GAMESCOPE_DISPLAY_DISABLED=1, which leaves
 # Cemu UnMapped (spinning Steam logo). Always clear it.
@@ -81,7 +79,6 @@ fi
 
 # Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1.
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
-  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
   unset ENABLE_GAMESCOPE_WSI
   export SDL_VIDEODRIVER=x11
   unset LD_PRELOAD
@@ -104,9 +101,8 @@ fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"
 patcher="$here/patch-cemu-input.py"
-# Game Mode dual-stream already bound the Sunshine pad as Wii U GamePad.
-# The Eden pick order prefers Steam virtual 28de:11ff and would undo that.
-if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -f "$ini" ] && [ -f "$patcher" ]; then
+# Bind player 0 to EmuPads P1. Dual-stream already uses the same sink.
+if [ -f "$ini" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$ini" || true
 fi
 

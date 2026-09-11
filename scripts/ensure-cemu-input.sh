@@ -39,9 +39,8 @@ if ! python3 "$PATCHER_SRC" --self-test; then
   echo "Cemu input patcher self-test failed."
   exit 1
 fi
-# Game Mode dual-stream already bound the named Sunshine pad. The Eden
-# pick order prefers Steam virtual 28de:11ff and would steal player 0.
-if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -f "$CONTROLLER_XML" ]; then
+# Bind Cemu player 0 to EmuPads P1 (mux sink). Dual-stream uses the same sink.
+if [ -f "$CONTROLLER_XML" ]; then
   python3 "$PATCHER_SRC" "$CONTROLLER_XML"
 fi
 

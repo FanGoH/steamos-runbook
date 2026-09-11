@@ -82,6 +82,7 @@ run_step "ensure-sunshine-ds" "$ROOT/scripts/ensure-sunshine-ds.sh" warn
 run_step "ensure-sunshine-ds-gamemode" "$ROOT/scripts/ensure-sunshine-ds-gamemode.sh" warn
 run_step "ensure-sunshine-ds-kms-setcap" "$ROOT/scripts/ensure-sunshine-ds-kms-setcap.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
+run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
 run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn

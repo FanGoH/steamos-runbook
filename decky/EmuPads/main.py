@@ -122,24 +122,28 @@ class Plugin:
             data["pads"] = []
         return data
 
-    async def apply(self, emu: str = "all", pads: str = "", **kwargs: object) -> dict:
+    async def apply(self, emu: str = "all", pads: str = "", mode: str = "shared", **kwargs: object) -> dict:
         if kwargs:
             emu = str(kwargs.get("emu", emu) or emu)
             pads = str(kwargs.get("pads", pads) or pads)
+            mode = str(kwargs.get("mode", mode) or mode)
         script = _bind_py()
         if not os.path.isfile(script):
             return {"ok": False, "message": f"Missing {script}"}
         emu = (emu or "all").strip().lower()
         pads = (pads or "").strip()
-        if not pads:
-            return {"ok": False, "message": "No pads selected.", "rc": 2}
+        mode = (mode or "shared").strip().lower()
+        if mode not in ("shared", "multi"):
+            return {"ok": False, "message": f"Unknown mode {mode}"}
         if emu not in ("all", "cemu", "azahar", "eden"):
             return {"ok": False, "message": f"Unknown emu {emu}"}
+        cmd = ["python3", script, "apply", "--emu", emu, "--force", "--mode", mode]
+        if pads:
+            cmd.extend(["--pads", pads])
+        else:
+            cmd.append("--all-sources")
         try:
-            proc = _run_as_deck(
-                ["python3", script, "apply", "--emu", emu, "--pads", pads, "--force"],
-                timeout=25,
-            )
+            proc = _run_as_deck(cmd, timeout=25)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "bind-gamepad apply timed out"}
         data = _json_from(proc)

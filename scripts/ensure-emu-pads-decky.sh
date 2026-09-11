@@ -13,6 +13,8 @@ if ! python3 "$ROOT/scripts/bind-gamepad.py" self-test >/dev/null; then
   exit 1
 fi
 
+"$ROOT/scripts/ensure-emupads-mux.sh" || true
+
 SRC="$ROOT/decky/EmuPads"
 if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/index.js" ]; then
   echo "Missing plugin files under $SRC"

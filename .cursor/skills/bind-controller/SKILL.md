@@ -11,26 +11,32 @@ Do **not** hand-edit `controller0.xml` or emulator INI. Run the script (or the D
 python3 scripts/bind-gamepad.py list
 python3 scripts/bind-gamepad.py status
 python3 scripts/bind-gamepad.py profile
-python3 scripts/bind-gamepad.py apply --emu cemu --pads js3
-python3 scripts/bind-gamepad.py apply --emu all --match Thor,Odin
+python3 scripts/bind-gamepad.py apply --emu cemu --all-sources --mode shared
+python3 scripts/bind-gamepad.py apply --emu all --pads js3,js4 --mode multi
+python3 scripts/bind-gamepad.py apply --emu all --match Thor,Odin --mode multi
 python3 scripts/bind-gamepad.py cemu --match Thor
-python3 scripts/bind-gamepad.py azahar --match Thor
-python3 scripts/bind-gamepad.py eden --match Thor
+python3 scripts/bind-gamepad.py azahar --all-sources --mode shared
+python3 scripts/bind-gamepad.py eden --all-sources --mode shared
 # or, if names are still generic:
 python3 scripts/bind-gamepad.py cemu --wait
 ```
 
 ## Decky: Emu Pads
 
-`decky/EmuPads/` lists every host pad (Sunshine names like `Sunshine (libvirtualhid) AYN_Thor`), lets you skip/reorder, and Apply for **Cemu**, **Azahar**, and **Eden**. Player 1 is the first selected pad; player 2 is the second when two are selected.
+Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPads P1** / **P2**. Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Emulators bind the sinks once; Apply only changes routing. Independent of dual-screen — works with vanilla Decky Sunshine.
 
-Install: `scripts/ensure-emu-pads-decky.sh`. `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
+- **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too.
+- **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).
+- Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
+- Overlay/QAM mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads.
+
+Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
 
 ## Players
 
-- **Cemu** player 1 = Wii U GamePad `controller0.xml`. Player 2 = Wii U Pro `controller1.xml` (standalone and RetroDECK trees). Extra `<controller>` nodes on the GamePad are extra devices, not extra players. Mappings only on the named pad; Steam wrap may stay listed empty.
-- **Azahar** player 1 = `profiles\1\`. Player 2 = saved `profiles\2\` named Player 2. Azahar uses **one** active profile per instance.
-- **Eden** player 1 = `player_0_` CRC-less USB GUID (`eden_guid`). Player 2 = `player_1_` + `player_1_connected`. Two Sunshine x360 pads share one Eden GUID; player 2 is SDL port 1 (best-effort). Steam virtual (`28de:11ff`) is a different GUID.
+- **Cemu** player 1 = Wii U GamePad `controller0.xml` bound to **EmuPads P1**. Player 2 = Wii U Pro `controller1.xml` → **EmuPads P2** in multi. Extra `<controller>` nodes on the GamePad are extra devices, not extra players.
+- **Azahar** player 1 = `profiles\1\` → P1. Player 2 = saved `profiles\2\` in multi (one active profile per instance). Shared P1 is the default even though Azahar barely does MP.
+- **Eden** player 1 = `player_0_` CRC-less USB GUID of P1 (`1209:e301`). Player 2 = P2 (`1209:e302`) so GUIDs differ. Steam virtual (`28de:11ff`) stays a source, not a bind target.
 
 Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Default **x360**. `ds5`/`ds4`/`switch` enable Thor/Odin gyro but change VID/PID; after a switch, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, then re-bind. Do not switch the profile unless the user asks to experiment with gyro.
 
@@ -41,9 +47,9 @@ Eden INI: `~/.config/eden/qt-config.ini`. Maps for Azahar come from the active p
 
 Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine pad and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 
-Steam overlay / QAM: `scripts/inhibit-emu-input-on-steam-ui.py` SIGSTOPs Cemu / Azahar / Eden while `STEAM_OVERLAY=1` (Guide overlay), or `GAMESCOPE_BLUR_MODE!=0` on `:0` (Quick Access Menu — FOCUSED_APP stays the game), or `FOCUSED_APP=769` on `:0` after 8s (Exit). Do **not** treat 769 as QAM. SIGCONT when Steam UI closes, and immediately if `SIGTERM` is pending (Steam Exit otherwise never lands on a stopped emulator). When the emulator is gone, restore `FOCUSED_APP=769` on `:0`/`:1` (`scripts/restore-steam-gamescope-focus.sh`) or Steam stays on Exiting from a leftover `:1` shortcut (Wind Waker after 3DS). Do **not** EVIOCGRAB the Sunshine pad — Steam and the emulator share that fd, so a grab also kills overlay navigation. Started from Tender `rom-launcher`, Game Mode dual-screen, Eden wrap. Never `pgrep -f` sunshine.
+Steam overlay / QAM: `scripts/inhibit-emu-input-on-steam-ui.py` **mutes EmuPads sinks** (`$XDG_RUNTIME_DIR/emupads-mute`) while `STEAM_OVERLAY=1` (Guide overlay) or `GAMESCOPE_BLUR_MODE!=0` on `:0` (Quick Access Menu — FOCUSED_APP stays the game). Do **not** SIGSTOP the emulator (that holds Steam's SIGTERM). Exit (`FOCUSED_APP=769` on `:0` after 8s, or SIGTERM pending) `--quit`s on the first tick. When the emulator is gone, restore `FOCUSED_APP=769` on `:0`/`:1` (`scripts/restore-steam-gamescope-focus.sh`) or Steam stays on Exiting from a leftover `:1` shortcut (Wind Waker after 3DS). Do **not** EVIOCGRAB the Sunshine pad — Steam needs it for overlay navigation. Started from Tender `rom-launcher`, Game Mode dual-screen, Eden wrap. Never `pgrep -f` sunshine.
 
-Game Mode RetroDECK Cemu **local** tiles (kms FREE) still auto-pick on launch via `scripts/ensure-cemu-input.sh` (physical Xbox → Switch Pro → Steam virtual → Sunshine) and stay `-f`. Game Mode **GameStream dual-screen** (`:48200`, `checkpoint-2026-09-11-gamemode-tender-ds`): Tender Play detects `:48200` BUSY + the virtual sidecar and `--attach`es (no `-f`). Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (or `--match Odin`). Capture/overlay/screensaver: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. That script calls `bind-gamepad.py` on RetroDECK `controller0.xml` and puts mappings **only** on `Sunshine (libvirtualhid) AYN_Thor`. A leftover Tender `-f` Cemu (started while kms was FREE) will keep the Steam wrap. Use this skill for **desktop / GameStream** binds, explicit Thor/Odin, two-player assigns, and the Decky plugin. Desktop dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh` (bind with `CEMU_PAD_MATCH` / `AZAHAR_PAD_MATCH`, default Thor).
+Game Mode RetroDECK Cemu **local** tiles (kms FREE) bind **EmuPads P1** via `scripts/ensure-cemu-input.sh` / `patch-cemu-input.py` and stay `-f`. Game Mode **GameStream dual-screen** (`:48200`, `checkpoint-2026-09-11-gamemode-tender-ds`): Tender Play detects `:48200` BUSY + the virtual sidecar and `--attach`es (no `-f`). Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh` (or `--match Odin`). Capture/overlay/screensaver: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. That script binds Cemu to the mux sinks (not `--match Thor` into XML). Use this skill for **desktop / GameStream** binds, shared vs multi routing, and the Decky plugin. Desktop dual-screen restore: `scripts/ensure-cemu-dual-screen.sh` / `scripts/ensure-azahar-dual-screen.sh`.
 
 ## Why Thor failed
 

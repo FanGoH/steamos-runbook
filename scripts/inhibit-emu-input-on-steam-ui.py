@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Pause Cemu / Azahar / Eden while Steam overlay or QAM has focus.
+"""Mute EmuPads sinks while Steam overlay or QAM has focus.
 
-Steam and the emulator both keep the Sunshine pad open. EVIOCGRAB on that
-node would also steal overlay / QAM navigation. SIGSTOP the emulator
-instead; Steam keeps the pad. SIGCONT when Steam UI closes.
+Steam and the emulator both keep pads open. EVIOCGRAB on a Sunshine
+node would also steal overlay / QAM navigation. Touch
+``$XDG_RUNTIME_DIR/emupads-mute`` so the mux emits zeros; Steam still
+reads the real pads. Do not SIGSTOP the emulator (that holds Steam's
+SIGTERM on Exit).
 
 Steam UI:
 - Overlay (Guide / Hold-Select): ``STEAM_OVERLAY=1``
@@ -11,9 +13,10 @@ Steam UI:
   FOCUSED_APP stays the game — do not treat 769 as QAM.
 - Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been
   up (8s gate so Launching 769 does not kill the stub). Overlay/QAM only
-  SIGSTOP. Exit **quits** Azahar or Cemu on the first tick — do not SIGSTOP
-  (that holds Steam's SIGTERM) and do not wait extra sleeps. SIGTERM
-  pending is the same event (playbook SteamLaunch may not be a Steam child).
+  mute sinks. Exit **quits** Azahar or Cemu on the first tick — do not
+  SIGSTOP (that holds Steam's SIGTERM) and do not wait extra sleeps.
+  SIGTERM pending is the same event (playbook SteamLaunch may not be a
+  Steam child).
 
 Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
@@ -48,6 +51,7 @@ def _load_bind():
 
 
 BIND = _load_bind()
+MUTE_PATH = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "emupads-mute"
 
 
 def log(msg: str) -> None:
@@ -270,6 +274,18 @@ def emu_pids() -> list[int]:
     return pids
 
 
+def mute_sinks() -> None:
+    MUTE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MUTE_PATH.write_text("1\n", encoding="utf-8")
+
+
+def unmute_sinks() -> None:
+    try:
+        MUTE_PATH.unlink()
+    except OSError:
+        pass
+
+
 def proc_stopped(pid: int) -> bool:
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
@@ -348,6 +364,9 @@ def loop() -> int:
                         cont_pid(pid)
                     stopped.clear()
                     ui = False
+                if ui:
+                    unmute_sinks()
+                    ui = False
                 if saw_emu:
                     restore_steam_focus()
                     saw_emu = False
@@ -364,6 +383,7 @@ def loop() -> int:
                     if cont_pid(pid):
                         log(f"SIGCONT pid {pid} (SIGTERM pending — Steam Exit)")
                     stopped.discard(pid)
+                unmute_sinks()
                 log("Steam Exit — SIGTERM pending, quitting")
                 quit_for_steam_exit(stopped, pids)
                 stopped.clear()
@@ -374,6 +394,7 @@ def loop() -> int:
             age = emu_age_seconds(list(live))
             kind = steam_ui_kind(age)
             if kind == "exit" and (azahar_on_hdmi() or cemu_on_session()):
+                unmute_sinks()
                 log("Steam Exit — FOCUSED_APP=769, quitting")
                 quit_for_steam_exit(stopped, live)
                 stopped.clear()
@@ -382,25 +403,29 @@ def loop() -> int:
                 continue
             now = bool(live) and kind in ("overlay", "qam")
             if now and not ui:
+                mute_sinks()
                 for pid in live:
-                    if stop_pid(pid):
-                        stopped.add(pid)
-                        log(f"SIGSTOP pid {pid} (Steam {kind})")
+                    if proc_stopped(pid) and cont_pid(pid):
+                        log(f"SIGCONT pid {pid} (leftover stop; mute sinks instead)")
+                stopped.clear()
+                log(f"muted EmuPads sinks (Steam {kind})")
                 ui = True
             elif now:
-                for pid in live - stopped:
-                    if stop_pid(pid):
-                        stopped.add(pid)
-                        log(f"SIGSTOP pid {pid} (late {kind})")
+                for pid in live:
+                    if proc_stopped(pid) and cont_pid(pid):
+                        log(f"SIGCONT pid {pid} (late {kind})")
                 stopped = {pid for pid in stopped if pid in live}
             elif ui:
+                unmute_sinks()
                 for pid in list(stopped):
                     if cont_pid(pid):
                         log(f"SIGCONT pid {pid}")
                 stopped.clear()
+                log("unmuted EmuPads sinks")
                 ui = False
             time.sleep(0.2)
     finally:
+        unmute_sinks()
         for pid in list(stopped):
             cont_pid(pid)
         if PIDFILE.is_file():
@@ -423,6 +448,10 @@ def self_test() -> int:
     assert azahar_on_hdmi() in (True, False)
     assert cemu_on_session() in (True, False)
     assert (1 << 14) == 0x4000
+    mute_sinks()
+    assert MUTE_PATH.is_file()
+    unmute_sinks()
+    assert not MUTE_PATH.is_file()
     print("inhibit-emu-input-on-steam-ui self-test ok")
     return 0
 

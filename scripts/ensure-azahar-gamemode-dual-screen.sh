@@ -189,14 +189,8 @@ print("Wrote Azahar separate-windows layout in", path)
 PY
 }
 
-bind_odin() {
-  if python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match "$PAD_MATCH" --force; then
-    return 0
-  fi
-  echo "No pad matched ${PAD_MATCH}; trying Odin2 then Sunshine."
-  python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match Odin2 --force \
-    || python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match Sunshine --force \
-    || return 1
+bind_azahar() {
+  python3 "$ROOT/scripts/bind-gamepad.py" apply --emu azahar --ini "$AZAHAR_INI" --force || return 1
 }
 
 find_wid() {
@@ -487,7 +481,7 @@ if [ "$DO_ATTACH" -eq 1 ]; then
     echo "Azahar did not start (attach). See $LOG"
     exit 1
   fi
-  bind_odin || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
+  bind_azahar || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
   echo "Waiting for Primary/Secondary windows (attach)..."
   if ! wait_game_windows; then
     echo "No Azahar game windows (attach). Watching for exit so :2 can screensaver."
@@ -515,11 +509,15 @@ ensure_virtual_display || {
 }
 
 write_azahar_layout || exit 1
-bind_odin || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
+need_azahar_restart=0
+if azahar_running && ! grep -qi '01e3' "$AZAHAR_INI" 2>/dev/null; then
+  need_azahar_restart=1
+fi
+bind_azahar || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
 
-# Azahar reads GUID at start. Restart so Odin (not Thor) is player 1.
-if azahar_running; then
-  echo "Restarting Azahar so the Odin GUID is picked up."
+# Azahar reads GUID at start. Restart only when switching onto EmuPads P1.
+if [ "$need_azahar_restart" -eq 1 ]; then
+  echo "Restarting Azahar so EmuPads P1 is picked up."
   stop_focus_watch
   stop_mirror
   stop_azahar
@@ -547,8 +545,10 @@ export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except)"
+SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except-sinks)"
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$SDL_EXCEPT"
+export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 
 if [ ! -x "$REAPER" ]; then
   echo "Missing Steam reaper at $REAPER"
@@ -567,6 +567,9 @@ nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
     --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 \
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
+    --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$SDL_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003" \
     --unset-env=WAYLAND_DISPLAY \
     org.azahar_emu.Azahar \
     "$ROM" >>"$LOG" 2>&1 &

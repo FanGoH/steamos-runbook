@@ -139,8 +139,8 @@ stop_focus_watch() {
 }
 
 stop_azahar() {
-  bash "$ROOT/scripts/sunshine-app-stop.sh" azahar || true
-  local pid cmd
+  timeout 4 bash "$ROOT/scripts/sunshine-app-stop.sh" azahar || true
+  local pid cmd i
   for pid in $(ps -eo pid=,comm= | awk '$2=="reaper"{print $1}'); do
     cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
@@ -150,6 +150,17 @@ stop_azahar() {
         ;;
     esac
   done
+  i=0
+  while [ "$i" -lt 20 ] && azahar_running; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if azahar_running; then
+    echo "Force-killing leftover azahar."
+    pkill -x azahar 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -x azahar 2>/dev/null || true
+  fi
 }
 
 write_azahar_layout() {
@@ -358,7 +369,7 @@ watch_azahar_focus_loop() {
   done
   echo "Azahar exited — stopping bottom mirror so :2 can screensaver again."
   stop_mirror
-  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
@@ -432,8 +443,9 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_focus_watch
   stop_azahar
   stop_mirror
-  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
-  bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  # xdotool search on a wedged :2 can hang --paint and leave Steam on Exiting.
+  timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  timeout 2 bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
   echo "Quit Azahar (SteamLaunch reaper + windows). Steam Exit can finish."
   exit 0
 fi

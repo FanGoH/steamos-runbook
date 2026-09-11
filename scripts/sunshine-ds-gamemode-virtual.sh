@@ -202,7 +202,7 @@ start_paint() {
   # Live Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
   # --paint kills leftover x11grab first so this skip does not freeze the clock.
   if command -v xdotool >/dev/null 2>&1 &&
-     DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1; then
+     timeout 1 env DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1; then
     echo "ffplay already on $x11; not starting screensaver."
     return 0
   fi
@@ -436,7 +436,7 @@ if [ "$DO_PAINT" -eq 1 ]; then
   x11="$(x11_display || true)"
   kill_x11grab_ffplay "${x11:-:2}"
   if [ -n "${x11:-}" ] && command -v xdotool >/dev/null 2>&1; then
-    DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
+    timeout 1 env DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
   fi
   stop_paint
   start_paint || exit $?

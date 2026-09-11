@@ -246,7 +246,7 @@ if [ "$is_azahar" -eq 1 ]; then
         "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
       fi
       azahar_quit() {
-        bash "$azahar_ds" --quit >/dev/null 2>&1 || true
+        timeout 8 bash "$azahar_ds" --quit >/dev/null 2>&1 || true
       }
       trap azahar_quit EXIT INT TERM
       env \

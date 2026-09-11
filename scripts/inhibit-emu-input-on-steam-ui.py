@@ -209,7 +209,7 @@ def quit_azahar() -> None:
         return
     try:
         subprocess.run(
-            ["bash", str(script), "--quit"],
+            ["timeout", "8", "bash", str(script), "--quit"],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

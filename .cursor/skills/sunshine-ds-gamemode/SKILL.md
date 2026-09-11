@@ -17,6 +17,9 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - **Azahar Game Mode path:** Tender `rom-launcher` **runs** `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`). Disown the focus watcher (same as Cemu). Wait for `azahar`, then `--quit`/`--paint`. `azahar_on_hdmi()` searches `:0` and `:1`. Inhibit `restore_bottom_screen()` paints `:2` when the last emu is gone (skip if Cemu/Azahar still up). Unset `LD_PRELOAD` in that script (Steam ELFCLASS32 spam).
 - **Mux restart:** `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`). Then restart Cemu/Azahar/Eden — new uinput nodes. Config `~/.config/emupads/mux.json`.
 - Bind Cemu/Azahar/Eden to **EmuPads P1/P2** only. The `wait-appear --match Thor` / `cemu --match Thor` lines below are wait-for-pad helpers, not XML bind targets.
+- Game Mode `apps.json` is **Desktop only**. Do not re-add **Cemu Dual-Screen** — Tender tiles own Cemu.
+- Azahar Steam Exit `--quit` must `timeout` `--paint` / xdotool or Steam sits on Exiting.
+- Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
 
 ## What must be true
 

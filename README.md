@@ -48,27 +48,21 @@ git pull
 
 Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
-`post-update.sh` restores services, then runs `health-check.sh` (the verification checklist) and prints failures / manual actions at the end.
+`post-update.sh` also restores, when needed:
 
-`post-update.sh` restores when needed:
-
-- pacman keyrings (`archlinux` + `holo`)
-- `sshd`
-- `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
-- OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
-- Gear Lever Flatpak (AppImage manager; installs to `/home`)
-- Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
-- Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
-- Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
-- RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
+- Game Mode `:48200` boot unit (`--install-service`) + EmuPads mux
+- pacman keyrings (`archlinux` + `holo`), `sshd`, WOL, OpenRGB udev
+- Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
+- Gear Lever, Cursor Agent worker, Switch 2 BLE bridge
+- Eden/Tender wrap, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 
 Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
-- Emu Pads Decky plugin (list/reorder/apply Cemu Azahar Eden) when `~/homebrew/plugins` is root-owned
+- Emu Pads / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
+- `sudoers.d/zzz-sunshine-ds-kms-setcap` after an update wiped `/etc`
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 

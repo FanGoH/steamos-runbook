@@ -300,6 +300,58 @@ def scan_devices(skip_paths: set[str]) -> list[InputDevice]:
     return out
 
 
+def device_alive(dev) -> bool:
+    path = getattr(dev, "path", None)
+    if not path or not Path(path).exists():
+        return False
+    try:
+        fd = int(dev.fd)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+    return fd >= 0
+
+
+def rescan_devices(devices: list[InputDevice], skip_paths: set[str]) -> list[InputDevice]:
+    """Keep open fds. Only close vanished nodes and open new ones.
+
+    A full close/reopen every scan made pads hitch when Thor/Odin
+    reconnected (the live Sunshine fd was torn down for a second).
+    """
+    kept: list[InputDevice] = []
+    for dev in devices:
+        if device_alive(dev):
+            kept.append(dev)
+            continue
+        try:
+            dev.close()
+        except OSError:
+            pass
+    have = {dev.path for dev in kept}
+    for node in list_devices():
+        if node in skip_paths or node in have:
+            continue
+        try:
+            dev = InputDevice(node)
+        except OSError:
+            continue
+        phys = (dev.phys or "").lower()
+        if phys.startswith("emupads/"):
+            try:
+                dev.close()
+            except OSError:
+                pass
+            continue
+        if not is_source_device(dev):
+            try:
+                dev.close()
+            except OSError:
+                pass
+            continue
+        kept.append(dev)
+        log(f"source + {dev.name} {dev.path}")
+    return kept
+
+
 def loop() -> int:
     global _RELOAD
     signal.signal(signal.SIGHUP, request_reload)
@@ -323,12 +375,10 @@ def loop() -> int:
                 last_cfg_mtime = mtime
                 last_scan = now
                 cfg = load_config()
-                for dev in devices:
-                    try:
-                        dev.close()
-                    except OSError:
-                        pass
-                devices = scan_devices(skip)
+                if not devices:
+                    devices = scan_devices(skip)
+                else:
+                    devices = rescan_devices(devices, skip)
             want_mute = mute_path().is_file()
             if want_mute and not muted:
                 for ui in sinks:
@@ -455,6 +505,28 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
+
+    class Alive:
+        def __init__(self, path):
+            self.path = path
+            self.fd = 3
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    kept_path = "/tmp/emupads-mux-self-test-kept"
+    Path(kept_path).write_text("")
+    try:
+        live = Alive(kept_path)
+        dead = Alive("/tmp/emupads-mux-self-test-missing")
+        out = rescan_devices([live, dead], skip_paths=set())  # type: ignore[arg-type]
+        assert live in out and not live.closed
+        assert dead.closed
+        assert dead not in out
+    finally:
+        Path(kept_path).unlink(missing_ok=True)
+
     print("emupads-mux self-test ok")
     return 0
 

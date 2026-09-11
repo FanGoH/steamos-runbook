@@ -14,13 +14,39 @@ cp .env.example .env
 ./health-check.sh
 ```
 
-## After SteamOS update
+## Reboot vs SteamOS update (Game Mode dual-stream)
+
+**Reboot (Game Mode, the usual login):** `/home` stays. User units come back with `gamescope-session`:
+
+- `steamos-sunshine-ds-gamemode.service` + virtual helper → `sunshine-ds-kms` on **`:48200`**, idle clock on headless `:2`
+- `emupads-mux.service` → EmuPads P1/P2 (`~/.config/emupads/mux.json` routing is unchanged)
+- Decky Sunshine **`:47989`** also comes back (HDMI-only). Dual-stream is the **white** Moonlight tile on `:48200`, not Decky
+- Desktop sunshine-ds **`:48100`** stays down (Plasma only)
+
+Then: Thor/Odin Moonlight → `:48200` → Desktop. Tender Play while that host is `BUSY` is the dual-screen path (Cemu windowed GamePad grab, Azahar standalone). You do not re-pair, re-bind, or re-copy dumps. If `:48200` is down after a reboot:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# :2 already up:
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
+# cold (no :2):
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+./scripts/ensure-emupads-mux.sh
+```
+
+Do **not** switch Game Mode ↔ Desktop to “fix” capture. Do **not** `--start` kms while `:2` is already up.
+
+**SteamOS update:** `/` can reset (udev, sudoers, enabled system units, pacman). `/home` usually stays (playbook, mux.json, pairings, ROMs, Decky plugins, user systemd units). Restore:
 
 ```bash
 cd ~/steamos-playbook
 git pull
 ./post-update.sh
 ```
+
+`post-update.sh` re-enables the Game Mode kms unit (`--install-service`), the mux, Eden/Tender wrap, Decky Sunshine, and prints `sudo` lines when `~/homebrew/plugins` is root-owned or `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` was wiped. Then `./health-check.sh` (already run at the end). Follow any printed manual actions (Emu Pads copy, `decky-romm-sync/bin/rom-launcher` restore, setcap sudoers). Tender plugin updates also overwrite `rom-launcher` — same `ensure-eden-component.sh` step.
+
+Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 `post-update.sh` restores services, then runs `health-check.sh` (the verification checklist) and prints failures / manual actions at the end.
 

@@ -30,6 +30,21 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 
 Moonlight host is **`:48200`** uniqueid `1075C8EF…`. App **Desktop** is `958645192`. Do **not** `/launch` desktop-DS `881448767` (kms: `Couldn't find app with ID`). Not Decky `:47989`. Two De-FanGoH tiles: white = `:48200`, grey warning = `:48100`.
 
+## After reboot / SteamOS update
+
+Reboot in Game Mode: `:48200` + `:2` clock + EmuPads mux start with `gamescope-session`. Pin Moonlight to `:48200` (not Decky `:47989`). Tender Play while `BUSY` is the working dual-screen path.
+
+SteamOS update: `/home` stays; `/` can wipe sudoers / udev. Restore with `./post-update.sh` (it now passes `--install-service`). If kms is down after that:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms   # when :2 is already up
+# or --start when :2 is gone
+./scripts/ensure-emupads-mux.sh
+```
+
+`getcap ~/.local/bin/sunshine-ds-kms` must be `cap_sys_admin=ep`. Passwordless setcap is `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` (wiped by updates). Tender updates overwrite `rom-launcher` — `ensure-eden-component.sh`.
+
 ## Bring-up (do not rediscover)
 
 Headless `:2` already up (helper + screensaver) — start kms only:

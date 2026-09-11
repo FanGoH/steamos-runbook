@@ -45,10 +45,11 @@ run_step() {
   local name="$1"
   local script="$2"
   local mode="${3:-fail}" # fail | warn
+  shift 3 || true
   local rc
 
   echo "---- $name ----" | tee -a "$LOG_FILE"
-  bash "$script" 2>&1 | tee -a "$LOG_FILE"
+  bash "$script" "$@" 2>&1 | tee -a "$LOG_FILE"
   rc=${PIPESTATUS[0]}
 
   if [ "$rc" -eq 0 ]; then
@@ -79,7 +80,7 @@ run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
 run_step "ensure-sunshine-ds-apps" "$ROOT/scripts/ensure-sunshine-ds-apps.sh" warn
 run_step "ensure-sunshine-ds" "$ROOT/scripts/ensure-sunshine-ds.sh" warn
-run_step "ensure-sunshine-ds-gamemode" "$ROOT/scripts/ensure-sunshine-ds-gamemode.sh" warn
+run_step "ensure-sunshine-ds-gamemode" "$ROOT/scripts/ensure-sunshine-ds-gamemode.sh" warn --install-service
 run_step "ensure-sunshine-ds-kms-setcap" "$ROOT/scripts/ensure-sunshine-ds-kms-setcap.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
 run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn

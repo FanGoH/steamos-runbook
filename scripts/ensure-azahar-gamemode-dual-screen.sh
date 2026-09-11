@@ -302,11 +302,11 @@ present_primary() {
 watch_azahar_focus_loop() {
   # HDMI reclaim must not fight Steam overlay. sunshine-ds Hold-Select sets
   # STEAM_OVERLAY=1 and FOCUSED_APP=769. Re-activating Azahar every tick hides it.
-  local overlay=0 steam_ticks=0 app
+  # Do not reclaim on 769 without the overlay atom — that steals overlay/qAM.
+  local overlay=0 app
   while azahar_running; do
     app="$(focused_app)"
     if steam_overlay_active; then
-      steam_ticks=0
       if [ "$overlay" -eq 0 ]; then
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
@@ -314,20 +314,14 @@ watch_azahar_focus_loop() {
       fi
       overlay=1
     elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      overlay=1
-      steam_ticks=$((steam_ticks + 1))
-      if [ "$steam_ticks" -ge 6 ]; then
-        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Azahar Primary"
-        present_primary || true
-        steam_ticks=0
-        overlay=0
+      if [ "$overlay" -eq 0 ]; then
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID — yielding to Steam (no reclaim)"
       fi
+      overlay=1
     elif [ "$app" != "$APPID" ]; then
-      steam_ticks=0
       overlay=0
       present_primary || true
     else
-      steam_ticks=0
       overlay=0
     fi
     sleep 0.4

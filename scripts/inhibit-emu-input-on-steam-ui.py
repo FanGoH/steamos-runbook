@@ -9,9 +9,11 @@ Steam UI:
 - Overlay (Guide / Hold-Select): ``STEAM_OVERLAY=1``
 - QAM (Quick Access Menu, ``...``): ``GAMESCOPE_BLUR_MODE`` != 0 on HDMI ``:0``.
   FOCUSED_APP stays the game — do not treat 769 as QAM.
-- Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been up.
-  Overlay/QAM only SIGSTOP. Exit **quits** Azahar or Cemu — playbook
-  SteamLaunch may not be a Steam child, and SIGSTOP leaves SIGTERM pending.
+- Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been
+  up (8s gate so Launching 769 does not kill the stub). Overlay/QAM only
+  SIGSTOP. Exit **quits** Azahar or Cemu on the first tick — do not SIGSTOP
+  (that holds Steam's SIGTERM) and do not wait extra sleeps. SIGTERM
+  pending is the same event (playbook SteamLaunch may not be a Steam child).
 
 Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
@@ -31,9 +33,8 @@ PIDFILE = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_PIDFILE", ROOT / "logs/emu-s
 LOG = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_LOG", ROOT / "logs/emu-steam-ui-inhibit.log"))
 STEAM_CLIENT_ID = "769"
 DISPLAYS = (":0", ":1")
-# Steam Exit (769, no overlay, no QAM) held this many 0.2s ticks → quit emu.
-# Playbook SteamLaunch may be a systemd --user child; SIGSTOP also holds SIGTERM.
-EXIT_QUIT_TICKS = 10
+# Launching sets FOCUSED_APP=769; ignore that until the emulator has been up.
+EXIT_MIN_AGE_S = 8.0
 
 
 def _load_bind():
@@ -170,7 +171,7 @@ def steam_ui_kind(emu_age_s: float = 0.0) -> str:
     if qam_on(":0"):
         return "qam"
     focused_steam = xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID
-    if focused_steam and emu_age_s >= 8.0:
+    if focused_steam and emu_age_s >= EXIT_MIN_AGE_S:
         return "exit"
     return ""
 
@@ -238,6 +239,16 @@ def quit_cemu() -> None:
     except OSError:
         return
     log("Steam Exit — quit Cemu")
+
+
+def quit_for_steam_exit(stopped: set[int], live: set[int]) -> None:
+    """SIGCONT then --quit. Do not SIGSTOP first — that holds SIGTERM."""
+    for pid in list(live | stopped):
+        cont_pid(pid)
+    if azahar_on_hdmi():
+        quit_azahar()
+    elif cemu_on_session():
+        quit_cemu()
 
 
 def emu_pids() -> list[int]:
@@ -325,7 +336,6 @@ def loop() -> int:
     idle = 0
     ui = False
     saw_emu = False
-    exit_hold = 0
     write_pidfile()
     log("watch start")
     try:
@@ -333,7 +343,6 @@ def loop() -> int:
             pids = set(emu_pids())
             if not pids:
                 idle += 1
-                exit_hold = 0
                 if stopped:
                     for pid in list(stopped):
                         cont_pid(pid)
@@ -355,26 +364,23 @@ def loop() -> int:
                     if cont_pid(pid):
                         log(f"SIGCONT pid {pid} (SIGTERM pending — Steam Exit)")
                     stopped.discard(pid)
-            live = pids - dying
-            age = emu_age_seconds(list(live)) if live else 0.0
-            kind = steam_ui_kind(age) if live else ""
+                log("Steam Exit — SIGTERM pending, quitting")
+                quit_for_steam_exit(stopped, pids)
+                stopped.clear()
+                ui = False
+                time.sleep(0.1)
+                continue
+            live = pids
+            age = emu_age_seconds(list(live))
+            kind = steam_ui_kind(age)
             if kind == "exit" and (azahar_on_hdmi() or cemu_on_session()):
-                exit_hold += 1
-                if exit_hold >= EXIT_QUIT_TICKS:
-                    for pid in list(live | stopped):
-                        cont_pid(pid)
-                    stopped.clear()
-                    ui = False
-                    if azahar_on_hdmi():
-                        quit_azahar()
-                    elif cemu_on_session():
-                        quit_cemu()
-                    exit_hold = 0
-                    time.sleep(0.2)
-                    continue
-            else:
-                exit_hold = 0
-            now = bool(live) and kind in ("overlay", "qam", "exit")
+                log("Steam Exit — FOCUSED_APP=769, quitting")
+                quit_for_steam_exit(stopped, live)
+                stopped.clear()
+                ui = False
+                time.sleep(0.1)
+                continue
+            now = bool(live) and kind in ("overlay", "qam")
             if now and not ui:
                 for pid in live:
                     if stop_pid(pid):

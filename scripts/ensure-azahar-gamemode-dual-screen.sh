@@ -200,7 +200,11 @@ bind_odin() {
 }
 
 find_wid() {
-  local needle="$1" d id name
+  # $1 caption needle, $2 varname for xid. Sets TV_DISPLAY in this shell.
+  # Do not capture stdout — $(find_wid) drops TV_DISPLAY so x11grab uses :0
+  # for a :1 xid (Thor bottom stays the idle clock).
+  local needle="$1" dest="$2" d id name
+  printf -v "$dest" '%s' ""
   for d in "$TV_DISPLAY" :1 :0; do
     [ -n "$d" ] || continue
     for id in $(DISPLAY="$d" xdotool search --name "$needle" 2>/dev/null || true); do
@@ -208,7 +212,7 @@ find_wid() {
       case "$name" in
         *"$needle"*)
           TV_DISPLAY="$d"
-          printf '%s\n' "$id"
+          printf -v "$dest" '%s' "$id"
           return 0
           ;;
       esac
@@ -217,8 +221,8 @@ find_wid() {
   return 1
 }
 
-find_primary_wid() { find_wid 'Primary Window'; }
-find_secondary_wid() { find_wid 'Secondary Window'; }
+find_primary_wid() { find_wid 'Primary Window' PRIMARY_WID; }
+find_secondary_wid() { find_wid 'Secondary Window' SECONDARY_WID; }
 
 wait_azahar() {
   local i=0
@@ -235,7 +239,7 @@ wait_azahar() {
 wait_game_windows() {
   local i=0
   while [ "$i" -lt 60 ]; do
-    if [ -n "$(find_primary_wid || true)" ] && [ -n "$(find_secondary_wid || true)" ]; then
+    if find_primary_wid && find_secondary_wid; then
       return 0
     fi
     sleep 1
@@ -289,7 +293,9 @@ steam_qam_active() {
 # keepAbove on Primary covers the QAM side panel.
 lower_azahar_for_steam_ui() {
   local wid
-  for wid in "$(find_primary_wid || true)" "$(find_secondary_wid || true)"; do
+  find_primary_wid || true
+  find_secondary_wid || true
+  for wid in "${PRIMARY_WID:-}" "${SECONDARY_WID:-}"; do
     [ -n "${wid:-}" ] || continue
     DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
   done
@@ -308,18 +314,14 @@ set_gamescope_focus() {
 }
 
 present_primary() {
-  local tv
-  tv="$(find_primary_wid || true)"
-  if [ -z "${tv:-}" ]; then
-    return 1
-  fi
-  DISPLAY="$TV_DISPLAY" xdotool windowmap "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$tv" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$tv" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$tv" windowactivate "$tv" windowraise "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$tv" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-  set_gamescope_focus "$tv" "$APPID"
+  find_primary_wid || return 1
+  DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowsize "$PRIMARY_WID" 1920 1080 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$PRIMARY_WID" windowactivate "$PRIMARY_WID" windowraise "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$PRIMARY_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+  set_gamescope_focus "$PRIMARY_WID" "$APPID"
 }
 
 watch_azahar_focus_loop() {
@@ -455,8 +457,11 @@ if [ "$DO_MIRROR_ONLY" -eq 1 ]; then
     echo "No Azahar Primary/Secondary windows."
     exit 2
   fi
-  SECONDARY_WID="$(find_secondary_wid)"
-  echo "Remirroring Secondary=$SECONDARY_WID onto $PAD_DISPLAY (no Azahar restart)."
+  find_secondary_wid || {
+    echo "No Azahar Secondary Window."
+    exit 2
+  }
+  echo "Remirroring Secondary=$SECONDARY_WID from $TV_DISPLAY onto $PAD_DISPLAY (no Azahar restart)."
   start_mirror "$SECONDARY_WID"
   present_primary || true
   start_focus_watch
@@ -468,8 +473,7 @@ if [ "$DO_ATTACH" -eq 1 ]; then
   focus_pid="$(cat "$FOCUS_PIDFILE" 2>/dev/null || true)"
   if [ -n "${focus_pid:-}" ] && [ -d "/proc/$focus_pid" ]; then
     echo "Azahar dual-stream already watching pid $focus_pid; remirroring only."
-    SECONDARY_WID="$(find_secondary_wid || true)"
-    if [ -n "${SECONDARY_WID:-}" ]; then
+    if find_secondary_wid; then
       start_mirror "$SECONDARY_WID"
     fi
     present_primary || true
@@ -490,8 +494,8 @@ if [ "$DO_ATTACH" -eq 1 ]; then
     start_focus_watch
     exit 2
   fi
-  PRIMARY_WID="$(find_primary_wid)"
-  SECONDARY_WID="$(find_secondary_wid)"
+  find_primary_wid
+  find_secondary_wid
   echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID on $TV_DISPLAY"
   minimize_library
   start_mirror "$SECONDARY_WID"
@@ -581,9 +585,9 @@ if ! wait_game_windows; then
   exit 2
 fi
 
-PRIMARY_WID="$(find_primary_wid)"
-SECONDARY_WID="$(find_secondary_wid)"
-echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID"
+find_primary_wid
+find_secondary_wid
+echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID on $TV_DISPLAY"
 minimize_library
 start_mirror "$SECONDARY_WID"
 start_focus_watch

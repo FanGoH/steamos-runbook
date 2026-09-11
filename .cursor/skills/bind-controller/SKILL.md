@@ -11,7 +11,7 @@ Do **not** hand-edit `controller0.xml` or emulator INI. Run the script (or the D
 python3 scripts/bind-gamepad.py list
 python3 scripts/bind-gamepad.py status
 python3 scripts/bind-gamepad.py profile
-python3 scripts/bind-gamepad.py apply --emu cemu --all-sources --mode shared
+python3 scripts/bind-gamepad.py apply --emu cemu --all-sources --mode shared --cemu-p1 pro
 python3 scripts/bind-gamepad.py apply --emu all --pads js3,js4 --mode multi
 python3 scripts/bind-gamepad.py apply --emu all --match Thor,Odin --mode multi
 python3 scripts/bind-gamepad.py cemu --match Thor
@@ -34,7 +34,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 
 ## Players
 
-- **Cemu** player 1 = Wii U GamePad `controller0.xml` bound to **EmuPads P1**. Player 2 = Wii U Pro `controller1.xml` → **EmuPads P2** in multi. Extra `<controller>` nodes on the GamePad are extra devices, not extra players.
+- **Cemu** player 1 = **EmuPads P1** in `controller0.xml`. Type is **Wii U GamePad** or **Wii U Pro Controller** (`--cemu-p1 gamepad|pro`, Emu Pads toggle, persisted in `~/.config/emupads/mux.json`). Default GamePad. Dual-screen scripts force GamePad (GamePad View). Player 2 = Wii U Pro `controller1.xml` → **EmuPads P2** in multi. Extra `<controller>` nodes are extra devices, not extra players.
 - **Azahar** player 1 = `profiles\1\` → P1. Player 2 = saved `profiles\2\` in multi (one active profile per instance). Shared P1 is the default even though Azahar barely does MP.
 - **Eden** player 1 = `player_0_` CRC-less USB GUID of P1 (`1209:e301`). Player 2 = P2 (`1209:e302`) so GUIDs differ. Steam virtual (`28de:11ff`) stays a source, not a bind target.
 
@@ -65,7 +65,7 @@ Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e
 
 Cemu reads uuid at start. If Cemu is running, restart standalone `info.cemu.Cemu` (keep sunshine-ds). Flatpak process `comm` is truncated to `Cemu_relwithdeb` — `pgrep -x Cemu_relwithdebinfo` misses it. Then re-place dual-screen with `scripts/ensure-cemu-dual-screen.sh`. Same restart rule for Azahar and Eden.
 
-Type must stay **Wii U GamePad** for the GamePad View. Do not bind `libvirtualhid Mouse` (`1209:0003`) or ASRock LED (`26ce`).
+Dual-screen GamePad View needs **Wii U GamePad** on P1 (`ensure-cemu-*-dual-screen.sh` passes `--cemu-p1 gamepad`). Local / single-screen can use Pro from the plugin. Do not bind `libvirtualhid Mouse` (`1209:0003`) or ASRock LED (`26ce`).
 
 ## Do not
 

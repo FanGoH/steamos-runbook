@@ -121,12 +121,10 @@ print("Wrote Cemu window/pad geometry in", path)
 PY
 
 if [ -f "$CEMU_CONTROLLER" ]; then
-  if ! grep -q "<type>Wii U GamePad</type>" "$CEMU_CONTROLLER"; then
-    echo "controller0.xml is not Wii U GamePad. Stop Cemu, set <type>Wii U GamePad</type>, start again."
-    exit 2
-  fi
   bind_rc=0
+  # GamePad View needs Wii U GamePad on P1. Plugin Pro is for local / single-screen.
   python3 "$ROOT/scripts/bind-gamepad.py" apply --emu cemu --xml "$CEMU_CONTROLLER" --force \
+    --cemu-p1 gamepad \
     || bind_rc=$?
   if [ "$bind_rc" -ne 0 ]; then
     echo "Could not bind Cemu player 0. Connected pads:"

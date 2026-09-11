@@ -122,22 +122,37 @@ class Plugin:
             data["pads"] = []
         return data
 
-    async def apply(self, emu: str = "all", pads: str = "", mode: str = "shared", **kwargs: object) -> dict:
+    async def apply(
+        self,
+        emu: str = "all",
+        pads: str = "",
+        mode: str = "shared",
+        cemu_p1: str = "",
+        **kwargs: object,
+    ) -> dict:
         if kwargs:
             emu = str(kwargs.get("emu", emu) or emu)
             pads = str(kwargs.get("pads", pads) or pads)
             mode = str(kwargs.get("mode", mode) or mode)
+            cemu_p1 = str(kwargs.get("cemu_p1", cemu_p1) or cemu_p1)
         script = _bind_py()
         if not os.path.isfile(script):
             return {"ok": False, "message": f"Missing {script}"}
         emu = (emu or "all").strip().lower()
         pads = (pads or "").strip()
         mode = (mode or "shared").strip().lower()
+        cemu_p1 = (cemu_p1 or "").strip().lower().replace(" ", "_")
+        if cemu_p1 in ("pro_controller", "wii_u_pro", "wii_u_pro_controller"):
+            cemu_p1 = "pro"
         if mode not in ("shared", "multi"):
             return {"ok": False, "message": f"Unknown mode {mode}"}
         if emu not in ("all", "cemu", "azahar", "eden"):
             return {"ok": False, "message": f"Unknown emu {emu}"}
+        if cemu_p1 and cemu_p1 not in ("gamepad", "pro"):
+            return {"ok": False, "message": f"Unknown Cemu P1 type {cemu_p1}"}
         cmd = ["python3", script, "apply", "--emu", emu, "--force", "--mode", mode]
+        if cemu_p1:
+            cmd.extend(["--cemu-p1", cemu_p1])
         if pads:
             cmd.extend(["--pads", pads])
         else:

@@ -35,7 +35,8 @@ function padKind(pad) {
 function playerLine(players, slot) {
   const hit = (players || []).find((p) => p.slot === slot);
   if (!hit) return "—";
-  return hit.name || hit.guid || hit.uuid || "bound";
+  const name = hit.name || hit.guid || hit.uuid || "bound";
+  return hit.type ? `${name} (${hit.type})` : name;
 }
 
 function mergeOrder(prev, pads) {
@@ -52,6 +53,7 @@ function Content() {
   const [order, setOrder] = SP_REACT.useState([]);
   const [included, setIncluded] = SP_REACT.useState({});
   const [mode, setMode] = SP_REACT.useState("shared");
+  const [cemuP1, setCemuP1] = SP_REACT.useState("gamepad");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
 
@@ -64,6 +66,11 @@ function Content() {
       setOrder((prev) => mergeOrder(prev, pads));
       if (next?.mux?.mode === "multi" || next?.mux?.mode === "shared") {
         setMode(next.mux.mode);
+      }
+      if (next?.mux?.cemu_p1 === "pro" || next?.mux?.cemu_p1 === "gamepad") {
+        setCemuP1(next.mux.cemu_p1);
+      } else if (next?.cemu_p1 === "pro" || next?.cemu_p1 === "gamepad") {
+        setCemuP1(next.cemu_p1);
       }
       setIncluded((prev) => {
         const out = { ...prev };
@@ -117,7 +124,7 @@ function Content() {
       orderedPads.length > 0 && orderedPads.every((p) => included[p.js] !== false);
     const pads = allOn ? "" : selected.map((p) => p.js).join(",");
     try {
-      const result = await applyBinds(emu, pads, mode);
+      const result = await applyBinds(emu, pads, mode, cemuP1);
       const body = (result?.messages || [result?.message || ""])
         .filter(Boolean)
         .join(" ")
@@ -164,6 +171,25 @@ function Content() {
             ],
           }),
         }),
+        key === "cemu"
+          ? SP_JSX.jsx(DFL.PanelSectionRow, {
+              children: SP_JSX.jsxs("div", {
+                style: { display: "flex", gap: 8, flexWrap: "wrap" },
+                children: [
+                  SP_JSX.jsx(DFL.ButtonItem, {
+                    layout: "below",
+                    onClick: () => setCemuP1("gamepad"),
+                    children: cemuP1 === "gamepad" ? "GamePad ✓" : "GamePad",
+                  }),
+                  SP_JSX.jsx(DFL.ButtonItem, {
+                    layout: "below",
+                    onClick: () => setCemuP1("pro"),
+                    children: cemuP1 === "pro" ? "Pro Controller ✓" : "Pro Controller",
+                  }),
+                ],
+              }),
+            })
+          : null,
         SP_JSX.jsx(DFL.PanelSectionRow, {
           children: SP_JSX.jsx(DFL.ButtonItem, {
             layout: "below",
@@ -281,7 +307,11 @@ function Content() {
           }),
         ],
       }),
-      emuBlock("cemu", "Cemu", status?.emus?.cemu?.p2),
+      emuBlock(
+        "cemu",
+        "Cemu",
+        [status?.emus?.cemu?.p1, status?.emus?.cemu?.p2].filter(Boolean).join(" ")
+      ),
       emuBlock("azahar", "Azahar", status?.emus?.azahar?.p2),
       emuBlock("eden", "Eden", status?.emus?.eden?.p2),
     ],

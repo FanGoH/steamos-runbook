@@ -189,7 +189,8 @@ bind_cemu_pads() {
     >/dev/null || true
   for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
     [ -f "$xml" ] || continue
-    python3 "$ROOT/scripts/bind-gamepad.py" apply --emu cemu --xml "$xml" --force || true
+    python3 "$ROOT/scripts/bind-gamepad.py" apply --emu cemu --xml "$xml" --force \
+      --cemu-p1 gamepad || true
   done
   python3 "$ROOT/scripts/bind-gamepad.py" sdl-mapping --match "${PAD_MATCH:-Sunshine}" >"$SDLMAP" 2>/dev/null || true
   # Flatpak Cemu also reads this next to its config if the playbook path is hidden.

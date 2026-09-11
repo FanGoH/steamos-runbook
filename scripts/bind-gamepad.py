@@ -27,8 +27,8 @@ Examples:
   python3 scripts/bind-gamepad.py list
   python3 scripts/bind-gamepad.py status
   python3 scripts/bind-gamepad.py apply --emu all --pads js3,js4 --mode multi
-  python3 scripts/bind-gamepad.py apply --emu cemu --mode shared
-  python3 scripts/bind-gamepad.py cemu --match Thor
+  python3 scripts/bind-gamepad.py apply --emu cemu --mode shared --cemu-p1 pro
+  python3 scripts/bind-gamepad.py cemu --match Thor --cemu-p1 gamepad
   python3 scripts/bind-gamepad.py azahar --match Thor
 """
 from __future__ import annotations
@@ -276,31 +276,52 @@ def mux_muted() -> bool:
     return mux_mute_path().is_file()
 
 
+def normalize_cemu_p1(value: object) -> str:
+    raw = str(value or "gamepad").strip().lower().replace(" ", "_")
+    if raw in ("pro", "pro_controller", "wii_u_pro", "wii_u_pro_controller"):
+        return "pro"
+    return "gamepad"
+
+
+def cemu_p1_label(p1_type: str) -> str:
+    return "Wii U Pro Controller" if p1_type == "pro" else "Wii U GamePad"
+
+
 def load_mux_config() -> dict:
     path = mux_config_path()
+    empty = {"mode": "shared", "sources": [], "cemu_p1": "gamepad"}
     if not path.is_file():
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     if not isinstance(data, dict):
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     mode = str(data.get("mode") or "shared").lower()
     if mode not in ("shared", "multi"):
         mode = "shared"
     sources = data.get("sources") or []
     if not isinstance(sources, list):
         sources = []
-    return {"mode": mode, "sources": sources}
+    return {
+        "mode": mode,
+        "sources": sources,
+        "cemu_p1": normalize_cemu_p1(data.get("cemu_p1")),
+    }
 
 
-def write_mux_routing(mode: str, sources: list) -> None:
+def write_mux_routing(mode: str, sources: list, cemu_p1: str | None = None) -> None:
     if mode not in ("shared", "multi"):
         raise SystemExit(f"unknown mux mode {mode!r} (shared|multi)")
     path = mux_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"mode": mode, "sources": sources}
+    prev = load_mux_config()
+    payload = {
+        "mode": mode,
+        "sources": sources,
+        "cemu_p1": normalize_cemu_p1(cemu_p1 if cemu_p1 is not None else prev.get("cemu_p1")),
+    }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if mux_running():
         try:
@@ -702,6 +723,9 @@ def _pro_mappings(
     if template:
         return template
     ids = _mapping_ids(richest)
+    # GamePad maps include display 11. Do not reuse them as Pro.
+    if "11" in ids:
+        return _entries_from_pairs(CANONICAL_CEMU_PRO)
     if "7" in ids and "8" in ids:
         return richest
     return _entries_from_pairs(CANONICAL_CEMU_PRO)
@@ -1168,14 +1192,17 @@ def status_payload(
             "muted": mux_muted(),
             "mode": mux_cfg.get("mode") or "shared",
             "sources": mux_cfg.get("sources") or [],
+            "cemu_p1": mux_cfg.get("cemu_p1") or "gamepad",
             "sinks": [_pad_summary(s) for s in sinks],
             "service": MUX_SERVICE,
         },
+        "cemu_p1": mux_cfg.get("cemu_p1") or "gamepad",
         "emus": {
             "cemu": {
                 "running": cemu_running(),
                 "paths": [str(p) for p in cemu_paths],
                 "players": cemu_players,
+                "p1": "GamePad or Pro on controller0.xml (Emu Pads toggle). Dual-screen GamePad View needs GamePad.",
                 "p2": "Shared P1: last pad used. Multi: second selected pad → Wii U Pro in controller1.xml.",
             },
             "azahar": {
@@ -1223,10 +1250,13 @@ def apply_cemu_pads(
     ordered: list[dict[str, str]],
     *,
     force: bool,
+    p1_type: str = "gamepad",
 ) -> tuple[list[str], int, bool]:
     messages: list[str] = []
     rc = 0
     changed_any = False
+    p1_type = normalize_cemu_p1(p1_type)
+    p1_label = cemu_p1_label(p1_type)
     if not ordered:
         return messages, 2, False
     for path in paths:
@@ -1236,13 +1266,20 @@ def apply_cemu_pads(
             continue
         text = path.read_text()
         p1 = ordered[0]
-        new = patch_cemu_xml(text, cemu_uuid(p1), p1["name"], path)
+        if p1_type == "pro":
+            new = patch_cemu_pro_xml(text, cemu_uuid(p1), p1["name"], path)
+        else:
+            new = patch_cemu_xml(text, cemu_uuid(p1), p1["name"], path)
         changed = _write_changed(path, text, new, ".bak-bind-gamepad")
         changed_any = changed_any or changed
         if changed:
-            messages.append(f"Bound Cemu player 1 to {cemu_uuid(p1)} ({p1['name']}) in {path}")
+            messages.append(
+                f"Bound Cemu player 1 ({p1_label}) to {cemu_uuid(p1)} ({p1['name']}) in {path}"
+            )
         else:
-            messages.append(f"Cemu player 1 already {cemu_uuid(p1)} ({p1['name']}) in {path}")
+            messages.append(
+                f"Cemu player 1 already {p1_label} {cemu_uuid(p1)} ({p1['name']}) in {path}"
+            )
         if len(ordered) >= 2:
             p2 = ordered[1]
             p2_path = controller1_path(path)
@@ -1342,12 +1379,14 @@ def _emit_apply(
     messages: list[str],
     changed: bool = False,
     mode: str = "shared",
+    cemu_p1: str = "gamepad",
 ) -> int:
     payload = {
         "ok": rc == 0 or (rc == 2 and bool(ordered)),
         "rc": rc,
         "emu": emu,
         "mode": mode,
+        "cemu_p1": normalize_cemu_p1(cemu_p1),
         "pads": [_pad_summary(p) for p in ordered[:2]],
         "messages": messages,
         "changed": changed,
@@ -1372,9 +1411,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
             ordered=[],
             messages=[f"Unknown emu {emu!r}. Use cemu, azahar, eden, or all."],
         )
+    mux_cfg = load_mux_config()
     mode = (getattr(args, "mode", None) or "").strip().lower()
     if not mode:
-        mode = str(load_mux_config().get("mode") or "shared")
+        mode = str(mux_cfg.get("mode") or "shared")
     if mode not in ("shared", "multi"):
         return _emit_apply(
             rc=1,
@@ -1382,25 +1422,30 @@ def cmd_apply(args: argparse.Namespace) -> int:
             ordered=[],
             messages=[f"Unknown mux mode {mode!r}. Use shared or multi."],
         )
+    raw_p1 = getattr(args, "cemu_p1", None)
+    cemu_p1 = normalize_cemu_p1(raw_p1 if raw_p1 else mux_cfg.get("cemu_p1"))
     sysfs = Path(args.sysfs)
     skip_mux = os.environ.get("EMUPADS_MUX_SKIP_START") == "1" or str(sysfs) != str(INPUT_ROOT)
     if not skip_mux:
         ensure_mux_running()
     if getattr(args, "all_sources", False) or picked == []:
-        write_mux_routing(mode, [])
+        write_mux_routing(mode, [], cemu_p1=cemu_p1)
         messages_route = ["Mux routing: all host pads → " + ("shared P1" if mode == "shared" else "P1/P2")]
         picked_out: list[dict[str, str]] = []
     elif picked is None:
-        cfg = load_mux_config()
         if not mux_config_path().is_file():
-            write_mux_routing(mode, [])
+            write_mux_routing(mode, [], cemu_p1=cemu_p1)
             messages_route = ["Mux routing defaulted to all host pads (shared P1)" if mode == "shared" else "Mux routing defaulted to all host pads"]
         else:
-            write_mux_routing(mode, cfg.get("sources") or [])
+            write_mux_routing(mode, mux_cfg.get("sources") or [], cemu_p1=cemu_p1)
             messages_route = [f"Mux routing unchanged ({mode})"]
         picked_out = []
     else:
-        write_mux_routing(mode, mux_source_specs(picked[:2] if mode == "multi" else picked))
+        write_mux_routing(
+            mode,
+            mux_source_specs(picked[:2] if mode == "multi" else picked),
+            cemu_p1=cemu_p1,
+        )
         names = " + ".join(p["name"] for p in picked[:2])
         messages_route = [f"Mux routing {mode}: {names or 'all'}"]
         picked_out = picked
@@ -1425,7 +1470,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 messages.append("No Cemu controller0.xml found.")
                 rc = max(rc, 1)
                 continue
-            msgs, code, changed = apply_cemu_pads(paths, sinks, force=force)
+            msgs, code, changed = apply_cemu_pads(
+                paths, sinks, force=force, p1_type=cemu_p1
+            )
         elif name == "azahar":
             ini = getattr(args, "ini", None) if emu == "azahar" else None
             path = Path(ini) if ini else DEFAULT_AZAHAR_INI
@@ -1444,6 +1491,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         messages=messages,
         changed=changed_any,
         mode=mode,
+        cemu_p1=cemu_p1,
     )
 
 
@@ -1855,8 +1903,20 @@ def _self_test() -> int:
         msgs, code, changed = apply_cemu_pads([xml_path], [thor, odin], force=True)
         assert code == 0
         assert changed
+        assert "Wii U GamePad" in xml_path.read_text()
         assert (cemu_dir / "controller1.xml").is_file()
         assert "Wii U Pro Controller" in (cemu_dir / "controller1.xml").read_text()
+        pro_msgs, pro_code, pro_changed = apply_cemu_pads(
+            [xml_path], [thor], force=True, p1_type="pro"
+        )
+        assert pro_code == 0 and pro_changed
+        pro_p1 = ET.fromstring(xml_path.read_text())
+        assert pro_p1.findtext("type") == "Wii U Pro Controller"
+        pro_pairs = {
+            (e.findtext("mapping"), e.findtext("button"))
+            for e in pro_p1.find("controller").find("mappings").findall("entry")
+        }
+        assert ("11", "11") not in pro_pairs
         _write_js(
             root,
             "js8",
@@ -1897,7 +1957,13 @@ def _self_test() -> int:
         mux_cfg = Path(tmp) / "mux.json"
         os.environ["EMUPADS_MUX_CONFIG"] = str(mux_cfg)
         write_mux_routing("shared", [])
-        assert json.loads(mux_cfg.read_text())["mode"] == "shared"
+        saved = json.loads(mux_cfg.read_text())
+        assert saved["mode"] == "shared"
+        assert saved["cemu_p1"] == "gamepad"
+        write_mux_routing("shared", [], cemu_p1="pro")
+        assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
+        write_mux_routing("multi", [])
+        assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
         os.environ.pop("EMUPADS_MUX_CONFIG", None)
         from pad_profile import main as pad_profile_main
 
@@ -1931,6 +1997,12 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--xml", default=None, help="Cemu controller0.xml only (skip other trees)")
     p_apply.add_argument("--ini", default=None, help="Azahar or Eden qt-config.ini when --emu is one of those")
     p_apply.add_argument("--force", action="store_true", help="Do not warn if the emu is running")
+    p_apply.add_argument(
+        "--cemu-p1",
+        dest="cemu_p1",
+        default="",
+        help="Cemu player 1 type: gamepad (Wii U GamePad) or pro (Wii U Pro Controller)",
+    )
     p_apply.set_defaults(func=cmd_apply)
 
     p_wait = sub.add_parser("wait", help="Print the pad that receives the next button")
@@ -1958,6 +2030,12 @@ def main(argv: list[str] | None = None) -> int:
     p_cemu.add_argument("--timeout", type=float, default=20.0)
     p_cemu.add_argument("--xml", default=str(DEFAULT_CEMU_XML))
     p_cemu.add_argument("--force", action="store_true", help="Do not warn if Cemu is running")
+    p_cemu.add_argument(
+        "--cemu-p1",
+        dest="cemu_p1",
+        default="",
+        help="Cemu player 1 type: gamepad or pro",
+    )
     p_cemu.set_defaults(func=cmd_cemu)
 
     p_azahar = sub.add_parser("azahar", help="Bind Azahar to EmuPads P1 (and P2 in multi)")

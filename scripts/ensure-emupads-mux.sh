@@ -39,7 +39,7 @@ mkdir -p "/home/$STEAMOS_USER/.config/systemd/user" \
   "$ROOT/logs"
 
 if [ ! -f "$CONFIG" ]; then
-  printf '%s\n' '{"mode": "shared", "sources": []}' >"$CONFIG"
+  printf '%s\n' '{"mode": "shared", "sources": [], "cemu_p1": "gamepad"}' >"$CONFIG"
   echo "Wrote default $CONFIG (shared P1, every host pad)."
 fi
 

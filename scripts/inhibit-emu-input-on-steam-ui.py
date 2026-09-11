@@ -145,17 +145,17 @@ def term_pending(pid: int) -> bool:
 
 def steam_ui_up(emu_age_s: float = 0.0) -> bool:
     overlay = False
-    focused_steam = False
     for display in DISPLAYS:
         if overlay_on(display):
             overlay = True
-        if xprop_root(display, "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID:
-            focused_steam = True
     if overlay:
         return True
-    # qAM / Exit menu are FOCUSED_APP=769 without STEAM_OVERLAY. Wait until
-    # the emulator has been up so Launching (769 + 10x10 Cemu stub) is not
-    # SIGSTOP'd into the spinning logo.
+    # qAM / Exit are FOCUSED_APP=769 on HDMI / BPM (:0). :1 often stays 769
+    # after restore-steam-gamescope-focus.sh while Azahar/Cemu is focused on
+    # :0 — that is not Steam UI (SIGSTOP there freezes a fresh launch).
+    focused_steam = xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID
+    # Wait until the emulator has been up so Launching (769 + 10x10 Cemu stub)
+    # is not SIGSTOP'd into the spinning logo.
     return focused_steam and emu_age_s >= 8.0
 
 

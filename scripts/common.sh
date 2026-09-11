@@ -812,9 +812,8 @@ nic_wake_on() {
   ethtool "$nic" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}'
 }
 
-# Session gamescope X size (HDMI / :0 or :1). Headless :2 stays 1920x1080.
-# Hardcoding 1920x1080 on the TV window while HDMI is 4K makes Cemu/Azahar
-# shrink and fullscreen snap back — Steam's status bar resizes every tick.
+# One Xwayland's current size. Headless :2 is the GamePad virtual display
+# and must stay 1920x1080 — never pass :2 in here for TV layout.
 gamescope_session_size() {
   local display="${1:-:0}"
   local w h
@@ -825,6 +824,13 @@ gamescope_session_size() {
     return 0
   fi
   printf '1920 1080\n'
+}
+
+# Steam Big Picture lives on :0. After a 4K HDMI connect, :1 can sit at
+# 3840x2160 (Cemu fullscreen) while Steam stays 1920x1080 — that split is
+# the status-bar resize. TV windows follow :0. Never :2.
+gamescope_hdmi_ui_size() {
+  gamescope_session_size :0
 }
 
 x11_window_wh() {

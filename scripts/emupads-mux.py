@@ -19,6 +19,7 @@ import json
 import os
 import select
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -271,6 +272,70 @@ def forward_event(ui: UInput, ev, src=None) -> None:
         ui.write(ev.type, ev.code, value)
 
 
+_STEAM_UI_CACHE = (0.0, False)
+
+
+def xprop_cardinal(display: str, atom: str) -> str:
+    try:
+        out = subprocess.check_output(
+            ["xprop", "-display", display, "-root", atom],
+            timeout=0.2,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return ""
+    if "=" not in out:
+        return ""
+    return out.split("=", 1)[1].strip()
+
+
+def steam_ui_active(now: float | None = None) -> bool:
+    """Steam Home/Library/overlay/QAM — sinks must not drive that UI."""
+    global _STEAM_UI_CACHE
+    ts = time.monotonic() if now is None else now
+    cached_at, cached = _STEAM_UI_CACHE
+    if ts - cached_at < 0.25:
+        return cached
+    app = xprop_cardinal(":0", "GAMESCOPE_FOCUSED_APP")
+    overlay = xprop_cardinal(":0", "STEAM_OVERLAY")
+    blur = xprop_cardinal(":0", "GAMESCOPE_BLUR_MODE")
+    active = app == "769" or overlay in ("1", "0x1") or (blur.isdigit() and int(blur) != 0)
+    _STEAM_UI_CACHE = (ts, active)
+    return active
+
+
+def sink_event_reader(ui: UInput):
+    try:
+        path = ui.device.path if ui.device is not None else None
+    except AttributeError:
+        path = None
+    if not path:
+        return None
+    try:
+        return InputDevice(path)
+    except OSError:
+        return None
+
+
+def grab_sinks(readers: list, hide: bool, grabbed: list[bool]) -> None:
+    """EVIOCGRAB the sink event nodes so Steam cannot read them."""
+    for i, reader in enumerate(readers):
+        if reader is None:
+            continue
+        want = bool(hide)
+        if grabbed[i] == want:
+            continue
+        try:
+            if want:
+                reader.grab()
+            else:
+                reader.ungrab()
+            grabbed[i] = want
+        except OSError:
+            pass
+
+
 def request_reload(_signum=None, _frame=None) -> None:
     global _RELOAD
     _RELOAD = True
@@ -358,6 +423,8 @@ def loop() -> int:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     write_pid()
     sinks = [open_sink(0), open_sink(1)]
+    sink_readers = [sink_event_reader(ui) for ui in sinks]
+    sink_grabbed = [False, False]
     skip = {ui.device.path for ui in sinks if ui.device is not None}
     log(f"sinks {SINK_NAMES[0]} {SINK_NAMES[1]}")
     devices: list[InputDevice] = []
@@ -379,12 +446,14 @@ def loop() -> int:
                     devices = scan_devices(skip)
                 else:
                     devices = rescan_devices(devices, skip)
-            want_mute = mute_path().is_file()
+            steam_ui = steam_ui_active(now)
+            grab_sinks(sink_readers, steam_ui, sink_grabbed)
+            want_mute = mute_path().is_file() or steam_ui
             if want_mute and not muted:
                 for ui in sinks:
                     zero_sink(ui)
                 muted = True
-                log("muted (overlay/QAM)")
+                log("muted (Steam UI / overlay)")
             elif not want_mute and muted:
                 muted = False
                 log("unmuted")
@@ -435,6 +504,14 @@ def loop() -> int:
                     for ev in events:
                         forward_event(ui, ev, src=dev)
     finally:
+        grab_sinks(sink_readers, False, sink_grabbed)
+        for reader in sink_readers:
+            if reader is None:
+                continue
+            try:
+                reader.close()
+            except OSError:
+                pass
         for ui in sinks:
             try:
                 zero_sink(ui)
@@ -505,6 +582,9 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
+    global _STEAM_UI_CACHE
+    _STEAM_UI_CACHE = (time.monotonic(), True)
+    assert steam_ui_active() is True
 
     class Alive:
         def __init__(self, path):

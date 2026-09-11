@@ -19,7 +19,9 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - Bind Cemu/Azahar/Eden to **EmuPads P1/P2** only. The `wait-appear --match Thor` / `cemu --match Thor` lines below are wait-for-pad helpers, not XML bind targets.
 - Game Mode `apps.json` is **Desktop only**. Do not re-add **Cemu Dual-Screen** — Tender tiles own Cemu.
 - Azahar Steam Exit `--quit` must `timeout` `--paint` / xdotool or Steam sits on Exiting.
+- `--paint` must `setsid` the idle clock. Steam's reaper waits for every child; a clock started from `rom-launcher --quit` is the ALBW “Exiting…” hang (reaper still waiting on `sunshine-ds-bottom-screensaver.py`).
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
+- Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`).
 
 ## What must be true
 

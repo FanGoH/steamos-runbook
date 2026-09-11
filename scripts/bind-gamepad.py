@@ -224,6 +224,8 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
             continue
         if name in SINK_NAMES or name.startswith("EmuPads P"):
             continue
+        if vendor == SINK_VENDOR and product in SINK_PRODUCTS:
+            continue
         pad = {
             "js": js.parent.name,
             "name": name,

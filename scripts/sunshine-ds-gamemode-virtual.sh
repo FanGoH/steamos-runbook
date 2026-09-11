@@ -212,9 +212,12 @@ start_paint() {
     return 1
   fi
   # Isolated: inheriting WAYLAND_DISPLAY=gamescope-0 puts this on the TV.
-  nohup env -u WAYLAND_DISPLAY DISPLAY="$x11" \
-    python3 "$saver" --display "$x11" >>"$LOG" 2>&1 &
+  # setsid: Steam's reaper waits for every child. --paint from rom-launcher
+  # --quit used to leave this clock in the tile cgroup → "Exiting…".
+  setsid env -u WAYLAND_DISPLAY DISPLAY="$x11" \
+    python3 "$saver" --display "$x11" >>"$LOG" 2>&1 </dev/null &
   printf '%s\n' "$!" >"$PAINT_PIDFILE"
+  disown $! 2>/dev/null || true
   echo "Bottom screensaver pid $! on $x11 (idle clock; withdraws for ffplay)."
   present_idle_screensaver "$x11" || true
 }

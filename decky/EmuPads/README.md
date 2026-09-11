@@ -7,7 +7,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 ## Routing
 
 - Config: `~/.config/emupads/mux.json`
-- Mute: `$XDG_RUNTIME_DIR/emupads-mute` (overlay / QAM / Home / Library). Steam still reads the real pads.
+- Mute + grab: `$XDG_RUNTIME_DIR/emupads-mute` **or** Steam Home/Library/overlay/QAM (`FOCUSED_APP=769`). Sinks are hidden from Steam (EVIOCGRAB) and from the plugin pad list. Steam still reads the real Sunshine pad.
 - **Shared P1** (default): last pad that sent a press or stick is the only one copied (no analog mix).
 - **Multi**: first selected → P1, second → P2.
 - Skip Steam wrap `28de:11ff` when a Sunshine or physical pad is present (Steam’s curve stacked on SDL made Cemu sticks short).

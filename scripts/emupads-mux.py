@@ -96,6 +96,9 @@ def _abs_info(code: int) -> AbsInfo:
     return AbsInfo(value=0, min=-32768, max=32767, fuzz=16, flat=128, resolution=0)
 
 
+_ABS_DST = {code: _abs_info(code) for code in _ABS}
+
+
 def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: int) -> int:
     """Map a source axis sample onto the sink range (fixes 0–255 vs ±32767)."""
     if src_max == src_min:
@@ -245,14 +248,25 @@ def zero_sink(ui: UInput) -> None:
     ui.syn()
 
 
+_ABS_RANGE_CACHE: dict[tuple[str, int], tuple[int, int] | None] = {}
+
+
 def source_abs_range(dev, code: int) -> tuple[int, int] | None:
+    path = getattr(dev, "path", None) or ""
+    key = (path, code)
+    if key in _ABS_RANGE_CACHE:
+        return _ABS_RANGE_CACHE[key]
     try:
         info = dev.absinfo(code)
     except (OSError, AttributeError, KeyError):
+        _ABS_RANGE_CACHE[key] = None
         return None
     if info is None:
+        _ABS_RANGE_CACHE[key] = None
         return None
-    return int(info.min), int(info.max)
+    rng = (int(info.min), int(info.max))
+    _ABS_RANGE_CACHE[key] = rng
+    return rng
 
 
 def forward_event(ui: UInput, ev, src=None) -> None:
@@ -263,7 +277,7 @@ def forward_event(ui: UInput, ev, src=None) -> None:
         ui.write(ev.type, ev.code, ev.value)
         return
     if ev.type == ecodes.EV_ABS and ev.code in _ABS:
-        dst = _abs_info(ev.code)
+        dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
         if src_range is not None:
             value = scale_axis(ev.value, src_range[0], src_range[1], dst.min, dst.max)
@@ -273,21 +287,42 @@ def forward_event(ui: UInput, ev, src=None) -> None:
 
 
 _STEAM_UI_CACHE = (0.0, False)
+_STEAM_UI_ATOMS = (
+    "GAMESCOPE_FOCUSED_APP",
+    "STEAM_OVERLAY",
+    "GAMESCOPE_BLUR_MODE",
+)
 
 
-def xprop_cardinal(display: str, atom: str) -> str:
+def parse_xprop_atoms(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        name = line.split("(", 1)[0].split(":", 1)[0].strip()
+        if "=" in line:
+            out[name] = line.split("=", 1)[1].strip()
+        elif "not found" in line.lower():
+            out[name] = ""
+    return out
+
+
+def xprop_root_atoms(display: str, atoms: tuple[str, ...]) -> dict[str, str]:
     try:
         out = subprocess.check_output(
-            ["xprop", "-display", display, "-root", atom],
+            ["xprop", "-display", display, "-root", *atoms],
             timeout=0.2,
             stderr=subprocess.DEVNULL,
             text=True,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return ""
-    if "=" not in out:
-        return ""
-    return out.split("=", 1)[1].strip()
+        return {}
+    return parse_xprop_atoms(out)
+
+
+def steam_ui_from_props(props: dict[str, str]) -> bool:
+    app = props.get("GAMESCOPE_FOCUSED_APP", "")
+    overlay = props.get("STEAM_OVERLAY", "")
+    blur = props.get("GAMESCOPE_BLUR_MODE", "")
+    return app == "769" or overlay in ("1", "0x1") or (blur.isdigit() and int(blur) != 0)
 
 
 def steam_ui_active(now: float | None = None) -> bool:
@@ -297,10 +332,7 @@ def steam_ui_active(now: float | None = None) -> bool:
     cached_at, cached = _STEAM_UI_CACHE
     if ts - cached_at < 0.25:
         return cached
-    app = xprop_cardinal(":0", "GAMESCOPE_FOCUSED_APP")
-    overlay = xprop_cardinal(":0", "STEAM_OVERLAY")
-    blur = xprop_cardinal(":0", "GAMESCOPE_BLUR_MODE")
-    active = app == "769" or overlay in ("1", "0x1") or (blur.isdigit() and int(blur) != 0)
+    active = steam_ui_from_props(xprop_root_atoms(":0", _STEAM_UI_ATOMS))
     _STEAM_UI_CACHE = (ts, active)
     return active
 
@@ -391,6 +423,11 @@ def rescan_devices(devices: list[InputDevice], skip_paths: set[str]) -> list[Inp
             dev.close()
         except OSError:
             pass
+        path = getattr(dev, "path", None)
+        if path:
+            for key in list(_ABS_RANGE_CACHE):
+                if key[0] == path:
+                    _ABS_RANGE_CACHE.pop(key, None)
     have = {dev.path for dev in kept}
     for node in list_devices():
         if node in skip_paths or node in have:
@@ -431,78 +468,93 @@ def loop() -> int:
     cfg = load_config()
     last_scan = 0.0
     last_cfg_mtime = 0.0
+    last_house = 0.0
     active: list[str | None] = [None, None]
     muted = False
-    try:
-        while True:
-            now = time.monotonic()
-            mtime = CONFIG_PATH.stat().st_mtime if CONFIG_PATH.is_file() else 0.0
-            if _RELOAD or mtime != last_cfg_mtime or now - last_scan > 1.0:
-                _RELOAD = False
-                last_cfg_mtime = mtime
-                last_scan = now
-                cfg = load_config()
-                if not devices:
-                    devices = scan_devices(skip)
-                else:
-                    devices = rescan_devices(devices, skip)
-            steam_ui = steam_ui_active(now)
-            grab_sinks(sink_readers, steam_ui, sink_grabbed)
-            want_mute = mute_path().is_file() or steam_ui
-            if want_mute and not muted:
-                for ui in sinks:
-                    zero_sink(ui)
-                muted = True
-                log("muted (Steam UI / overlay)")
-            elif not want_mute and muted:
-                muted = False
-                log("unmuted")
+    selected: list[InputDevice] = []
+    fds: dict[int, InputDevice] = {}
+
+    def housekeep(now: float) -> None:
+        global _RELOAD
+        nonlocal cfg, devices, selected, fds, muted, last_scan, last_cfg_mtime
+        mtime = CONFIG_PATH.stat().st_mtime if CONFIG_PATH.is_file() else 0.0
+        if _RELOAD or mtime != last_cfg_mtime or now - last_scan > 1.0 or not devices:
+            _RELOAD = False
+            last_cfg_mtime = mtime
+            last_scan = now
+            cfg = load_config()
+            if not devices:
+                devices = scan_devices(skip)
+            else:
+                devices = rescan_devices(devices, skip)
             selected = selected_sources(cfg, devices)
             fds = {dev.fd: dev for dev in selected}
+        steam_ui = steam_ui_active(now)
+        grab_sinks(sink_readers, steam_ui, sink_grabbed)
+        want_mute = mute_path().is_file() or steam_ui
+        if want_mute and not muted:
+            for ui in sinks:
+                zero_sink(ui)
+            muted = True
+            log("muted (Steam UI / overlay)")
+        elif not want_mute and muted:
+            muted = False
+            log("unmuted")
+
+    try:
+        housekeep(time.monotonic())
+        last_house = time.monotonic()
+        while True:
             if not fds:
                 time.sleep(0.05)
+                housekeep(time.monotonic())
+                last_house = time.monotonic()
                 continue
             ready, _, _ = select.select(list(fds), [], [], 0.05)
-            if muted:
+            if ready and muted:
                 for fd in ready:
                     try:
                         for _ev in fds[fd].read():
                             pass
                     except OSError:
                         pass
-                continue
-            mode = cfg.get("mode") or "shared"
-            for fd in ready:
-                dev = fds[fd]
-                try:
-                    events = list(dev.read())
-                except OSError:
-                    continue
-                if mode == "multi":
-                    slot = None
-                    if len(selected) >= 1 and dev is selected[0]:
-                        slot = 0
-                    elif len(selected) >= 2 and dev is selected[1]:
-                        slot = 1
-                    if slot is None:
+            elif ready:
+                mode = cfg.get("mode") or "shared"
+                for fd in ready:
+                    dev = fds[fd]
+                    try:
+                        events = list(dev.read())
+                    except OSError:
                         continue
-                    ui = sinks[slot]
+                    if mode == "multi":
+                        slot = None
+                        if len(selected) >= 1 and dev is selected[0]:
+                            slot = 0
+                        elif len(selected) >= 2 and dev is selected[1]:
+                            slot = 1
+                        if slot is None:
+                            continue
+                        ui = sinks[slot]
+                        if any(is_activity(ev) for ev in events):
+                            if active[slot] not in (None, dev.path):
+                                zero_sink(ui)
+                            active[slot] = dev.path
+                        if active[slot] == dev.path:
+                            for ev in events:
+                                forward_event(ui, ev, src=dev)
+                        continue
+                    ui = sinks[0]
                     if any(is_activity(ev) for ev in events):
-                        if active[slot] not in (None, dev.path):
+                        if active[0] not in (None, dev.path):
                             zero_sink(ui)
-                        active[slot] = dev.path
-                    if active[slot] == dev.path:
+                        active[0] = dev.path
+                    if active[0] == dev.path:
                         for ev in events:
                             forward_event(ui, ev, src=dev)
-                    continue
-                ui = sinks[0]
-                if any(is_activity(ev) for ev in events):
-                    if active[0] not in (None, dev.path):
-                        zero_sink(ui)
-                    active[0] = dev.path
-                if active[0] == dev.path:
-                    for ev in events:
-                        forward_event(ui, ev, src=dev)
+            now = time.monotonic()
+            if not ready or now - last_house >= 0.25:
+                housekeep(now)
+                last_house = now
     finally:
         grab_sinks(sink_readers, False, sink_grabbed)
         for reader in sink_readers:
@@ -583,6 +635,14 @@ def self_test() -> int:
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
     global _STEAM_UI_CACHE
+    parsed = parse_xprop_atoms(
+        "GAMESCOPE_FOCUSED_APP(CARDINAL) = 769\n"
+        "STEAM_OVERLAY:  not found.\n"
+        "GAMESCOPE_BLUR_MODE(CARDINAL) = 0\n"
+    )
+    assert parsed["GAMESCOPE_FOCUSED_APP"] == "769"
+    assert steam_ui_from_props(parsed) is True
+    assert steam_ui_from_props({"GAMESCOPE_FOCUSED_APP": "2896033129"}) is False
     _STEAM_UI_CACHE = (time.monotonic(), True)
     assert steam_ui_active() is True
 

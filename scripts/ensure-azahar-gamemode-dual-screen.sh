@@ -5,15 +5,21 @@
 # Standalone Flatpak org.azahar_emu.Azahar (not RetroDECK azahar-launcher).
 # Steam overlay: reaper SteamLaunch with the game shortcut AppId, tag the
 # Primary Window STEAM_GAME, and a focus watcher that yields HDMI when
-# STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up.
+# STEAM_OVERLAY=1 (FOCUSED_APP=769). QAM is Steam Quick Access (`...`),
+# not 769: Steam blurs the game (`GAMESCOPE_BLUR_MODE`) and leaves
+# FOCUSED_APP on Azahar. Do not raise Primary over that panel.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
 # ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors
 # without restarting Azahar (needed after kms --start recreates :2).
 # --attach waits for an already-launching Azahar (no SteamLaunch).
-# Tender 3DS Play while :48200 is BUSY execs this script from rom-launcher
-# (standalone Flatpak, not RetroDECK azahar-launcher -f).
+# --quit stops Azahar + reaper + mirror (Steam Exit cannot SIGTERM a
+# reaper whose parent is systemd --user, which is how the playbook launches).
+# Tender 3DS Play while :48200 is BUSY runs this script from rom-launcher
+# (standalone Flatpak, not RetroDECK azahar-launcher -f) and waits for
+# Azahar so Steam Exit / tile end can --quit. Paint :2 only after azahar
+# is gone; --paint hops out of Steam's reaper via systemd-run.
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
 
@@ -24,6 +30,8 @@ load_env "$ROOT"
 setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# Steam tile LD_PRELOAD breaks xdotool/xprop (ELFCLASS32) and floods the log.
+unset LD_PRELOAD LD_PRELOAD_32 LD_PRELOAD_64
 LOG="${ROOT}/logs/azahar-gamemode-ds.log"
 MIRROR_PIDFILE="${ROOT}/logs/azahar-gamemode-pad-mirror.pid"
 FOCUS_PIDFILE="${ROOT}/logs/azahar-gamemode-focus.pid"
@@ -31,7 +39,7 @@ PAINT_PIDFILE="${SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE:-$ROOT/logs/sunshine-ds-g
 CEMU_MIRROR_PIDFILE="${ROOT}/logs/cemu-gamemode-pad-mirror.pid"
 STEAM_CLIENT_ID=769
 AZAHAR_INI="${AZAHAR_INI:-/home/${STEAMOS_USER:-deck}/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini}"
-ROM="${AZAHAR_ROM:-/home/${STEAMOS_USER:-deck}/emulation/3ds/games/Super Mario 3D Land/Super Mario 3D Land (USA) (En,Fr,Es).3ds}"
+ROM="${AZAHAR_ROM:-/home/${STEAMOS_USER:-deck}/retrodeck/roms/n3ds/Super Mario 3D Land (USA) (En,Fr,Es).3ds}"
 APPID="${AZAHAR_STEAM_APPID:-2577949069}"
 PAD_MATCH="${AZAHAR_PAD_MATCH:-Odin}"
 TV_DISPLAY="${CEMU_TV_DISPLAY:-:0}"
@@ -47,16 +55,18 @@ usage() {
 }
 
 DO_STOP=0
+DO_QUIT=0
 DO_MIRROR_ONLY=0
 DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --quit) DO_QUIT=1 ;;
     --mirror-only) DO_MIRROR_ONLY=1 ;;
     --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop|--mirror-only|--attach]" >&2
+      echo "usage: $0 [--stop|--mirror-only|--attach|--quit]" >&2
       exit 2
       ;;
   esac
@@ -130,17 +140,28 @@ stop_focus_watch() {
 }
 
 stop_azahar() {
-  bash "$ROOT/scripts/sunshine-app-stop.sh" azahar || true
-  local pid cmd
+  timeout 4 bash "$ROOT/scripts/sunshine-app-stop.sh" azahar || true
+  local pid cmd i
   for pid in $(ps -eo pid=,comm= | awk '$2=="reaper"{print $1}'); do
     cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *"AppId=${APPID}"*)
+      *"AppId=${APPID}"*|*"org.azahar_emu.Azahar"*)
         echo "Stopping Azahar SteamLaunch reaper pid $pid."
         kill "$pid" 2>/dev/null || true
         ;;
     esac
   done
+  i=0
+  while [ "$i" -lt 20 ] && azahar_running; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if azahar_running; then
+    echo "Force-killing leftover azahar."
+    pkill -x azahar 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -x azahar 2>/dev/null || true
+  fi
 }
 
 write_azahar_layout() {
@@ -183,18 +204,16 @@ print("Wrote Azahar separate-windows layout in", path)
 PY
 }
 
-bind_odin() {
-  if python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match "$PAD_MATCH" --force; then
-    return 0
-  fi
-  echo "No pad matched ${PAD_MATCH}; trying Odin2 then Sunshine."
-  python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match Odin2 --force \
-    || python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match Sunshine --force \
-    || return 1
+bind_azahar() {
+  python3 "$ROOT/scripts/bind-gamepad.py" apply --emu azahar --ini "$AZAHAR_INI" --force || return 1
 }
 
 find_wid() {
-  local needle="$1" d id name
+  # $1 caption needle, $2 varname for xid. Sets TV_DISPLAY in this shell.
+  # Do not capture stdout — $(find_wid) drops TV_DISPLAY so x11grab uses :0
+  # for a :1 xid (Thor bottom stays the idle clock).
+  local needle="$1" dest="$2" d id name
+  printf -v "$dest" '%s' ""
   for d in "$TV_DISPLAY" :1 :0; do
     [ -n "$d" ] || continue
     for id in $(DISPLAY="$d" xdotool search --name "$needle" 2>/dev/null || true); do
@@ -202,7 +221,7 @@ find_wid() {
       case "$name" in
         *"$needle"*)
           TV_DISPLAY="$d"
-          printf '%s\n' "$id"
+          printf -v "$dest" '%s' "$id"
           return 0
           ;;
       esac
@@ -211,8 +230,8 @@ find_wid() {
   return 1
 }
 
-find_primary_wid() { find_wid 'Primary Window'; }
-find_secondary_wid() { find_wid 'Secondary Window'; }
+find_primary_wid() { find_wid 'Primary Window' PRIMARY_WID; }
+find_secondary_wid() { find_wid 'Secondary Window' SECONDARY_WID; }
 
 wait_azahar() {
   local i=0
@@ -229,7 +248,7 @@ wait_azahar() {
 wait_game_windows() {
   local i=0
   while [ "$i" -lt 60 ]; do
-    if [ -n "$(find_primary_wid || true)" ] && [ -n "$(find_secondary_wid || true)" ]; then
+    if find_primary_wid && find_secondary_wid; then
       return 0
     fi
     sleep 1
@@ -272,6 +291,25 @@ steam_overlay_active() {
   return 1
 }
 
+# Steam Quick Access Menu (`...`). Game stays FOCUSED_APP; gamescope blurs it.
+steam_qam_active() {
+  local mode
+  command -v xprop >/dev/null 2>&1 || return 1
+  mode="$(DISPLAY="${TV_DISPLAY:-:0}" xprop -root GAMESCOPE_BLUR_MODE 2>/dev/null | awk -F'= ' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')"
+  [ -n "${mode:-}" ] && [ "$mode" != "0" ]
+}
+
+# keepAbove on Primary covers the QAM side panel.
+lower_azahar_for_steam_ui() {
+  local wid
+  find_primary_wid || true
+  find_secondary_wid || true
+  for wid in "${PRIMARY_WID:-}" "${SECONDARY_WID:-}"; do
+    [ -n "${wid:-}" ] || continue
+    DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
+  done
+}
+
 focused_app() {
   DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
 }
@@ -285,64 +323,68 @@ set_gamescope_focus() {
 }
 
 present_primary() {
-  local tv
-  tv="$(find_primary_wid || true)"
-  if [ -z "${tv:-}" ]; then
-    return 1
-  fi
-  DISPLAY="$TV_DISPLAY" xdotool windowmap "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$tv" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$tv" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$tv" windowactivate "$tv" windowraise "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$tv" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-  set_gamescope_focus "$tv" "$APPID"
+  find_primary_wid || return 1
+  DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowsize "$PRIMARY_WID" 1920 1080 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$PRIMARY_WID" windowactivate "$PRIMARY_WID" windowraise "$PRIMARY_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$PRIMARY_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+  set_gamescope_focus "$PRIMARY_WID" "$APPID"
 }
 
 watch_azahar_focus_loop() {
-  # HDMI reclaim must not fight Steam overlay. sunshine-ds Hold-Select sets
-  # STEAM_OVERLAY=1 and FOCUSED_APP=769. Re-activating Azahar every tick hides it.
-  local overlay=0 steam_ticks=0 app
+  # Overlay: Hold-Select → STEAM_OVERLAY=1 + FOCUSED_APP=769.
+  # QAM: `...` → GAMESCOPE_BLUR_MODE!=0, FOCUSED_APP stays the game.
+  # Raising Primary (keepAbove) covers that side panel.
+  local ui=0 app
   while azahar_running; do
     app="$(focused_app)"
     if steam_overlay_active; then
-      steam_ticks=0
-      if [ "$overlay" -eq 0 ]; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
         echo "STEAM_OVERLAY=1 — FOCUSED_APP=$STEAM_CLIENT_ID gfx=$APPID"
       fi
-      overlay=1
-    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      overlay=1
-      steam_ticks=$((steam_ticks + 1))
-      if [ "$steam_ticks" -ge 6 ]; then
-        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Azahar Primary"
-        present_primary || true
-        steam_ticks=0
-        overlay=0
+      ui=1
+    elif steam_qam_active; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
+        echo "Steam QAM (GAMESCOPE_BLUR_MODE) — yielding (no raise, leave FOCUSED_APP)"
       fi
+      ui=1
+    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID — yielding to Steam (no reclaim)"
+      fi
+      ui=1
     elif [ "$app" != "$APPID" ]; then
-      steam_ticks=0
-      overlay=0
+      ui=0
       present_primary || true
     else
-      steam_ticks=0
-      overlay=0
+      ui=0
     fi
     sleep 0.4
   done
   echo "Azahar exited — stopping bottom mirror so :2 can screensaver again."
   stop_mirror
-  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
 start_focus_watch() {
+  local pid
   stop_focus_watch
+  bash "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   present_primary || true
+  # Survive this script exiting (Tender tile) and Steam cgroup teardown.
+  # Without disown the watcher dies before Azahar, so :2 never --paint.
   watch_azahar_focus_loop >>"$LOG" 2>&1 &
-  printf '%s\n' "$!" >"$FOCUS_PIDFILE"
-  echo "Azahar gamescope focus pid $!"
+  pid=$!
+  disown "$pid" 2>/dev/null || true
+  printf '%s\n' "$pid" >"$FOCUS_PIDFILE"
+  echo "Azahar gamescope focus pid $pid"
 }
 
 place_secondary_for_capture() {
@@ -398,11 +440,27 @@ minimize_library() {
   done
 }
 
+if [ "$DO_QUIT" -eq 1 ]; then
+  stop_focus_watch
+  stop_azahar
+  stop_mirror
+  timeout 2 bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  # Do not paint while azahar is still up. The clock used to start inside
+  # Steam's reaper (setsid is not enough) and Steam sat on Exiting.
+  if azahar_running; then
+    echo "Quit Azahar requested but azahar is still running; not painting :2."
+  else
+    timeout 8 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  fi
+  echo "Quit Azahar (SteamLaunch reaper + windows). Steam Exit can finish."
+  exit 0
+fi
+
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
-  echo "Left Azahar running (Steam Exit / Moonlight Quit still owns the game)."
+  echo "Left Azahar running (use --quit or sunshine-app-stop.sh to end the game)."
   exit 0
 fi
 
@@ -419,8 +477,11 @@ if [ "$DO_MIRROR_ONLY" -eq 1 ]; then
     echo "No Azahar Primary/Secondary windows."
     exit 2
   fi
-  SECONDARY_WID="$(find_secondary_wid)"
-  echo "Remirroring Secondary=$SECONDARY_WID onto $PAD_DISPLAY (no Azahar restart)."
+  find_secondary_wid || {
+    echo "No Azahar Secondary Window."
+    exit 2
+  }
+  echo "Remirroring Secondary=$SECONDARY_WID from $TV_DISPLAY onto $PAD_DISPLAY (no Azahar restart)."
   start_mirror "$SECONDARY_WID"
   present_primary || true
   start_focus_watch
@@ -432,8 +493,7 @@ if [ "$DO_ATTACH" -eq 1 ]; then
   focus_pid="$(cat "$FOCUS_PIDFILE" 2>/dev/null || true)"
   if [ -n "${focus_pid:-}" ] && [ -d "/proc/$focus_pid" ]; then
     echo "Azahar dual-stream already watching pid $focus_pid; remirroring only."
-    SECONDARY_WID="$(find_secondary_wid || true)"
-    if [ -n "${SECONDARY_WID:-}" ]; then
+    if find_secondary_wid; then
       start_mirror "$SECONDARY_WID"
     fi
     present_primary || true
@@ -447,15 +507,15 @@ if [ "$DO_ATTACH" -eq 1 ]; then
     echo "Azahar did not start (attach). See $LOG"
     exit 1
   fi
-  bind_odin || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
+  bind_azahar || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
   echo "Waiting for Primary/Secondary windows (attach)..."
   if ! wait_game_windows; then
     echo "No Azahar game windows (attach). Watching for exit so :2 can screensaver."
     start_focus_watch
     exit 2
   fi
-  PRIMARY_WID="$(find_primary_wid)"
-  SECONDARY_WID="$(find_secondary_wid)"
+  find_primary_wid
+  find_secondary_wid
   echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID on $TV_DISPLAY"
   minimize_library
   start_mirror "$SECONDARY_WID"
@@ -475,11 +535,15 @@ ensure_virtual_display || {
 }
 
 write_azahar_layout || exit 1
-bind_odin || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
+need_azahar_restart=0
+if azahar_running && ! grep -qi '01e3' "$AZAHAR_INI" 2>/dev/null; then
+  need_azahar_restart=1
+fi
+bind_azahar || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
 
-# Azahar reads GUID at start. Restart so Odin (not Thor) is player 1.
-if azahar_running; then
-  echo "Restarting Azahar so the Odin GUID is picked up."
+# Azahar reads GUID at start. Restart only when switching onto EmuPads P1.
+if [ "$need_azahar_restart" -eq 1 ]; then
+  echo "Restarting Azahar so EmuPads P1 is picked up."
   stop_focus_watch
   stop_mirror
   stop_azahar
@@ -507,8 +571,10 @@ export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except)"
+SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except-sinks)"
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$SDL_EXCEPT"
+export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 
 if [ ! -x "$REAPER" ]; then
   echo "Missing Steam reaper at $REAPER"
@@ -527,6 +593,9 @@ nohup "$REAPER" SteamLaunch AppId="$APPID" -- \
     --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 \
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
+    --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$SDL_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003" \
     --unset-env=WAYLAND_DISPLAY \
     org.azahar_emu.Azahar \
     "$ROM" >>"$LOG" 2>&1 &
@@ -545,9 +614,9 @@ if ! wait_game_windows; then
   exit 2
 fi
 
-PRIMARY_WID="$(find_primary_wid)"
-SECONDARY_WID="$(find_secondary_wid)"
-echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID"
+find_primary_wid
+find_secondary_wid
+echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID on $TV_DISPLAY"
 minimize_library
 start_mirror "$SECONDARY_WID"
 start_focus_watch

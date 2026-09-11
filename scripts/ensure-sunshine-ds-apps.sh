@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Idempotently add Cemu / Azahar dual-screen apps to sunshine-ds-dev apps.json.
+# Idempotently add Azahar dual-screen to sunshine-ds-dev apps.json.
+# Do not add Cemu Dual-Screen — Tender tiles own Cemu.
 # Do not write Decky Flatpak apps.json (:47989).
 set -euo pipefail
 
@@ -100,14 +101,18 @@ def spec(name, cmd, undo_target, image_path):
         ],
     }
 
-cemu_icon = install_icon("cemu.png", "info.cemu.Cemu.png")
 azahar_icon = install_icon("azahar.png", "org.azahar_emu.Azahar.png")
 wanted = {
-    "Cemu Dual-Screen": spec("Cemu Dual-Screen", cemu_cmd, "cemu", cemu_icon),
     "Azahar Dual-Screen": spec("Azahar Dual-Screen", azahar_cmd, "azahar", azahar_icon),
 }
+drop_names = {"Cemu Dual-Screen"}
 
 changed = False
+before = len(apps)
+apps[:] = [app for app in apps if not (isinstance(app, dict) and app.get("name") in drop_names)]
+if len(apps) != before:
+    changed = True
+    print("Removed Cemu Dual-Screen from", path, "(Tender tiles own Cemu).")
 by_name = {app.get("name"): i for i, app in enumerate(apps) if isinstance(app, dict)}
 for name, spec in wanted.items():
     if name in by_name:

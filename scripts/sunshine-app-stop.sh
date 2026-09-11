@@ -19,4 +19,6 @@ case "$target" in
 esac
 
 stop_matching_comm "$matcher"
+# Dead emulator + leftover :1 FOCUSED_APP=<shortcut> is Steam stuck on Exiting.
+bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
 exit 0

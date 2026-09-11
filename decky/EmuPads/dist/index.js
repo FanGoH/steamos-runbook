@@ -21,6 +21,7 @@ const definePlugin = (fn) => {
 
 const getStatus = callable("get_status");
 const applyBinds = callable("apply");
+const setMuxMode = callable("set_mode");
 
 function padKind(pad) {
   if (pad?.sunshine === "true" || /sunshine/i.test(pad?.name || "")) return "Sunshine";
@@ -35,7 +36,8 @@ function padKind(pad) {
 function playerLine(players, slot) {
   const hit = (players || []).find((p) => p.slot === slot);
   if (!hit) return "—";
-  return hit.name || hit.guid || hit.uuid || "bound";
+  const name = hit.name || hit.guid || hit.uuid || "bound";
+  return hit.type ? `${name} (${hit.type})` : name;
 }
 
 function mergeOrder(prev, pads) {
@@ -51,16 +53,32 @@ function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [order, setOrder] = SP_REACT.useState([]);
   const [included, setIncluded] = SP_REACT.useState({});
+  const [mode, setMode] = SP_REACT.useState("shared");
+  const [cemuP1, setCemuP1] = SP_REACT.useState("gamepad");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const modeTouched = SP_REACT.useRef(false);
 
-  const refresh = SP_REACT.useCallback(async () => {
+  const refresh = SP_REACT.useCallback(async (opts) => {
     try {
       const next = await getStatus();
       setStatus(next);
       setError(next?.ok === false ? next.message || "status failed" : "");
-      const pads = next?.pads || [];
+      const rawPads = next?.pads || [];
+      const realPads = rawPads.filter((p) => p.steam !== "true");
+      const pads = realPads.length ? realPads : rawPads;
       setOrder((prev) => mergeOrder(prev, pads));
+      if (
+        (!modeTouched.current || opts?.syncMode) &&
+        (next?.mux?.mode === "multi" || next?.mux?.mode === "shared")
+      ) {
+        setMode(next.mux.mode);
+      }
+      if (next?.mux?.cemu_p1 === "pro" || next?.mux?.cemu_p1 === "gamepad") {
+        setCemuP1(next.mux.cemu_p1);
+      } else if (next?.cemu_p1 === "pro" || next?.cemu_p1 === "gamepad") {
+        setCemuP1(next.cemu_p1);
+      }
       setIncluded((prev) => {
         const out = { ...prev };
         for (const pad of pads) {
@@ -98,6 +116,20 @@ function Content() {
     });
   };
 
+  const persistMode = async (nextMode) => {
+    modeTouched.current = true;
+    setMode(nextMode);
+    try {
+      const result = await setMuxMode(nextMode);
+      if (result?.ok === false) {
+        return;
+      }
+      await refresh({ syncMode: true });
+    } catch (_err) {
+      // set_mode is missing until Decky reloads main.py; the check still sticks.
+    }
+  };
+
   const apply = async (emu) => {
     if (busy) return;
     if (!selected.length) {
@@ -109,19 +141,21 @@ function Content() {
       return;
     }
     setBusy(true);
-    const pads = selected.map((p) => p.js).join(",");
+    const allOn =
+      orderedPads.length > 0 && orderedPads.every((p) => included[p.js] !== false);
+    const pads = allOn ? "" : selected.map((p) => p.js).join(",");
     try {
-      const result = await applyBinds(emu, pads);
+      const result = await applyBinds(emu, pads, mode, cemuP1);
       const body = (result?.messages || [result?.message || ""])
         .filter(Boolean)
         .join(" ")
         .slice(0, 220);
       toaster.toast({
         title: result?.ok === false ? "Bind failed" : "Applied",
-        body: body || `${emu}: ${selected.map((p) => p.name).join(" → ")}`,
+        body: body || `${emu}: ${mode} ${selected.map((p) => p.name).join(" → ")}`,
         duration: result?.ok === false ? 7000 : 5000,
       });
-      await refresh();
+      await refresh({ syncMode: true });
     } catch (err) {
       toaster.toast({
         title: "Bind failed",
@@ -146,7 +180,11 @@ function Content() {
               SP_JSX.jsx("div", { children: `Player 1: ${playerLine(players, 0)}` }),
               SP_JSX.jsx("div", { children: `Player 2: ${playerLine(players, 1)}` }),
               emu.running
-                ? SP_JSX.jsx("div", { children: "Running — restart after apply." })
+                ? SP_JSX.jsx("div", {
+                    children: /EmuPads/.test(playerLine(players, 0))
+                      ? "Running — routing is live (no restart)."
+                      : "Running — restart after the first sink bind.",
+                  })
                 : null,
               extra
                 ? SP_JSX.jsx("div", { style: { opacity: 0.7, fontSize: "0.85em" }, children: extra })
@@ -154,6 +192,25 @@ function Content() {
             ],
           }),
         }),
+        key === "cemu"
+          ? SP_JSX.jsx(DFL.PanelSectionRow, {
+              children: SP_JSX.jsxs("div", {
+                style: { display: "flex", gap: 8, flexWrap: "wrap" },
+                children: [
+                  SP_JSX.jsx(DFL.ButtonItem, {
+                    layout: "below",
+                    onClick: () => setCemuP1("gamepad"),
+                    children: cemuP1 === "gamepad" ? "GamePad ✓" : "GamePad",
+                  }),
+                  SP_JSX.jsx(DFL.ButtonItem, {
+                    layout: "below",
+                    onClick: () => setCemuP1("pro"),
+                    children: cemuP1 === "pro" ? "Pro Controller ✓" : "Pro Controller",
+                  }),
+                ],
+              }),
+            })
+          : null,
         SP_JSX.jsx(DFL.PanelSectionRow, {
           children: SP_JSX.jsx(DFL.ButtonItem, {
             layout: "below",
@@ -176,7 +233,36 @@ function Content() {
               style: { opacity: 0.75, fontSize: "0.88em" },
               children: [
                 error ||
-                  `Order is player 1, then player 2. Sunshine pads keep the client name (${selected.length} selected).`,
+                  (mode === "multi"
+                    ? `Multi: first selected is P1, second is P2 (${selected.length} selected).`
+                    : `Shared P1: last pad used wins. Every host pad is a source (${selected.length} selected).`),
+              ],
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { opacity: 0.75, fontSize: "0.88em" },
+              children: [
+                `Mux ${status?.mux?.running ? "up" : "down"} · ${status?.mux?.mode || mode}${
+                  status?.mux?.muted ? " · muted" : ""
+                }`,
+              ],
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { display: "flex", gap: 8, flexWrap: "wrap" },
+              children: [
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  onClick: () => persistMode("shared"),
+                  children: mode === "shared" ? "Shared P1 ✓" : "Shared P1",
+                }),
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  onClick: () => persistMode("multi"),
+                  children: mode === "multi" ? "Multiplayer ✓" : "Multiplayer",
+                }),
               ],
             }),
           }),
@@ -242,7 +328,11 @@ function Content() {
           }),
         ],
       }),
-      emuBlock("cemu", "Cemu", status?.emus?.cemu?.p2),
+      emuBlock(
+        "cemu",
+        "Cemu",
+        [status?.emus?.cemu?.p1, status?.emus?.cemu?.p2].filter(Boolean).join(" ")
+      ),
       emuBlock("azahar", "Azahar", status?.emus?.azahar?.p2),
       emuBlock("eden", "Eden", status?.emus?.eden?.p2),
     ],

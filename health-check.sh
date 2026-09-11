@@ -455,6 +455,20 @@ else
 ./scripts/ensure-emu-pads-decky.sh
 EOF
 fi
+if systemctl --user is-enabled emupads-mux.service >/dev/null 2>&1; then
+  ok "emupads-mux.service enabled"
+else
+  warn "emupads-mux.service not enabled"
+  record_manual "Enable EmuPads mux" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-emupads-mux.sh
+EOF
+fi
+if grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then
+  ok "EmuPads P1 sink is up"
+else
+  warn "EmuPads P1 sink missing"
+fi
 echo
 
 echo "[Switch 2 controllers]"

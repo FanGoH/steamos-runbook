@@ -16,6 +16,10 @@
 # and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
 # --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
 # --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
+# --quit stops Cemu + reaper + mirror. Do not SIGSTOP on Steam Exit
+# (that holds SIGTERM and makes Exiting… wait). SIGTERM pending or
+# SIGTERM pending quits on the first tick. Home/Library (FOCUSED_APP=769)
+# only mutes EmuPads sinks — do not treat that as Exit.
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -60,16 +64,18 @@ usage() {
 }
 
 DO_STOP=0
+DO_QUIT=0
 DO_PLACE=0
 DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --quit) DO_QUIT=1 ;;
     --place-only) DO_PLACE=1 ;;
     --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop] [--place-only] [--attach]" >&2
+      echo "usage: $0 [--stop] [--place-only] [--attach] [--quit]" >&2
       exit 2
       ;;
   esac
@@ -133,6 +139,20 @@ stop_focus_watch() {
   rm -f "$FOCUS_PIDFILE"
 }
 
+stop_cemu() {
+  bash "$ROOT/scripts/sunshine-app-stop.sh" cemu || true
+  local pid cmd
+  for pid in $(ps -eo pid=,comm= | awk '$2=="reaper"{print $1}'); do
+    cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *"AppId=${APPID}"*|*"%EMULATOR_CEMU%"*|*"info.cemu.Cemu"*)
+        echo "Stopping Cemu SteamLaunch reaper pid $pid."
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
 stop_guide_watch() {
   local pid
   pid="$(cat "$GUIDE_PIDFILE" 2>/dev/null || true)"
@@ -166,18 +186,12 @@ start_focus_nudge() {
 
 bind_cemu_pads() {
   local xml
-  # Moonlight's Sunshine pad often appears after /launch. Binding before
-  # that keeps a stale Cemu uuid index (1_<guid> vs live 0_<guid>) and
-  # player 0 has no device. Same wait-appear as desktop dual-screen.
   python3 "$ROOT/scripts/bind-gamepad.py" wait-appear --match "${PAD_MATCH:-Sunshine}" --timeout 20 \
     >/dev/null || true
   for xml in "$RD_CONTROLLER" "$STANDALONE_CONTROLLER"; do
     [ -f "$xml" ] || continue
-    if [ "${PAD_MATCH}" = "Sunshine" ] || [ "${PAD_MATCH}" = "auto" ] || [ -z "${PAD_MATCH}" ]; then
-      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
-    elif ! python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match "$PAD_MATCH" --force; then
-      python3 "$ROOT/scripts/bind-gamepad.py" cemu --xml "$xml" --match Sunshine --force || true
-    fi
+    python3 "$ROOT/scripts/bind-gamepad.py" apply --emu cemu --xml "$xml" --force \
+      --cemu-p1 gamepad || true
   done
   python3 "$ROOT/scripts/bind-gamepad.py" sdl-mapping --match "${PAD_MATCH:-Sunshine}" >"$SDLMAP" 2>/dev/null || true
   # Flatpak Cemu also reads this next to its config if the playbook path is hidden.
@@ -227,14 +241,18 @@ PY
 
 find_pad_wid() {
   # Off-screen GamePad (1920,0 on a 1920-wide :0) is mapped but not "visible".
-  # Steam RunGame often puts Cemu on :1; do not assume TV_DISPLAY=:0.
+  # Steam RunGame / Tender tiles often put Cemu on :1. Sets PAD_WID and
+  # TV_DISPLAY in *this* shell. Do not capture stdout — $(find_pad_wid) is a
+  # subshell, so TV_DISPLAY=:1 is discarded and x11grab looks on :0.0 for a
+  # :1 xid (Can't find window; Thor bottom stays the Tk clock).
   local d wid
+  PAD_WID=""
   for d in "$TV_DISPLAY" :1 :0; do
     [ -n "$d" ] || continue
     wid="$(DISPLAY="$d" xdotool search --name 'GamePad' 2>/dev/null | head -1 || true)"
     if [ -n "${wid:-}" ]; then
       TV_DISPLAY="$d"
-      printf '%s\n' "$wid"
+      PAD_WID="$wid"
       return 0
     fi
   done
@@ -286,20 +304,24 @@ hold_steam_launch_logo() {
 }
 
 nudge_cemu_into_gamescope() {
-  local id name
-  for id in $(DISPLAY="$TV_DISPLAY" xdotool search --class Cemu 2>/dev/null || true) \
-            $(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true); do
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$id" 2>/dev/null || true)"
-    case "$name" in
-      GamePad*) continue ;;
-    esac
-    DISPLAY="$TV_DISPLAY" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-    DISPLAY="$TV_DISPLAY" xdotool windowmap "$id" 2>/dev/null || true
-    if cemu_window_is_stub "$TV_DISPLAY" "$id"; then
-      continue
-    fi
-    set_gamescope_focus "$id" "$APPID"
-    return 0
+  local d id name
+  for d in "$TV_DISPLAY" :1 :0; do
+    [ -n "$d" ] || continue
+    for id in $(DISPLAY="$d" xdotool search --class Cemu 2>/dev/null || true) \
+              $(DISPLAY="$d" xdotool search --name 'Cemu' 2>/dev/null || true); do
+      name="$(DISPLAY="$d" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        GamePad*) continue ;;
+      esac
+      DISPLAY="$d" xprop -id "$id" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+      DISPLAY="$d" xdotool windowmap "$id" 2>/dev/null || true
+      if cemu_window_is_stub "$d" "$id"; then
+        continue
+      fi
+      TV_DISPLAY="$d"
+      set_gamescope_focus "$id" "$APPID"
+      return 0
+    done
   done
   DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$APPID" 2>/dev/null || true
   DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
@@ -309,12 +331,10 @@ nudge_cemu_into_gamescope() {
 }
 
 wait_pad_wid() {
-  local i=0 wid
+  local i=0
   while [ "$i" -lt 90 ]; do
     nudge_cemu_into_gamescope
-    wid="$(find_pad_wid || true)"
-    if [ -n "${wid:-}" ]; then
-      printf '%s\n' "$wid"
+    if find_pad_wid; then
       return 0
     fi
     sleep 1
@@ -336,26 +356,33 @@ place_pad_for_capture() {
 }
 
 find_tv_wid() {
-  local id name
-  for id in $(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu 2.6' 2>/dev/null || true); do
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$id" 2>/dev/null || true)"
-    case "$name" in
-      GamePad*) continue ;;
-      Cemu\ 2.6*)
-        printf '%s\n' "$id"
-        return 0
-        ;;
-    esac
-  done
-  for id in $(DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true); do
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$id" 2>/dev/null || true)"
-    case "$name" in
-      GamePad*|Cemu_relwithdebinfo) continue ;;
-      Cemu*)
-        printf '%s\n' "$id"
-        return 0
-        ;;
-    esac
+  # Sets TV_WID and TV_DISPLAY in this shell. Same subshell rule as find_pad_wid.
+  local d id name
+  TV_WID=""
+  for d in "$TV_DISPLAY" :1 :0; do
+    [ -n "$d" ] || continue
+    for id in $(DISPLAY="$d" xdotool search --name 'Cemu 2.6' 2>/dev/null || true); do
+      name="$(DISPLAY="$d" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        GamePad*) continue ;;
+        Cemu\ 2.6*)
+          TV_DISPLAY="$d"
+          TV_WID="$id"
+          return 0
+          ;;
+      esac
+    done
+    for id in $(DISPLAY="$d" xdotool search --name 'Cemu' 2>/dev/null || true); do
+      name="$(DISPLAY="$d" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        GamePad*|Cemu_relwithdebinfo) continue ;;
+        Cemu*)
+          TV_DISPLAY="$d"
+          TV_WID="$id"
+          return 0
+          ;;
+      esac
+    done
   done
   return 1
 }
@@ -381,6 +408,14 @@ steam_overlay_active() {
   return 1
 }
 
+# Steam Quick Access Menu (`...`). Game stays FOCUSED_APP; gamescope blurs it.
+steam_qam_active() {
+  local mode
+  command -v xprop >/dev/null 2>&1 || return 1
+  mode="$(DISPLAY="${TV_DISPLAY:-:0}" xprop -root GAMESCOPE_BLUR_MODE 2>/dev/null | awk -F'= ' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')"
+  [ -n "${mode:-}" ] && [ "$mode" != "0" ]
+}
+
 focused_app() {
   DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
 }
@@ -394,19 +429,15 @@ set_gamescope_focus() {
 }
 
 present_cemu_tv() {
-  local tv
-  tv="$(find_tv_wid || true)"
-  if [ -z "${tv:-}" ]; then
-    return 1
-  fi
-  DISPLAY="$TV_DISPLAY" xdotool windowmap "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$tv" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$tv" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$tv" windowactivate "$tv" windowraise "$tv" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$tv" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-  set_gamescope_focus "$tv" "$APPID"
+  find_tv_wid || return 1
+  DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowsize "$TV_WID" 1920 1080 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
+  set_gamescope_focus "$TV_WID" "$APPID"
 }
 
 find_ffplay_wid() {
@@ -432,16 +463,14 @@ present_virtual_gamepad() {
 }
 
 present_dual_layout() {
-  local pad
-  pad="$(find_pad_wid || true)"
-  if [ -n "${pad:-}" ]; then
-    place_pad_for_capture "$pad"
+  if find_pad_wid; then
+    place_pad_for_capture "$PAD_WID"
   fi
   present_cemu_tv || true
   if ! present_virtual_gamepad; then
-    if [ -n "${pad:-}" ]; then
-      echo "ffplay missing on $PAD_DISPLAY; restarting GamePad mirror"
-      start_mirror "$pad"
+    if [ -n "${PAD_WID:-}" ]; then
+      echo "ffplay missing on $PAD_DISPLAY; restarting GamePad mirror from $TV_DISPLAY"
+      start_mirror "$PAD_WID"
     else
       return 1
     fi
@@ -488,17 +517,19 @@ watch_cemu_focus_loop() {
         echo "STEAM_OVERLAY=1 — FOCUSED_APP=$STEAM_CLIENT_ID gfx=$APPID"
       fi
       overlay=1
-    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      # Guide / Exit often lands on 769 before STEAM_OVERLAY=1. Wait ~2s
-      # before treating it as BPM stealing the picture.
-      overlay=1
-      steam_ticks=$((steam_ticks + 1))
-      if [ "$steam_ticks" -ge 6 ]; then
-        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Cemu dual-screen"
-        present_dual_layout || true
-        steam_ticks=0
-        overlay=0
+    elif steam_qam_active; then
+      steam_ticks=0
+      if [ "$overlay" -eq 0 ]; then
+        echo "Steam QAM (GAMESCOPE_BLUR_MODE) — yielding (no raise)"
       fi
+      overlay=1
+    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      # Guide / Exit. Do not reclaim — that steals overlay/QAM.
+      steam_ticks=0
+      if [ "$overlay" -eq 0 ]; then
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID — yielding to Steam (no reclaim)"
+      fi
+      overlay=1
     elif [ "$app" != "$APPID" ]; then
       steam_ticks=0
       overlay=0
@@ -521,6 +552,7 @@ watch_cemu_focus_loop() {
 start_focus_watch() {
   local pid
   stop_focus_watch
+  bash "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   present_dual_layout || true
   watch_cemu_focus_loop >>"$LOG" 2>&1 &
   pid=$!
@@ -570,6 +602,19 @@ start_mirror() {
   done
 }
 
+if [ "$DO_QUIT" -eq 1 ]; then
+  stop_focus_watch
+  stop_guide_watch
+  stop_focus_nudge
+  stop_cemu
+  stop_mirror
+  rm -f "$DS_WANT" "$SDLMAP"
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  echo "Quit Cemu (SteamLaunch reaper + windows). Steam Exit can finish."
+  exit 0
+fi
+
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
@@ -578,7 +623,7 @@ if [ "$DO_STOP" -eq 1 ]; then
   rm -f "$DS_WANT" "$SDLMAP"
   hold_steam_launch_logo
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
-  echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
+  echo "Left Cemu running (use --quit or sunshine-app-stop.sh to end the game)."
   exit 0
 fi
 
@@ -627,7 +672,7 @@ if [ "$DO_ATTACH" -eq 1 ]; then
   bind_cemu_pads
   write_rd_geometry || true
   echo "Waiting for GamePad View on $TV_DISPLAY (attach)..."
-  if ! PAD_WID="$(wait_pad_wid)"; then
+  if ! wait_pad_wid; then
     echo "No GamePad View window (attach). Watching for Cemu exit so :2 can screensaver."
     start_focus_watch
     exit 2
@@ -706,7 +751,7 @@ else
 fi
 
 echo "Waiting for GamePad View on $TV_DISPLAY..."
-if ! PAD_WID="$(wait_pad_wid)"; then
+if ! wait_pad_wid; then
   stop_focus_nudge
   echo "No GamePad View window. Cemu may still be on HDMI only. See $LOG"
   DISPLAY="$TV_DISPLAY" xdotool search --name 'Cemu' 2>/dev/null || true

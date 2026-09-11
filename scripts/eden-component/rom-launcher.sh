@@ -99,12 +99,19 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_JOYSTICK_HIDAPI=0
     export SDL_HIDAPI_JOYSTICK=0
     unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
+    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
-    if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
+    if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+      python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu eden --force >/dev/null 2>&1 || true
+    elif [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
     echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2
+    if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+      "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
+    fi
     # RetroDECK does not copy the cart into RAM. Same inode, bind-mounted.
     # RSS is Eden: global 8GB guest DRAM + cart working set. Pin 4GB
     # (Engage's custom 4GB was ignored via use_global=true).
@@ -222,6 +229,12 @@ done
 # Flatpak Separate Windows + ffplay onto :2. Replace the tile when :48200
 # is streaming the second screen. Local Play (kms FREE) stays RetroDECK.
 if [ "$is_azahar" -eq 1 ]; then
+  unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+  export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+  export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+  if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+    python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu azahar --force >/dev/null 2>&1 || true
+  fi
   stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
   azahar_ds="$PLAYBOOK/scripts/ensure-azahar-gamemode-dual-screen.sh"
   if [ -x "$stream_chk" ] && [ -x "$azahar_ds" ] && "$stream_chk"; then
@@ -229,12 +242,37 @@ if [ "$is_azahar" -eq 1 ]; then
       echo "rom-launcher: :48200 second screen BUSY but no 3DS dump in argv" >&2
     else
       echo "rom-launcher: :48200 second screen BUSY — standalone Azahar dual-screen $azahar_rom" >&2
-      exec env \
+      if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+        "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
+      fi
+      azahar_quit() {
+        timeout 8 bash "$azahar_ds" --quit >/dev/null 2>&1 || true
+      }
+      trap azahar_quit EXIT INT TERM
+      env \
         AZAHAR_ROM="$azahar_rom" \
         AZAHAR_PAD_MATCH="${AZAHAR_PAD_MATCH:-Thor}" \
         AZAHAR_STEAM_APPID="${SteamAppId:-${AZAHAR_STEAM_APPID:-2577949069}}" \
         "$azahar_ds"
+      while pgrep -x azahar >/dev/null 2>&1; do
+        sleep 1
+      done
+      azahar_quit
+      trap - EXIT INT TERM
+      # Paint only after Azahar is confirmed gone. --paint systemd-runs
+      # outside Steam's reaper; starting the clock from --quit used to
+      # leave "Exiting…" up (Cemu execs, so its watcher paints later).
+      if ! pgrep -x azahar >/dev/null 2>&1; then
+        timeout 8 bash "$PLAYBOOK/scripts/sunshine-ds-gamemode-virtual.sh" --paint >/dev/null 2>&1 || true
+      fi
+      exit 0
     fi
+  fi
+fi
+
+if [ "$is_cemu" -eq 1 ] || [ "$is_azahar" -eq 1 ] || [ "$is_retrodeck" -eq 1 ]; then
+  if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+    "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   fi
 fi
 

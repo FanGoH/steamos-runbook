@@ -13,6 +13,8 @@ if ! python3 "$ROOT/scripts/bind-gamepad.py" self-test >/dev/null; then
   exit 1
 fi
 
+"$ROOT/scripts/ensure-emupads-mux.sh" || true
+
 SRC="$ROOT/decky/EmuPads"
 if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/index.js" ]; then
   echo "Missing plugin files under $SRC"
@@ -40,6 +42,16 @@ fi
 if [ -w "$PARENT" ]; then
   copy_plugin
   echo "Installed Emu Pads to $PLUGIN_DEST"
+  exit 0
+fi
+
+# ~/homebrew/plugins is often root:root while copied files are deck:deck.
+if [ -w "$PLUGIN_DEST/main.py" ] && [ -w "$PLUGIN_DEST/dist/index.js" ]; then
+  cp -a "$SRC/main.py" "$PLUGIN_DEST/main.py"
+  cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
+  [ -w "$PLUGIN_DEST/plugin.json" ] && cp -a "$SRC/plugin.json" "$PLUGIN_DEST/plugin.json"
+  [ -w "$PLUGIN_DEST/package.json" ] && cp -a "$SRC/package.json" "$PLUGIN_DEST/package.json"
+  echo "Updated writable Emu Pads files in $PLUGIN_DEST"
   exit 0
 fi
 

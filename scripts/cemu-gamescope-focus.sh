@@ -49,6 +49,9 @@ if [ -n "${old:-}" ] && [ -d "/proc/$old" ] && [ "$old" != "$$" ]; then
   sleep 0.05
 fi
 printf '%s\n' "$$" >"$PIDFILE"
+if [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+  /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh >/dev/null 2>&1 || true
+fi
 
 cemu_window_is_stub() {
   local d="$1" id="$2" w h cls

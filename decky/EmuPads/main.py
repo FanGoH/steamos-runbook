@@ -122,24 +122,58 @@ class Plugin:
             data["pads"] = []
         return data
 
-    async def apply(self, emu: str = "all", pads: str = "", **kwargs: object) -> dict:
+    async def set_mode(self, mode: str = "shared", **kwargs: object) -> dict:
+        if kwargs:
+            mode = str(kwargs.get("mode", mode) or mode)
+        script = _bind_py()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        mode = (mode or "shared").strip().lower()
+        if mode not in ("shared", "multi"):
+            return {"ok": False, "message": f"Unknown mode {mode}"}
+        try:
+            proc = _run_as_deck(["python3", script, "set-mode", "--mode", mode], timeout=10)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "bind-gamepad set-mode timed out"}
+        return _json_from(proc)
+
+    async def apply(
+        self,
+        emu: str = "all",
+        pads: str = "",
+        mode: str = "shared",
+        cemu_p1: str = "",
+        **kwargs: object,
+    ) -> dict:
         if kwargs:
             emu = str(kwargs.get("emu", emu) or emu)
             pads = str(kwargs.get("pads", pads) or pads)
+            mode = str(kwargs.get("mode", mode) or mode)
+            cemu_p1 = str(kwargs.get("cemu_p1", cemu_p1) or cemu_p1)
         script = _bind_py()
         if not os.path.isfile(script):
             return {"ok": False, "message": f"Missing {script}"}
         emu = (emu or "all").strip().lower()
         pads = (pads or "").strip()
-        if not pads:
-            return {"ok": False, "message": "No pads selected.", "rc": 2}
+        mode = (mode or "shared").strip().lower()
+        cemu_p1 = (cemu_p1 or "").strip().lower().replace(" ", "_")
+        if cemu_p1 in ("pro_controller", "wii_u_pro", "wii_u_pro_controller"):
+            cemu_p1 = "pro"
+        if mode not in ("shared", "multi"):
+            return {"ok": False, "message": f"Unknown mode {mode}"}
         if emu not in ("all", "cemu", "azahar", "eden"):
             return {"ok": False, "message": f"Unknown emu {emu}"}
+        if cemu_p1 and cemu_p1 not in ("gamepad", "pro"):
+            return {"ok": False, "message": f"Unknown Cemu P1 type {cemu_p1}"}
+        cmd = ["python3", script, "apply", "--emu", emu, "--force", "--mode", mode]
+        if cemu_p1:
+            cmd.extend(["--cemu-p1", cemu_p1])
+        if pads:
+            cmd.extend(["--pads", pads])
+        else:
+            cmd.append("--all-sources")
         try:
-            proc = _run_as_deck(
-                ["python3", script, "apply", "--emu", emu, "--pads", pads, "--force"],
-                timeout=25,
-            )
+            proc = _run_as_deck(cmd, timeout=25)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "bind-gamepad apply timed out"}
         data = _json_from(proc)

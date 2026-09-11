@@ -42,8 +42,10 @@ stop_matching_comm() {
     return 0
   fi
   kill "${pids[@]}" 2>/dev/null || true
+  # Event-ish: poll /proc, SIGKILL after ~0.3s. A 3s polite wait is what
+  # made Steam Exiting… feel stuck after --quit.
   i=0
-  while [ "$i" -lt 15 ]; do
+  while [ "$i" -lt 3 ]; do
     leftover=0
     for existing in "${pids[@]}"; do
       if kill -0 "$existing" 2>/dev/null; then
@@ -51,7 +53,7 @@ stop_matching_comm() {
       fi
     done
     [ "$leftover" -eq 0 ] && return 0
-    sleep 0.2
+    sleep 0.1
     i=$((i + 1))
   done
   echo "Force-killing leftover $matcher"

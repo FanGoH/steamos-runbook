@@ -14,7 +14,29 @@ cp .env.example .env
 ./health-check.sh
 ```
 
-## After SteamOS update
+## Reboot vs SteamOS update (Game Mode dual-stream)
+
+**Reboot (Game Mode, the usual login):** `/home` stays. User units come back with `gamescope-session`:
+
+- `steamos-sunshine-ds-gamemode.service` + virtual helper → `sunshine-ds-kms` on **`:48200`**, idle clock on headless `:2`
+- `emupads-mux.service` → EmuPads P1/P2 (`~/.config/emupads/mux.json` routing is unchanged)
+- Decky Sunshine **`:47989`** also comes back (HDMI-only). Dual-stream is the **white** Moonlight tile on `:48200`, not Decky
+- Desktop sunshine-ds **`:48100`** stays down (Plasma only)
+
+Then: Thor/Odin Moonlight → `:48200` → Desktop. Tender Play while that host is `BUSY` is the dual-screen path (Cemu windowed GamePad grab, Azahar standalone). You do not re-pair, re-bind, or re-copy dumps. If `:48200` is down after a reboot:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# :2 already up:
+./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
+# cold (no :2):
+./scripts/ensure-sunshine-ds-gamemode.sh --start
+./scripts/ensure-emupads-mux.sh
+```
+
+Do **not** switch Game Mode ↔ Desktop to “fix” capture. Do **not** `--start` kms while `:2` is already up.
+
+**SteamOS update:** `/` can reset (udev, sudoers, enabled system units, pacman). `/home` usually stays (playbook, mux.json, pairings, ROMs, Decky plugins, user systemd units). Restore:
 
 ```bash
 cd ~/steamos-playbook
@@ -22,27 +44,25 @@ git pull
 ./post-update.sh
 ```
 
-`post-update.sh` restores services, then runs `health-check.sh` (the verification checklist) and prints failures / manual actions at the end.
+`post-update.sh` re-enables the Game Mode kms unit (`--install-service`), the mux, Eden/Tender wrap, Decky Sunshine, and prints `sudo` lines when `~/homebrew/plugins` is root-owned or `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` was wiped. Then `./health-check.sh` (already run at the end). Follow any printed manual actions (Emu Pads copy, `decky-romm-sync/bin/rom-launcher` restore, setcap sudoers). Tender plugin updates also overwrite `rom-launcher` — same `ensure-eden-component.sh` step.
 
-`post-update.sh` restores when needed:
+Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
-- pacman keyrings (`archlinux` + `holo`)
-- `sshd`
-- `wol.service` / Wake-on-LAN on `STEAMOS_NIC_INTERFACE`
-- OpenRGB udev rules + user service + SDK device rescan (same as UI “Rescan devices”)
-- Sunshine (Decky-owned; Pulse dir chmod 755 so bwrap can start; path unit starts Sunshine if GameStream is still down; waits for PluginLoader so boot does not hit systemd start-limit)
-- Gear Lever Flatpak (AppImage manager; installs to `/home`)
-- Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
-- Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
-- Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
-- RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
+`post-update.sh` also restores, when needed:
+
+- Game Mode `:48200` boot unit (`--install-service`) + EmuPads mux
+- pacman keyrings (`archlinux` + `holo`), `sshd`, WOL, OpenRGB udev
+- Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
+- Gear Lever, Cursor Agent worker, Switch 2 BLE bridge
+- Eden/Tender wrap, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 
 Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
-- Emu Pads Decky plugin (list/reorder/apply Cemu Azahar Eden) when `~/homebrew/plugins` is root-owned
+- Emu Pads / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
+- `sudoers.d/zzz-sunshine-ds-kms-setcap` after an update wiped `/etc`
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
@@ -78,15 +98,16 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
-| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
-| `scripts/bind-gamepad.py` | List pads; bind Cemu/Azahar/Eden (`status` / `apply --emu … --pads jsN,jsM`); `profile` prints `GAMESTREAM_PAD_PROFILE` |
-| `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (list/reorder/apply Cemu Azahar Eden). `~/homebrew/plugins` may need sudo |
-| `decky/EmuPads/` | Emu Pads plugin source (`main.py` + `dist/index.js`) |
+| `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
+| `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
+| `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
+| `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-tender-ds`): Tender Play while streaming `--attach`s windowed GamePad; or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` onto `:2`. Exit kills leftover x11grab then `--paint` |
-| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`. Tender 3DS Play while streaming execs this (not RetroDECK). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-11-gamemode-tender-ds`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2`; or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` onto `:2`. Exit `--quit`s immediately; leftover x11grab then `--paint` |
+| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`. Tender 3DS Play while streaming **runs** this (do not `exec`; wait for `azahar` then `--quit`/`--paint`). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
@@ -102,7 +123,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-10-gamemode-tender-ds`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-11-gamemode-tender-ds`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

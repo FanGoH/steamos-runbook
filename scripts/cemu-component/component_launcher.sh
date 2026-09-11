@@ -31,17 +31,15 @@ if [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
   fi
 fi
 
-# Steam hides every Xbox ID, including Sunshine's ghost pad. Allow the
-# virtual pad (the wrapped held controller) plus Xbox / Switch Pro so a
-# Moonlight-only session can still bind Sunshine when Steam virtual is gone.
+# Emulators bind EmuPads P1/P2. Mux copies Sunshine / local / Steam pads.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
-# Sunshine always injects a 1209:0003 mouse. Cemu lists it as player-0 and
-# GamePad sticks go there (inverted Y). IGNORE_DEVICES_EXCEPT does not hide
-# joysticks; blacklist the mouse on both hints.
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+# Sunshine always injects a 1209:0003 mouse. EXCEPT hides it from GameController
+# but not from the joystick list unless blacklist-except is honored.
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # gamescope-session exports GAMESCOPE_DISPLAY_DISABLED=1, which leaves
 # Cemu UnMapped (spinning Steam logo). Always clear it.
@@ -81,7 +79,6 @@ fi
 
 # Dual-stream only when the launcher exports CEMU_GAMEMODE_DS=1.
 if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
-  export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x1209/0x0003"
   unset ENABLE_GAMESCOPE_WSI
   export SDL_VIDEODRIVER=x11
   unset LD_PRELOAD
@@ -104,11 +101,29 @@ fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"
 patcher="$here/patch-cemu-input.py"
-# Game Mode dual-stream already bound the Sunshine pad as Wii U GamePad.
-# The Eden pick order prefers Steam virtual 28de:11ff and would undo that.
-if [ "${CEMU_GAMEMODE_DS:-}" != 1 ] && [ -f "$ini" ] && [ -f "$patcher" ]; then
-  python3 "$patcher" "$ini" || true
+# Tile decides P1 type: GamePad when the second screen is streamed
+# (CEMU_GAMEMODE_DS=1), Pro otherwise. Cemu reads type at start.
+playbook="${STEAMOS_PLAYBOOK:-/home/deck/steamos-playbook}"
+bind_py="$playbook/scripts/bind-gamepad.py"
+if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
+  cemu_p1=gamepad
+else
+  cemu_p1=pro
 fi
+bind_cemu_p1() {
+  if [ -f "$bind_py" ]; then
+    if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null; then
+      flatpak-spawn --host --env="CEMU_GAMEMODE_DS=${CEMU_GAMEMODE_DS:-}" \
+        python3 "$bind_py" apply --emu cemu --xml "$ini" --force --cemu-p1 "$cemu_p1"
+    else
+      python3 "$bind_py" apply --emu cemu --xml "$ini" --force --cemu-p1 "$cemu_p1"
+    fi
+    return
+  fi
+  if [ -f "$patcher" ]; then
+    python3 "$patcher" "$ini" || true
+  fi
+}
 
 settings="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/settings.xml"
 if [ -f "$settings" ]; then
@@ -161,6 +176,11 @@ if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
     /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
 fi
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
+  && [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+  flatpak-spawn --host /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh \
+    >/dev/null 2>&1 &
+fi
 
 # Tender already launched Cemu. --attach waits for GamePad View, ffplay
 # onto :2, and a focus watcher that paints the idle clock on exit.
@@ -189,8 +209,12 @@ cd "$cemu_data"
 cemu_log="${CEMU_WRAPPER_LOG:-/home/deck/steamos-playbook/logs/cemu-wrapper.log}"
 mkdir -p "$(dirname "$cemu_log")"
 {
-  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} args:${args[*]} ----"
+  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} P1=${cemu_p1:-} args:${args[*]} ----"
   echo "GTK_IM_MODULE=${GTK_IM_MODULE:-} GDK_BACKEND=${GDK_BACKEND:-} WSI=${ENABLE_GAMESCOPE_WSI:-} DISABLED=${GAMESCOPE_DISPLAY_DISABLED:-}"
 } >>"$cemu_log"
+
+if [ -f "$ini" ]; then
+  bind_cemu_p1 >>"$cemu_log" 2>&1 || true
+fi
 
 exec /app/retrodeck/components/cemu/component_launcher.sh "${args[@]}" >>"$cemu_log" 2>&1

@@ -139,6 +139,14 @@ host_exec_eden() {
   exec "${spawn[@]}" "$img" "$@"
 }
 
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
+  && [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+  flatpak-spawn --host /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh \
+    >/dev/null 2>&1 || true
+elif [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+  /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh >/dev/null 2>&1 || true
+fi
+
 if [ "$eden_rom_bytes" -gt "$HOST_EDEN_MIN_BYTES" ]; then
   echo "Eden: dump ${eden_rom_bytes} bytes, open fullscreen UI (no -g)" >&2
   if [ -n "${FLATPAK_ID:-}" ] \

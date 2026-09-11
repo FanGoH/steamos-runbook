@@ -105,6 +105,9 @@ if [ "$is_retrodeck" -eq 1 ] \
       python3 "$PATCHER" "$ini" || true
     fi
     echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2
+    if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+      "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
+    fi
     # RetroDECK does not copy the cart into RAM. Same inode, bind-mounted.
     # RSS is Eden: global 8GB guest DRAM + cart working set. Pin 4GB
     # (Engage's custom 4GB was ignored via use_global=true).
@@ -229,12 +232,21 @@ if [ "$is_azahar" -eq 1 ]; then
       echo "rom-launcher: :48200 second screen BUSY but no 3DS dump in argv" >&2
     else
       echo "rom-launcher: :48200 second screen BUSY — standalone Azahar dual-screen $azahar_rom" >&2
+      if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+        "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
+      fi
       exec env \
         AZAHAR_ROM="$azahar_rom" \
         AZAHAR_PAD_MATCH="${AZAHAR_PAD_MATCH:-Thor}" \
         AZAHAR_STEAM_APPID="${SteamAppId:-${AZAHAR_STEAM_APPID:-2577949069}}" \
         "$azahar_ds"
     fi
+  fi
+fi
+
+if [ "$is_cemu" -eq 1 ] || [ "$is_azahar" -eq 1 ] || [ "$is_retrodeck" -eq 1 ]; then
+  if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
+    "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   fi
 fi
 

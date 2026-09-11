@@ -161,6 +161,11 @@ if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
   flatpak-spawn --host --env="CEMU_STEAM_APPID=$appid" --env="CEMU_FOCUS_SECONDS=30" \
     /home/deck/steamos-playbook/scripts/cemu-gamescope-focus.sh >/dev/null 2>&1 &
 fi
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null \
+  && [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+  flatpak-spawn --host /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh \
+    >/dev/null 2>&1 &
+fi
 
 # Tender already launched Cemu. --attach waits for GamePad View, ffplay
 # onto :2, and a focus watcher that paints the idle clock on exit.

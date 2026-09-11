@@ -364,6 +364,9 @@ eden_bin_running() {
 watch_eden_focus() {
   prefer_game_xwayland
   log "watch start display=${DISPLAY:-} atom=$(atom_display)"
+  if [ -x /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh ]; then
+    /home/deck/steamos-playbook/scripts/start-emu-steam-ui-inhibit.sh >/dev/null 2>&1 || true
+  fi
   F11_SENT=0
   local waited=0 presented=0 saw_retrodeck=0 overlay=0 app id
   if retrodeck_session_alive; then

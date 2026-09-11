@@ -339,6 +339,7 @@ watch_azahar_focus_loop() {
 
 start_focus_watch() {
   stop_focus_watch
+  bash "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   present_primary || true
   watch_azahar_focus_loop >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$FOCUS_PIDFILE"

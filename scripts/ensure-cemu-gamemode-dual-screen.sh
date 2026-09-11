@@ -521,6 +521,7 @@ watch_cemu_focus_loop() {
 start_focus_watch() {
   local pid
   stop_focus_watch
+  bash "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   present_dual_layout || true
   watch_cemu_focus_loop >>"$LOG" 2>&1 &
   pid=$!

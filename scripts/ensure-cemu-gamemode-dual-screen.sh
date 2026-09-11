@@ -16,6 +16,8 @@
 # and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
 # --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
 # --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
+# --quit stops Cemu + reaper + mirror. SIGSTOP on Exit hangs Steam
+# Exiting… when SIGTERM is pending or the reaper is not a Steam child.
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail
@@ -60,16 +62,18 @@ usage() {
 }
 
 DO_STOP=0
+DO_QUIT=0
 DO_PLACE=0
 DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --quit) DO_QUIT=1 ;;
     --place-only) DO_PLACE=1 ;;
     --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop] [--place-only] [--attach]" >&2
+      echo "usage: $0 [--stop] [--place-only] [--attach] [--quit]" >&2
       exit 2
       ;;
   esac
@@ -131,6 +135,20 @@ stop_focus_watch() {
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$FOCUS_PIDFILE"
+}
+
+stop_cemu() {
+  bash "$ROOT/scripts/sunshine-app-stop.sh" cemu || true
+  local pid cmd
+  for pid in $(ps -eo pid=,comm= | awk '$2=="reaper"{print $1}'); do
+    cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *"AppId=${APPID}"*|*"%EMULATOR_CEMU%"*|*"info.cemu.Cemu"*)
+        echo "Stopping Cemu SteamLaunch reaper pid $pid."
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
 }
 
 stop_guide_watch() {
@@ -581,6 +599,19 @@ start_mirror() {
   done
 }
 
+if [ "$DO_QUIT" -eq 1 ]; then
+  stop_focus_watch
+  stop_guide_watch
+  stop_focus_nudge
+  stop_cemu
+  stop_mirror
+  rm -f "$DS_WANT" "$SDLMAP"
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  echo "Quit Cemu (SteamLaunch reaper + windows). Steam Exit can finish."
+  exit 0
+fi
+
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
@@ -589,7 +620,7 @@ if [ "$DO_STOP" -eq 1 ]; then
   rm -f "$DS_WANT" "$SDLMAP"
   hold_steam_launch_logo
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
-  echo "Left Cemu running (Steam Exit / Moonlight Quit still owns the game)."
+  echo "Left Cemu running (use --quit or sunshine-app-stop.sh to end the game)."
   exit 0
 fi
 

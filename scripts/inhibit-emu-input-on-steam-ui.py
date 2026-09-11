@@ -10,8 +10,8 @@ Steam UI:
 - QAM (Quick Access Menu, ``...``): ``GAMESCOPE_BLUR_MODE`` != 0 on HDMI ``:0``.
   FOCUSED_APP stays the game — do not treat 769 as QAM.
 - Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been up.
-  Overlay/QAM only SIGSTOP. Exit **quits** Azahar — playbook SteamLaunch is
-  a systemd --user child, so Steam never delivers SIGTERM.
+  Overlay/QAM only SIGSTOP. Exit **quits** Azahar or Cemu — playbook
+  SteamLaunch may not be a Steam child, and SIGSTOP leaves SIGTERM pending.
 
 Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
@@ -31,8 +31,8 @@ PIDFILE = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_PIDFILE", ROOT / "logs/emu-s
 LOG = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_LOG", ROOT / "logs/emu-steam-ui-inhibit.log"))
 STEAM_CLIENT_ID = "769"
 DISPLAYS = (":0", ":1")
-# Steam Exit (769, no overlay, no QAM) held this many 0.2s ticks → quit Azahar.
-# Playbook SteamLaunch is reaped by systemd --user, so Steam never SIGTERMs it.
+# Steam Exit (769, no overlay, no QAM) held this many 0.2s ticks → quit emu.
+# Playbook SteamLaunch may be a systemd --user child; SIGSTOP also holds SIGTERM.
 EXIT_QUIT_TICKS = 10
 
 
@@ -208,6 +208,38 @@ def quit_azahar() -> None:
     log("Steam Exit — quit Azahar (reaper is not a Steam child)")
 
 
+def cemu_on_session() -> bool:
+    for display in DISPLAYS:
+        try:
+            out = subprocess.check_output(
+                ["xdotool", "search", "--name", "Cemu"],
+                env={**os.environ, "DISPLAY": display},
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        if out.split():
+            return True
+    return False
+
+
+def quit_cemu() -> None:
+    script = Path(__file__).resolve().parent / "ensure-cemu-gamemode-dual-screen.sh"
+    if not script.is_file():
+        return
+    try:
+        subprocess.run(
+            ["bash", str(script), "--quit"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return
+    log("Steam Exit — quit Cemu")
+
+
 def emu_pids() -> list[int]:
     try:
         out = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True)
@@ -326,14 +358,17 @@ def loop() -> int:
             live = pids - dying
             age = emu_age_seconds(list(live)) if live else 0.0
             kind = steam_ui_kind(age) if live else ""
-            if kind == "exit" and azahar_on_hdmi():
+            if kind == "exit" and (azahar_on_hdmi() or cemu_on_session()):
                 exit_hold += 1
                 if exit_hold >= EXIT_QUIT_TICKS:
                     for pid in list(live | stopped):
                         cont_pid(pid)
                     stopped.clear()
                     ui = False
-                    quit_azahar()
+                    if azahar_on_hdmi():
+                        quit_azahar()
+                    elif cemu_on_session():
+                        quit_cemu()
                     exit_hold = 0
                     time.sleep(0.2)
                     continue
@@ -380,6 +415,7 @@ def self_test() -> int:
     assert steam_ui_kind() in ("", "overlay", "qam", "exit")
     assert qam_on(":0") in (True, False)
     assert azahar_on_hdmi() in (True, False)
+    assert cemu_on_session() in (True, False)
     assert (1 << 14) == 0x4000
     print("inhibit-emu-input-on-steam-ui self-test ok")
     return 0

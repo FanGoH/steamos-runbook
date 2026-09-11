@@ -23,7 +23,7 @@ Read live sizes from `kscreen-doctor`. Current Thor checkpoint is HDMI-A-1 **192
 The script:
 
 1. Writes `settings.xml` from live kscreen (`fullscreen` false, `open_pad` true).
-2. Binds player 0 with `python3 scripts/bind-gamepad.py apply --emu cemu --force` onto **EmuPads P1** (mux). Do not `--match Thor` into XML (that would narrow mux sources). Pad type is `GAMESTREAM_PAD_PROFILE` (default x360).
+2. Binds player 0 with `python3 scripts/bind-gamepad.py apply --emu cemu --force --cemu-p1 gamepad` onto **EmuPads P1** (mux). Tender tiles pick GamePad vs Pro from whether the second screen is streamed. Do not `--match Thor` into XML (that would narrow mux sources). Pad type is `GAMESTREAM_PAD_PROFILE` (default x360).
 3. KWin-places GamePad View → virtual output, other `info.cemu.Cemu` → HDMI, `noBorder` + `keepAbove`. Minimizes Steam.
 
 `controller0.xml` type must stay **Wii U GamePad**. Do not hand-edit the XML. Do not hardcode uuid `0_050017945e0400008e02000014010000` or generic `X-Box 360 Controller`. Cemu uuid is `{guid-index}_{sdl2-crc16-of-kernel-name}`. Named pads: `Sunshine (libvirtualhid) AYN_Thor` / `Odin2_Portal`. SDL GameControllerName is still `Xbox 360 Controller`.

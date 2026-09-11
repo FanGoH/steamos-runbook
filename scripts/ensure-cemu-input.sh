@@ -62,5 +62,5 @@ if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
   exit 1
 fi
 
-echo "Cemu player 0 is rebound to the current pad on each launch."
+echo "Cemu player 0 is rebound on each launch (GamePad if second screen streamed, else Pro)."
 exit 0

@@ -34,7 +34,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 
 ## Players
 
-- **Cemu** player 1 = **EmuPads P1** in `controller0.xml`. Type is **Wii U GamePad** or **Wii U Pro Controller** (`--cemu-p1 gamepad|pro`, Emu Pads toggle, persisted in `~/.config/emupads/mux.json`). Default GamePad. Dual-screen scripts force GamePad (GamePad View). Player 2 = Wii U Pro `controller1.xml` → **EmuPads P2** in multi. Extra `<controller>` nodes are extra devices, not extra players.
+- **Cemu** player 1 = **EmuPads P1** in `controller0.xml`. Tender **tiles** pick the type at launch: **Wii U GamePad** when the second screen is streamed (`CEMU_GAMEMODE_DS=1` / `:48200` BUSY + sidecar), **Wii U Pro Controller** for a local HDMI-only tile. Dual-screen scripts also force GamePad. The Emu Pads toggle / `--cemu-p1` still apply by hand; the next tile launch overwrites. Player 2 = Wii U Pro `controller1.xml` → **EmuPads P2** in multi. Extra `<controller>` nodes are extra devices, not extra players.
 - **Azahar** player 1 = `profiles\1\` → P1. Player 2 = saved `profiles\2\` in multi (one active profile per instance). Shared P1 is the default even though Azahar barely does MP.
 - **Eden** player 1 = `player_0_` CRC-less USB GUID of P1 (`1209:e301`). Player 2 = P2 (`1209:e302`) so GUIDs differ. Steam virtual (`28de:11ff`) stays a source, not a bind target.
 
@@ -65,7 +65,7 @@ Cemu’s dropdown can show **Xbox 360 EasySMX** for any Sunshine x360 pad (`045e
 
 Cemu reads uuid at start. If Cemu is running, restart standalone `info.cemu.Cemu` (keep sunshine-ds). Flatpak process `comm` is truncated to `Cemu_relwithdeb` — `pgrep -x Cemu_relwithdebinfo` misses it. Then re-place dual-screen with `scripts/ensure-cemu-dual-screen.sh`. Same restart rule for Azahar and Eden.
 
-Dual-screen GamePad View needs **Wii U GamePad** on P1 (`ensure-cemu-*-dual-screen.sh` passes `--cemu-p1 gamepad`). Local / single-screen can use Pro from the plugin. Do not bind `libvirtualhid Mouse` (`1209:0003`) or ASRock LED (`26ce`).
+Dual-screen GamePad View needs **Wii U GamePad** on P1. The Cemu tile wrapper (`component_launcher.sh`) binds GamePad when the second screen is streamed and Pro when it is not. `ensure-cemu-*-dual-screen.sh` also passes `--cemu-p1 gamepad`. Do not bind `libvirtualhid Mouse` (`1209:0003`) or ASRock LED (`26ce`).
 
 ## Do not
 

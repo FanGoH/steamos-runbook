@@ -101,10 +101,29 @@ fi
 
 ini="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/controllerProfiles/controller0.xml"
 patcher="$here/patch-cemu-input.py"
-# Bind player 0 to EmuPads P1. Dual-stream already uses the same sink.
-if [ -f "$ini" ] && [ -f "$patcher" ]; then
-  python3 "$patcher" "$ini" || true
+# Tile decides P1 type: GamePad when the second screen is streamed
+# (CEMU_GAMEMODE_DS=1), Pro otherwise. Cemu reads type at start.
+playbook="${STEAMOS_PLAYBOOK:-/home/deck/steamos-playbook}"
+bind_py="$playbook/scripts/bind-gamepad.py"
+if [ "${CEMU_GAMEMODE_DS:-}" = 1 ]; then
+  cemu_p1=gamepad
+else
+  cemu_p1=pro
 fi
+bind_cemu_p1() {
+  if [ -f "$bind_py" ]; then
+    if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null; then
+      flatpak-spawn --host --env="CEMU_GAMEMODE_DS=${CEMU_GAMEMODE_DS:-}" \
+        python3 "$bind_py" apply --emu cemu --xml "$ini" --force --cemu-p1 "$cemu_p1"
+    else
+      python3 "$bind_py" apply --emu cemu --xml "$ini" --force --cemu-p1 "$cemu_p1"
+    fi
+    return
+  fi
+  if [ -f "$patcher" ]; then
+    python3 "$patcher" "$ini" || true
+  fi
+}
 
 settings="${XDG_CONFIG_HOME:-${HOME}/.config}/Cemu/settings.xml"
 if [ -f "$settings" ]; then
@@ -190,8 +209,12 @@ cd "$cemu_data"
 cemu_log="${CEMU_WRAPPER_LOG:-/home/deck/steamos-playbook/logs/cemu-wrapper.log}"
 mkdir -p "$(dirname "$cemu_log")"
 {
-  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} args:${args[*]} ----"
+  echo "---- $(date -Iseconds) DISPLAY=${DISPLAY:-} SteamAppId=${SteamAppId:-} DS=${CEMU_GAMEMODE_DS:-} P1=${cemu_p1:-} args:${args[*]} ----"
   echo "GTK_IM_MODULE=${GTK_IM_MODULE:-} GDK_BACKEND=${GDK_BACKEND:-} WSI=${ENABLE_GAMESCOPE_WSI:-} DISABLED=${GAMESCOPE_DISPLAY_DISABLED:-}"
 } >>"$cemu_log"
+
+if [ -f "$ini" ]; then
+  bind_cemu_p1 >>"$cemu_log" 2>&1 || true
+fi
 
 exec /app/retrodeck/components/cemu/component_launcher.sh "${args[@]}" >>"$cemu_log" 2>&1

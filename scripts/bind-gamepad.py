@@ -287,6 +287,18 @@ def cemu_p1_label(p1_type: str) -> str:
     return "Wii U Pro Controller" if p1_type == "pro" else "Wii U GamePad"
 
 
+def tile_cemu_p1(*, streaming: bool | None = None, ds_env: str | None = None) -> str:
+    """GamePad when the second screen is streamed; Pro for a local tile."""
+    if streaming is True:
+        return "gamepad"
+    if streaming is False:
+        return "pro"
+    env = os.environ.get("CEMU_GAMEMODE_DS", "") if ds_env is None else ds_env
+    if str(env) == "1":
+        return "gamepad"
+    return "pro"
+
+
 def load_mux_config() -> dict:
     path = mux_config_path()
     empty = {"mode": "shared", "sources": [], "cemu_p1": "gamepad"}
@@ -1965,6 +1977,10 @@ def _self_test() -> int:
         write_mux_routing("multi", [])
         assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
         os.environ.pop("EMUPADS_MUX_CONFIG", None)
+        assert tile_cemu_p1(streaming=True) == "gamepad"
+        assert tile_cemu_p1(streaming=False) == "pro"
+        assert tile_cemu_p1(ds_env="1") == "gamepad"
+        assert tile_cemu_p1(ds_env="") == "pro"
         from pad_profile import main as pad_profile_main
 
         assert pad_profile_main(["self-test"]) == 0

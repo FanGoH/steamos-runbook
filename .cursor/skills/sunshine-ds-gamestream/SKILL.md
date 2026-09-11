@@ -225,7 +225,7 @@ Do **not** hand-edit `controller0.xml`. `python3 scripts/bind-gamepad.py cemu --
 - `<type>Wii U GamePad</type>` — required for GamePad screen / game input. Pro Controller is the failure mode.
 - Cemu `set_mapping` is last-write-wins. Put mappings **only** on the named Sunshine pad (`Sunshine (libvirtualhid) AYN_Thor`). Default profile `x360` is `045e:028e` bus `0005` (`GAMESTREAM_PAD_PROFILE`). Steam wrap `Microsoft X-Box 360 pad N` (`28de:11ff`) may stay listed with **empty** `<mappings>`. Reordering Sunshine first while Steam still has mappings still steals player 0.
 - Do not hardcode generic `X-Box 360 Controller` GUID `0_050017945e0400008e02000014010000`. Drop stale `AYN20Thor`.
-- Game Mode `patch-cemu-input.py` pick order is still physical Xbox → Switch Pro → Steam virtual → Sunshine. Desktop GameStream uses bind-gamepad. Do not bind `libvirtualhid Mouse` (`1209:0003`).
+- Game Mode and desktop both bind **EmuPads P1** (`bind-gamepad.py apply --emu cemu`). Do not fall back to physical Xbox → Switch Pro → Steam virtual → Sunshine. Do not bind `libvirtualhid Mouse` (`1209:0003`).
 - Changing uuid/type while Cemu is running does nothing. Stop Cemu, write the file, start again.
 
 Default `GAMESTREAM_PAD_PROFILE=x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`. Do not flip the profile unless the user wants gyro.

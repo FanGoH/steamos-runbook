@@ -7,7 +7,16 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint `checkpoint-2026-09-11-3ds-n3ds`:** 3DS dumps live in `~/retrodeck/roms/n3ds` (moved from `~/emulation/3ds/games`); Tender marks them launchable. Azahar dual-stream Play works. Home/Library mute remains `checkpoint-2026-09-11-steam-menu-mute`. Mux + tile GamePad-vs-Pro + overlay/QAM mute remain `checkpoint-2026-09-11-emupads-mux`. Tile/GamePad grab recipe is still `checkpoint-2026-09-11-gamemode-tender-ds` (`--attach`, no `-f`, x11grab session `:1`). Local Play (kms FREE) stays `-f`. Steam **audio** menu clicks still **pending**. Azahar exit must `--paint` `:2` (do not leave the last 3DS bottom frame).
+**Checkpoint `checkpoint-2026-09-11-3ds-n3ds`:** 3DS dumps live in `~/retrodeck/roms/n3ds` (moved from `~/emulation/3ds/games`, not copied; dest is **`n3ds`**, not `roms/3ds`); Tender marks them launchable. Azahar dual-stream Play works. Home/Library mute remains `checkpoint-2026-09-11-steam-menu-mute`. Mux + tile GamePad-vs-Pro + overlay/QAM mute remain `checkpoint-2026-09-11-emupads-mux`. Tile/GamePad grab recipe is still `checkpoint-2026-09-11-gamemode-tender-ds` (`--attach`, no `-f`, x11grab session `:1`). Local Play (kms FREE) stays `-f`. Steam **audio** menu clicks still **pending**. Azahar exit must `--paint` `:2` (do not leave the last 3DS bottom frame).
+
+## Do not lose (conversation / box)
+
+- **Cemu “crash” on Home** was inhibit treating `FOCUSED_APP=769` as Exit (`Steam Exit — FOCUSED_APP=769, quitting`). `log.txt` stopping mid-`FSGetVolumeState` is SIGTERM, not a Cemu fault. Mute only. Do not restore the 8s-769 `--quit` gate.
+- **Tender “RomM disconnected”** on a 3DS tile usually means no `rom_installs` row (UI shows Download and hits RomM) even when the `.3ds` is already in `n3ds`. `set-steam-launch-options.py --repair-tender`, then **reopen Tender**. Empty Steam LaunchOptions recover via `SteamAppId` → Tender DB. Do not rewrite `shortcuts.vdf` in Game Mode.
+- **Older tiles** still `exec` missing `~/homebrew/plugins/decky-romm-sync/bin/rom-launcher` (Tender replaced that plugin). `ensure-eden-component.sh` `record_manual` has the `sudo mkdir/cp/chmod/chown` — `~/homebrew/plugins` is often `root:root` and `sudo -n` fails.
+- **Azahar Game Mode path:** Tender `rom-launcher` **runs** `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`). Disown the focus watcher (same as Cemu). Wait for `azahar`, then `--quit`/`--paint`. `azahar_on_hdmi()` searches `:0` and `:1`. Inhibit `restore_bottom_screen()` paints `:2` when the last emu is gone (skip if Cemu/Azahar still up). Unset `LD_PRELOAD` in that script (Steam ELFCLASS32 spam).
+- **Mux restart:** `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`). Then restart Cemu/Azahar/Eden — new uinput nodes. Config `~/.config/emupads/mux.json`.
+- Bind Cemu/Azahar/Eden to **EmuPads P1/P2** only. The `wait-appear --match Thor` / `cemu --match Thor` lines below are wait-for-pad helpers, not XML bind targets.
 
 ## What must be true
 
@@ -37,7 +46,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh   # no -f
 
 Cold start (no `:2`): `./scripts/ensure-sunshine-ds-gamemode.sh --start` then the Cemu line. **`--start` while `:2` is live can KillMode the helper.** Restart kms with `systemctl --user restart steamos-sunshine-ds-gamemode.service` or `--start-kms`.
 
-Cemu is Steam `RunGame` (same as Tender Play). Dual-screen when **either** consume-on-read `logs/cemu-gamemode-ds.want` is fresh **or** Tender Play sees `:48200` `SUNSHINE_SERVER_BUSY` plus the gamescope-virtual sidecar (`scripts/gamemode-second-screen-streaming.sh`) → `CEMU_GAMEMODE_DS=1` and `ensure-cemu-gamemode-dual-screen.sh --attach` (no second RunGame). Local Play (kms FREE) stays `-f`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. Tender plugin updates overwrite `rom-launcher`; re-run `ensure-eden-component.sh`. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub. Bind with `bind-gamepad.py wait-appear --match Thor` then `cemu --match Thor --force` (mappings only on `Sunshine (libvirtualhid) AYN_Thor`). Cemu uuid is `{sdl-index}_{guid}` — a stale `1_<guid>` when Thor is now index 0 means “controllers not mapped.” Cemu reads uuid at start; restart after bind.
+Cemu is Steam `RunGame` (same as Tender Play). Dual-screen when **either** consume-on-read `logs/cemu-gamemode-ds.want` is fresh **or** Tender Play sees `:48200` `SUNSHINE_SERVER_BUSY` plus the gamescope-virtual sidecar (`scripts/gamemode-second-screen-streaming.sh`) → `CEMU_GAMEMODE_DS=1` and `ensure-cemu-gamemode-dual-screen.sh --attach` (no second RunGame). Local Play (kms FREE) stays `-f`. `rom-launcher` / `Cemu-wrapper` start `cemu-gamescope-focus.sh` **before** gtk_init (`FOCUSED_APP=<shortcut>`, `FOCUS_DISPLAY` middle **1**). A leftover want file windowed-10×10s every Play — delete it. Tender plugin updates overwrite `rom-launcher`; re-run `ensure-eden-component.sh`. `steam://`, host `flatpak run`, and RetroDECK `-f` stay a 10×10 InputOnly stub. Wait for the Sunshine pad with `bind-gamepad.py wait-appear --match Thor` if needed, then bind **EmuPads P1** (`apply --emu cemu --force --cemu-p1 gamepad`). Do not write Thor’s GUID into XML. Cemu uuid is `{sdl-index}_{guid}` — a stale `1_<guid>` when P1 is now index 0 means “controllers not mapped.” Cemu reads uuid at start; restart after bind.
 
 On Cemu/mirror exit the focus watcher `stop_mirror`s leftover `:2` `ffplay` `x11grab` (pidfile **and** `pgrep -x ffplay` + argv) then `./scripts/sunshine-ds-gamemode-virtual.sh --paint` restores the clock. `--paint` must kill that x11grab first or it skips and the bottom stays frozen. `--place-only` re-asserts GamePad under TV + ffplay on `:2` without relaunch. `--attach` starts the same watcher so Tender Play exit always paints.
 
@@ -76,13 +85,15 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - `/launch` `881448767` or Low Res Desktop on kms
 - Leave `logs/cemu-gamemode-ds.want` after a failed launch (Tender auto-DS does **not** write that file)
 - Expect Tender Cemu Play to stay `-f` while `:48200` is BUSY and the virtual sidecar is up — that path is windowed `--attach`
-- Expect Tender 3DS Play to stay RetroDECK `azahar-launcher` while `:48200` is BUSY — that path is standalone `ensure-azahar-gamemode-dual-screen.sh`
+- Expect Tender 3DS Play to stay RetroDECK `azahar-launcher` while `:48200` is BUSY — that path **runs** standalone `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`; wait then `--quit`/`--paint`)
+- Treat `FOCUSED_APP=769` as Steam Exit / `--quit` after 8s — that killed Cemu on Home
+- Bind Cemu/Azahar/Eden to a Sunshine pad when the mux is down — start `emupads-mux.service` instead
 - Set `:0` `GAMESCOPECTRL_BASELAYER_WINDOW` to a 10×10 Cemu stub
 - `$(find_pad_wid)` / `$(find_tv_wid)` / `$(find_wid)` — command substitution is a subshell and drops `TV_DISPLAY`; x11grab then uses `:0` for a `:1` xid
 - RetroDECK `-f` / `ensure-cemu-dual-screen.sh` (KWin) in Game Mode
 - `sudo systemctl --user`, `POST /api/restart`, `kwin_wayland --replace`, Decky `:47989`
 - Start `steam-guide-from-select.py` as a watcher (`--hide` is debug-only)
-- Rewrite `shortcuts.vdf` while Game Mode is running
+- Rewrite `shortcuts.vdf` while Game Mode is running (empty LaunchOptions / RomM-disconnected tiles recover via Tender DB)
 - Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button
 - `XOpenDisplay(":0")` only for GamePad or HDMI inject — Cemu is on `:1`. Never `$DISPLAY` / `:2`
 - Change `inject_gamepad_view_*` / `abs_targets_gamepad_view` while fixing HDMI touch — HDMI is a parallel display-0 path

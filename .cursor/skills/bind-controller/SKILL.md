@@ -30,7 +30,16 @@ Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPa
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
 - Overlay/QAM/Home/Library mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads. `checkpoint-2026-09-11-steam-menu-mute`.
 
-Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
+Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. Source `decky/EmuPads/` (see that README). `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
+
+After `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`), **restart Cemu/Azahar/Eden** — the sinks are new uinput nodes. Routing lives in `~/.config/emupads/mux.json`.
+
+## Do not lose
+
+- **Cemu died on Home / Library** because inhibit treated `FOCUSED_APP=769` as Exit after 8s (`Steam Exit — FOCUSED_APP=769, quitting`). Cemu `log.txt` stopping mid-`FSGetVolumeState` is that SIGTERM, not a Cemu crash. Mute only. `checkpoint-2026-09-11-steam-menu-mute`.
+- **Tender “RomM disconnected”** on 3DS = missing `rom_installs` (Download path) even when dumps are in `~/retrodeck/roms/n3ds`. Dest is **`n3ds`**, not `roms/3ds`. Dumps were **moved** from `~/emulation/3ds/games`. `--repair-tender`, then reopen Tender. Older Steam Exe `~/homebrew/plugins/decky-romm-sync/bin/rom-launcher` is gone after Tender replaced that plugin — sudo restore from `ensure-eden-component.sh` `record_manual`.
+- **Azahar has no GamePad/Pro type.** The plugin toggle is Cemu-only; the next Cemu tile overwrites it.
+- `~/.cursor/skills/*` on this box are **copies**, not symlinks of playbook `.cursor/skills/`. Edit the playbook copy.
 
 ## Players
 
@@ -76,3 +85,6 @@ Dual-screen GamePad View needs **Wii U GamePad** on P1. The Cemu tile wrapper (`
 - Inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`
 - Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button
 - Pair/unpair Moonlight just to rename a pad (launch `devicename` updates the label)
+- Bind Cemu/Azahar/Eden to Sunshine / physical Xbox / Steam virtual when the mux is up
+- Treat `FOCUSED_APP=769` as Steam Exit
+- `sudo systemctl --user restart emupads-mux.service`

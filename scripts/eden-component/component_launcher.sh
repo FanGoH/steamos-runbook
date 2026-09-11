@@ -36,8 +36,8 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 
-# Bind player 0 to the pad that is plugged in right now (physical Xbox
-# / Steam virtual over Sunshine). If none yet, keep the last GUID.
+# Bind player 0 to EmuPads P1 (mux sink). If the mux is down, start it
+# — do not fall back to physical Xbox / Steam virtual / Sunshine.
 # Also force borderless + async shaders — Exclusive + gamescope is the
 # Steam "Launching…" hang that ends in earlyoom SIGTERM on big titles.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"

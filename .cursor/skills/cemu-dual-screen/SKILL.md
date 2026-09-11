@@ -69,7 +69,7 @@ The script tags the TV window `STEAM_GAME=<AppId>`, sets `GAMESCOPECTRL_BASELAYE
 
 Player 0 maps come from RetroDECK `SteamInput-P1.xml` (the working Wii U GamePad layout). They are copied onto the named Sunshine pad; the Steam virtual uuid is **not** copied. `moonlight.xml` is a Wii U Pro profile — using it on GamePad type leaves analog 7/8 looking fine while d-pad and axis-splits fight the sticks.
 
-`--stop` kills the pad mirror and the gamescope focus watcher only. Overlay/QAM mute EmuPads sinks; Steam Exit (`FOCUSED_APP=769` after 8s, or SIGTERM pending) `--quit`s on the first tick. Moonlight Quit / `sunshine-app-stop.sh cemu` / `--quit` end the game.
+`--stop` kills the pad mirror and the gamescope focus watcher only. Overlay/QAM/Home/Library mute EmuPads sinks. Steam Exit `--quit`s **only** on SIGTERM pending. Do **not** `--quit` on `FOCUSED_APP=769` (that killed Cemu when opening Home; `log.txt` stopping mid-`FSGetVolumeState` is SIGTERM, not a Cemu crash). Moonlight Quit / `sunshine-app-stop.sh cemu` / `--quit` end the game.
 
 ## Do not
 

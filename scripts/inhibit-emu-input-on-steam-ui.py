@@ -223,10 +223,27 @@ def already_running() -> bool:
     return Path(f"/proc/{old}").is_dir()
 
 
+def restore_steam_focus() -> None:
+    script = Path(__file__).resolve().parent / "restore-steam-gamescope-focus.sh"
+    if not script.is_file():
+        return
+    try:
+        subprocess.run(
+            ["bash", str(script)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return
+    log("restored Steam FOCUSED_APP=769 (emulator gone)")
+
+
 def loop() -> int:
     stopped: set[int] = set()
     idle = 0
     ui = False
+    saw_emu = False
     write_pidfile()
     log("watch start")
     try:
@@ -239,12 +256,16 @@ def loop() -> int:
                         cont_pid(pid)
                     stopped.clear()
                     ui = False
+                if saw_emu:
+                    restore_steam_focus()
+                    saw_emu = False
                 if idle >= 150:
                     log("no emulator; exiting")
                     return 0
                 time.sleep(0.2)
                 continue
             idle = 0
+            saw_emu = True
             dying = {pid for pid in pids if term_pending(pid)}
             if dying:
                 for pid in dying:

@@ -123,6 +123,26 @@ def emu_age_seconds(pids: list[int]) -> float:
     return max(0.0, oldest or 0.0)
 
 
+def term_pending(pid: int) -> bool:
+    """Steam Exit SIGTERM stays pending while the emulator is SIGSTOP'd."""
+    try:
+        text = Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return False
+    for key in ("SigPnd", "ShdPnd"):
+        prefix = key + ":"
+        for line in text.splitlines():
+            if not line.startswith(prefix):
+                continue
+            try:
+                mask = int(line.split()[1], 16)
+            except (IndexError, ValueError):
+                return False
+            if mask & (1 << 14):
+                return True
+    return False
+
+
 def steam_ui_up(emu_age_s: float = 0.0) -> bool:
     overlay = False
     focused_steam = False
@@ -225,19 +245,26 @@ def loop() -> int:
                 time.sleep(0.2)
                 continue
             idle = 0
-            now = steam_ui_up(emu_age_seconds(list(pids)))
+            dying = {pid for pid in pids if term_pending(pid)}
+            if dying:
+                for pid in dying:
+                    if cont_pid(pid):
+                        log(f"SIGCONT pid {pid} (SIGTERM pending — Steam Exit)")
+                    stopped.discard(pid)
+            live = pids - dying
+            now = bool(live) and steam_ui_up(emu_age_seconds(list(live)))
             if now and not ui:
-                for pid in pids:
+                for pid in live:
                     if stop_pid(pid):
                         stopped.add(pid)
                         log(f"SIGSTOP pid {pid} (Steam overlay/qAM)")
                 ui = True
             elif now:
-                for pid in pids - stopped:
+                for pid in live - stopped:
                     if stop_pid(pid):
                         stopped.add(pid)
                         log(f"SIGSTOP pid {pid} (late)")
-                stopped = {pid for pid in stopped if pid in pids}
+                stopped = {pid for pid in stopped if pid in live}
             elif ui:
                 for pid in list(stopped):
                     if cont_pid(pid):
@@ -263,6 +290,7 @@ def self_test() -> int:
     assert not BIND.is_azahar_comm("azahar-launcher")
     assert BIND.is_eden_comm("eden")
     assert steam_ui_up() in (True, False)
+    assert (1 << 14) == 0x4000
     print("inhibit-emu-input-on-steam-ui self-test ok")
     return 0
 

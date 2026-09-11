@@ -5,8 +5,9 @@
 # Standalone Flatpak org.azahar_emu.Azahar (not RetroDECK azahar-launcher).
 # Steam overlay: reaper SteamLaunch with the game shortcut AppId, tag the
 # Primary Window STEAM_GAME, and a focus watcher that yields HDMI when
-# STEAM_OVERLAY=1 (FOCUSED_APP=769). Do not reclaim while overlay is up
-# or while FOCUSED_APP=769 (qAM / overlay atom flicker).
+# STEAM_OVERLAY=1 (FOCUSED_APP=769). QAM is Steam Quick Access (`...`),
+# not 769: Steam blurs the game (`GAMESCOPE_BLUR_MODE`) and leaves
+# FOCUSED_APP on Azahar. Do not raise Primary over that panel.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
@@ -273,6 +274,23 @@ steam_overlay_active() {
   return 1
 }
 
+# Steam Quick Access Menu (`...`). Game stays FOCUSED_APP; gamescope blurs it.
+steam_qam_active() {
+  local mode
+  command -v xprop >/dev/null 2>&1 || return 1
+  mode="$(DISPLAY="${TV_DISPLAY:-:0}" xprop -root GAMESCOPE_BLUR_MODE 2>/dev/null | awk -F'= ' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')"
+  [ -n "${mode:-}" ] && [ "$mode" != "0" ]
+}
+
+# keepAbove on Primary covers the QAM side panel.
+lower_azahar_for_steam_ui() {
+  local wid
+  for wid in "$(find_primary_wid || true)" "$(find_secondary_wid || true)"; do
+    [ -n "${wid:-}" ] || continue
+    DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
+  done
+}
+
 focused_app() {
   DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
 }
@@ -301,29 +319,37 @@ present_primary() {
 }
 
 watch_azahar_focus_loop() {
-  # HDMI reclaim must not fight Steam overlay. sunshine-ds Hold-Select sets
-  # STEAM_OVERLAY=1 and FOCUSED_APP=769. Re-activating Azahar every tick hides it.
-  # Do not reclaim on 769 without the overlay atom — that steals overlay/qAM.
-  local overlay=0 app
+  # Overlay: Hold-Select → STEAM_OVERLAY=1 + FOCUSED_APP=769.
+  # QAM: `...` → GAMESCOPE_BLUR_MODE!=0, FOCUSED_APP stays the game.
+  # Raising Primary (keepAbove) covers that side panel.
+  local ui=0 app
   while azahar_running; do
     app="$(focused_app)"
     if steam_overlay_active; then
-      if [ "$overlay" -eq 0 ]; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_CLIENT_ID" 2>/dev/null || true
         DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$APPID" 2>/dev/null || true
         echo "STEAM_OVERLAY=1 — FOCUSED_APP=$STEAM_CLIENT_ID gfx=$APPID"
       fi
-      overlay=1
+      ui=1
+    elif steam_qam_active; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
+        echo "Steam QAM (GAMESCOPE_BLUR_MODE) — yielding (no raise, leave FOCUSED_APP)"
+      fi
+      ui=1
     elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      if [ "$overlay" -eq 0 ]; then
+      lower_azahar_for_steam_ui
+      if [ "$ui" -eq 0 ]; then
         echo "FOCUSED_APP=$STEAM_CLIENT_ID — yielding to Steam (no reclaim)"
       fi
-      overlay=1
+      ui=1
     elif [ "$app" != "$APPID" ]; then
-      overlay=0
+      ui=0
       present_primary || true
     else
-      overlay=0
+      ui=0
     fi
     sleep 0.4
   done

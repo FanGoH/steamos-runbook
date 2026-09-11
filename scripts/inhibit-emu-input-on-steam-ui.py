@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Pause Cemu / Azahar / Eden while Steam overlay or qAM has focus.
+"""Pause Cemu / Azahar / Eden while Steam overlay or QAM has focus.
 
 Steam and the emulator both keep the Sunshine pad open. EVIOCGRAB on that
-node would also steal overlay / qAM navigation. SIGSTOP the emulator
+node would also steal overlay / QAM navigation. SIGSTOP the emulator
 instead; Steam keeps the pad. SIGCONT when Steam UI closes.
 
-Steam UI is ``STEAM_OVERLAY=1`` on Big Picture, or ``GAMESCOPE_FOCUSED_APP=769``
-(overlay, qAM, Exit menu). Do not grab ``/dev/input``. Never pgrep -f sunshine.
+Steam UI:
+- Overlay (Guide / Hold-Select): ``STEAM_OVERLAY=1``
+- QAM (Quick Access Menu, ``...``): ``GAMESCOPE_BLUR_MODE`` != 0 on HDMI ``:0``.
+  FOCUSED_APP stays the game — do not treat 769 as QAM.
+- Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been up.
+
+Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
 from __future__ import annotations
 
@@ -143,19 +148,22 @@ def term_pending(pid: int) -> bool:
     return False
 
 
+def qam_on(display: str = ":0") -> bool:
+    """Steam Quick Access Menu blurs the running game; FOCUSED_APP stays the game."""
+    mode = xprop_root(display, "GAMESCOPE_BLUR_MODE")
+    return bool(mode) and mode != "0"
+
+
 def steam_ui_up(emu_age_s: float = 0.0) -> bool:
     overlay = False
     for display in DISPLAYS:
         if overlay_on(display):
             overlay = True
-    if overlay:
+    if overlay or qam_on(":0"):
         return True
-    # qAM / Exit are FOCUSED_APP=769 on HDMI / BPM (:0). :1 often stays 769
-    # after restore-steam-gamescope-focus.sh while Azahar/Cemu is focused on
-    # :0 — that is not Steam UI (SIGSTOP there freezes a fresh launch).
+    # Exit / BPM: FOCUSED_APP=769 on HDMI. :1 leftover 769 is not Steam UI.
     focused_steam = xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID
-    # Wait until the emulator has been up so Launching (769 + 10x10 Cemu stub)
-    # is not SIGSTOP'd into the spinning logo.
+    # Wait so Launching (769 + 10x10 Cemu stub) is not SIGSTOP'd.
     return focused_steam and emu_age_s >= 8.0
 
 
@@ -278,7 +286,7 @@ def loop() -> int:
                 for pid in live:
                     if stop_pid(pid):
                         stopped.add(pid)
-                        log(f"SIGSTOP pid {pid} (Steam overlay/qAM)")
+                        log(f"SIGSTOP pid {pid} (Steam overlay/QAM)")
                 ui = True
             elif now:
                 for pid in live - stopped:
@@ -311,6 +319,7 @@ def self_test() -> int:
     assert not BIND.is_azahar_comm("azahar-launcher")
     assert BIND.is_eden_comm("eden")
     assert steam_ui_up() in (True, False)
+    assert qam_on(":0") in (True, False)
     assert (1 << 14) == 0x4000
     print("inhibit-emu-input-on-steam-ui self-test ok")
     return 0

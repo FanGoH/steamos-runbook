@@ -381,6 +381,14 @@ steam_overlay_active() {
   return 1
 }
 
+# Steam Quick Access Menu (`...`). Game stays FOCUSED_APP; gamescope blurs it.
+steam_qam_active() {
+  local mode
+  command -v xprop >/dev/null 2>&1 || return 1
+  mode="$(DISPLAY="${TV_DISPLAY:-:0}" xprop -root GAMESCOPE_BLUR_MODE 2>/dev/null | awk -F'= ' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')"
+  [ -n "${mode:-}" ] && [ "$mode" != "0" ]
+}
+
 focused_app() {
   DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null | awk -F'= ' '{print $2}'
 }
@@ -488,17 +496,19 @@ watch_cemu_focus_loop() {
         echo "STEAM_OVERLAY=1 — FOCUSED_APP=$STEAM_CLIENT_ID gfx=$APPID"
       fi
       overlay=1
-    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
-      # Guide / Exit often lands on 769 before STEAM_OVERLAY=1. Wait ~2s
-      # before treating it as BPM stealing the picture.
-      overlay=1
-      steam_ticks=$((steam_ticks + 1))
-      if [ "$steam_ticks" -ge 6 ]; then
-        echo "FOCUSED_APP=$STEAM_CLIENT_ID with no overlay — reclaiming Cemu dual-screen"
-        present_dual_layout || true
-        steam_ticks=0
-        overlay=0
+    elif steam_qam_active; then
+      steam_ticks=0
+      if [ "$overlay" -eq 0 ]; then
+        echo "Steam QAM (GAMESCOPE_BLUR_MODE) — yielding (no raise)"
       fi
+      overlay=1
+    elif [ "$app" = "$STEAM_CLIENT_ID" ]; then
+      # Guide / Exit. Do not reclaim — that steals overlay/QAM.
+      steam_ticks=0
+      if [ "$overlay" -eq 0 ]; then
+        echo "FOCUSED_APP=$STEAM_CLIENT_ID — yielding to Steam (no reclaim)"
+      fi
+      overlay=1
     elif [ "$app" != "$APPID" ]; then
       steam_ticks=0
       overlay=0

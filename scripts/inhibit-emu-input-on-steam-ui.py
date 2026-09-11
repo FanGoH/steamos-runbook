@@ -188,16 +188,19 @@ def steam_ui_up() -> bool:
 
 
 def azahar_on_hdmi() -> bool:
-    try:
-        out = subprocess.check_output(
-            ["xdotool", "search", "--class", "Azahar"],
-            env=_x11_env(":0"),
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    return bool(out.split())
+    for display in DISPLAYS:
+        try:
+            out = subprocess.check_output(
+                ["xdotool", "search", "--class", "Azahar"],
+                env=_x11_env(display),
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        if out.split():
+            return True
+    return False
 
 
 def quit_azahar() -> None:
@@ -350,6 +353,30 @@ def restore_steam_focus() -> None:
     log("restored Steam FOCUSED_APP=769 (emulator gone)")
 
 
+def restore_bottom_screen() -> None:
+    """Kill leftover :2 x11grab and paint the idle clock.
+
+    Azahar's focus watcher can die with the Tender tile before Azahar
+    itself exits, which leaves Moonlight video/1 on the last 3DS bottom
+    frame. Safe no-op while Cemu/Azahar is still up.
+    """
+    if BIND.cemu_running() or BIND.azahar_running():
+        return
+    script = Path(__file__).resolve().parent / "sunshine-ds-gamemode-virtual.sh"
+    if not script.is_file():
+        return
+    try:
+        subprocess.run(
+            ["bash", str(script), "--paint"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return
+    log("painted :2 idle clock (emulator gone)")
+
+
 def loop() -> int:
     stopped: set[int] = set()
     idle = 0
@@ -372,6 +399,7 @@ def loop() -> int:
                     ui = False
                 if saw_emu:
                     restore_steam_focus()
+                    restore_bottom_screen()
                     saw_emu = False
                 if idle >= 150:
                     log("no emulator; exiting")

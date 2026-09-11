@@ -16,8 +16,9 @@
 # --attach waits for an already-launching Azahar (no SteamLaunch).
 # --quit stops Azahar + reaper + mirror (Steam Exit cannot SIGTERM a
 # reaper whose parent is systemd --user, which is how the playbook launches).
-# Tender 3DS Play while :48200 is BUSY execs this script from rom-launcher
-# (standalone Flatpak, not RetroDECK azahar-launcher -f).
+# Tender 3DS Play while :48200 is BUSY runs this script from rom-launcher
+# (standalone Flatpak, not RetroDECK azahar-launcher -f) and waits for
+# Azahar so Steam Exit / tile end can --quit and --paint :2.
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
 
@@ -28,6 +29,8 @@ load_env "$ROOT"
 setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# Steam tile LD_PRELOAD breaks xdotool/xprop (ELFCLASS32) and floods the log.
+unset LD_PRELOAD LD_PRELOAD_32 LD_PRELOAD_64
 LOG="${ROOT}/logs/azahar-gamemode-ds.log"
 MIRROR_PIDFILE="${ROOT}/logs/azahar-gamemode-pad-mirror.pid"
 FOCUS_PIDFILE="${ROOT}/logs/azahar-gamemode-focus.pid"
@@ -359,12 +362,17 @@ watch_azahar_focus_loop() {
 }
 
 start_focus_watch() {
+  local pid
   stop_focus_watch
   bash "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
   present_primary || true
+  # Survive this script exiting (Tender tile) and Steam cgroup teardown.
+  # Without disown the watcher dies before Azahar, so :2 never --paint.
   watch_azahar_focus_loop >>"$LOG" 2>&1 &
-  printf '%s\n' "$!" >"$FOCUS_PIDFILE"
-  echo "Azahar gamescope focus pid $!"
+  pid=$!
+  disown "$pid" 2>/dev/null || true
+  printf '%s\n' "$pid" >"$FOCUS_PIDFILE"
+  echo "Azahar gamescope focus pid $pid"
 }
 
 place_secondary_for_capture() {

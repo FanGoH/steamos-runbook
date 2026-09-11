@@ -8,7 +8,7 @@ User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver;
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-11-steam-menu-mute`** (prefer: Home/Library mute sinks; do not `--quit` on `FOCUSED_APP=769`). Mux + tile GamePad-vs-Pro: `checkpoint-2026-09-11-emupads-mux`. Tile grab recipe: `checkpoint-2026-09-11-gamemode-tender-ds` (`:1` x11grab). Earlier: `checkpoint-2026-09-10-gamemode-tender-ds` (tile grab still `:0`). `checkpoint-2026-09-10-gamemode-cemu-audio` (manual script). Full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
+| Tag | **`checkpoint-2026-09-11-3ds-n3ds`** (prefer: 3DS dumps in `retrodeck/roms/n3ds`, Tender launchable, Azahar Play). Home/Library mute: `checkpoint-2026-09-11-steam-menu-mute`. Mux + tile GamePad-vs-Pro: `checkpoint-2026-09-11-emupads-mux`. Tile grab recipe: `checkpoint-2026-09-11-gamemode-tender-ds` (`:1` x11grab). Earlier: `checkpoint-2026-09-10-gamemode-tender-ds` (tile grab still `:0`). `checkpoint-2026-09-10-gamemode-cemu-audio` (manual script). Full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
 | This playbook | this tree / same tag |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` `87267c9a` (unchanged) |

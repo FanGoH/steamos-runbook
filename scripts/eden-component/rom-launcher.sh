@@ -245,11 +245,21 @@ if [ "$is_azahar" -eq 1 ]; then
       if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
         "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
       fi
-      exec env \
+      azahar_quit() {
+        bash "$azahar_ds" --quit >/dev/null 2>&1 || true
+      }
+      trap azahar_quit EXIT INT TERM
+      env \
         AZAHAR_ROM="$azahar_rom" \
         AZAHAR_PAD_MATCH="${AZAHAR_PAD_MATCH:-Thor}" \
         AZAHAR_STEAM_APPID="${SteamAppId:-${AZAHAR_STEAM_APPID:-2577949069}}" \
         "$azahar_ds"
+      while pgrep -x azahar >/dev/null 2>&1; do
+        sleep 1
+      done
+      azahar_quit
+      trap - EXIT INT TERM
+      exit 0
     fi
   fi
 fi

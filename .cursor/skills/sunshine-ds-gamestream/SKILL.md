@@ -185,7 +185,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-From Moonlight on `:48100`, tap **Cemu Dual-Screen** (`scripts/sunshine-app-cemu.sh`; box art is the Cemu Flatpak icon). It waits for the Sunshine pad, runs `ensure-cemu-dual-screen.sh` (Wii U GamePad bind + place), and stays BUSY until Cemu exits. Dual-screen has no chrome; overlay **Quit game** kills `Cemu_relwithdeb` / `Cemu-wrapper` the same way Azahar is stopped. Optional `.env` `CEMU_ROM`; otherwise the Cemu library opens. Do not add this app to Decky `:47989`.
+Desktop `:48100` Cemu is `scripts/ensure-cemu-dual-screen.sh` (or a Tender tile), not a Moonlight app. Do not re-add **Cemu Dual-Screen** to `apps.json`. Game Mode Cemu is Tender Play while `:48200` is BUSY. Overlay **Quit game** / `scripts/sunshine-app-stop.sh cemu` still kills leftover `Cemu_relwithdeb` / `Cemu-wrapper`. Do not add Cemu to Decky `:47989`.
 
 Game Mode `:48200` is **`checkpoint-2026-09-11-gamemode-tender-ds`**. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Moonlight already on `sunshine-ds-kms` (not Decky). Desktop app is `958645192`. Last client gone must leave Desktop `FREE`; then tap **Desktop** or the Tender Cemu tile (Wind Waker HD). While `:48200` is BUSY and `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual` has `serial=` / `pw_node=`, Tender Play sets `CEMU_GAMEMODE_DS=1` and `--attach` (no `-f`). GamePad is on session `:1`; x11grab must use that display. Local Play (kms FREE) stays `-f`. Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh`. Close a leftover Tender `-f` Cemu with `scripts/sunshine-app-stop.sh cemu` before the first streaming Play.
 

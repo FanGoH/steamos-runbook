@@ -599,6 +599,48 @@ sunshine_gds_close_app() {
   sunshine_gds_ui_post "/api/apps/close"
 }
 
+# Reload Game Mode applist from apps.json without restarting kms (which
+# would drop :2). POST /api/apps with Desktop index 0 calls proc::refresh.
+# Editing apps.json alone leaves the old list in memory until this runs.
+sunshine_gds_refresh_apps() {
+  local settings="${DECKY_SUNSHINE_SETTINGS:-}"
+  local ui="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:48201}"
+  if [ -z "$settings" ]; then
+    settings="/home/${STEAMOS_USER:-deck}/homebrew/settings/decky-sunshine/decky-sunshine.json"
+  fi
+  [ -f "$settings" ] || return 1
+  python3 - "$settings" "$ui" <<'PY'
+import json, ssl, sys, urllib.error, urllib.request
+
+settings, ui = sys.argv[1], sys.argv[2]
+try:
+    hdr = json.loads(open(settings, encoding="utf-8").read()).get("lastAuthHeader") or ""
+except OSError:
+    sys.exit(1)
+if not hdr.startswith("Basic "):
+    sys.exit(1)
+body = json.dumps({
+    "name": "Desktop",
+    "image-path": "desktop.png",
+    "index": 0,
+    "prep-cmd": [],
+    "detached": [],
+}).encode()
+ctx = ssl._create_unverified_context()
+req = urllib.request.Request(ui.rstrip("/") + "/api/apps", method="POST", data=body)
+req.add_header("Authorization", hdr)
+req.add_header("User-Agent", "steamos-playbook")
+req.add_header("Content-Type", "application/json")
+try:
+    with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+        sys.exit(0 if 200 <= resp.status < 400 else 1)
+except urllib.error.HTTPError as e:
+    sys.exit(0 if e.code in (200, 204) else 1)
+except (urllib.error.URLError, TimeoutError, OSError):
+    sys.exit(1)
+PY
+}
+
 # Resolved path to the Cursor `agent` CLI, if present.
 cursor_agent_bin() {
   if [ -n "${CURSOR_AGENT_BIN:-}" ] && [ -x "$CURSOR_AGENT_BIN" ]; then

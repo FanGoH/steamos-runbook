@@ -115,6 +115,10 @@ if dropped:
     print("Removed Cemu Dual-Screen from Game Mode apps.json (use Tender tiles).")
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
+  # File edit is not enough: kms keeps the old applist until proc::refresh.
+  if [ -n "$(pgrep -x sunshine-ds-kms || true)" ]; then
+    sunshine_gds_refresh_apps || echo "Could not refresh Game Mode applist (Moonlight may still show Cemu Dual-Screen)."
+  fi
 }
 
 if [ "${1:-}" = "--write-conf" ]; then

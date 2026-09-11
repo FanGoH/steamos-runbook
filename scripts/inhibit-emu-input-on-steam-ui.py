@@ -10,6 +10,8 @@ Steam UI:
 - QAM (Quick Access Menu, ``...``): ``GAMESCOPE_BLUR_MODE`` != 0 on HDMI ``:0``.
   FOCUSED_APP stays the game — do not treat 769 as QAM.
 - Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been up.
+  Overlay/QAM only SIGSTOP. Exit **quits** Azahar — playbook SteamLaunch is
+  a systemd --user child, so Steam never delivers SIGTERM.
 
 Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
@@ -29,6 +31,9 @@ PIDFILE = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_PIDFILE", ROOT / "logs/emu-s
 LOG = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_LOG", ROOT / "logs/emu-steam-ui-inhibit.log"))
 STEAM_CLIENT_ID = "769"
 DISPLAYS = (":0", ":1")
+# Steam Exit (769, no overlay, no QAM) held this many 0.2s ticks → quit Azahar.
+# Playbook SteamLaunch is reaped by systemd --user, so Steam never SIGTERMs it.
+EXIT_QUIT_TICKS = 10
 
 
 def _load_bind():
@@ -154,17 +159,53 @@ def qam_on(display: str = ":0") -> bool:
     return bool(mode) and mode != "0"
 
 
-def steam_ui_up(emu_age_s: float = 0.0) -> bool:
+def steam_ui_kind(emu_age_s: float = 0.0) -> str:
+    """overlay | qam | exit | ''."""
     overlay = False
     for display in DISPLAYS:
         if overlay_on(display):
             overlay = True
-    if overlay or qam_on(":0"):
-        return True
-    # Exit / BPM: FOCUSED_APP=769 on HDMI. :1 leftover 769 is not Steam UI.
+    if overlay:
+        return "overlay"
+    if qam_on(":0"):
+        return "qam"
     focused_steam = xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID
-    # Wait so Launching (769 + 10x10 Cemu stub) is not SIGSTOP'd.
-    return focused_steam and emu_age_s >= 8.0
+    if focused_steam and emu_age_s >= 8.0:
+        return "exit"
+    return ""
+
+
+def steam_ui_up(emu_age_s: float = 0.0) -> bool:
+    return steam_ui_kind(emu_age_s) in ("overlay", "qam", "exit")
+
+
+def azahar_on_hdmi() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["xdotool", "search", "--class", "Azahar"],
+            env={**os.environ, "DISPLAY": ":0"},
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return bool(out.split())
+
+
+def quit_azahar() -> None:
+    script = Path(__file__).resolve().parent / "ensure-azahar-gamemode-dual-screen.sh"
+    if not script.is_file():
+        return
+    try:
+        subprocess.run(
+            ["bash", str(script), "--quit"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return
+    log("Steam Exit — quit Azahar (reaper is not a Steam child)")
 
 
 def emu_pids() -> list[int]:
@@ -252,6 +293,7 @@ def loop() -> int:
     idle = 0
     ui = False
     saw_emu = False
+    exit_hold = 0
     write_pidfile()
     log("watch start")
     try:
@@ -259,6 +301,7 @@ def loop() -> int:
             pids = set(emu_pids())
             if not pids:
                 idle += 1
+                exit_hold = 0
                 if stopped:
                     for pid in list(stopped):
                         cont_pid(pid)
@@ -281,18 +324,33 @@ def loop() -> int:
                         log(f"SIGCONT pid {pid} (SIGTERM pending — Steam Exit)")
                     stopped.discard(pid)
             live = pids - dying
-            now = bool(live) and steam_ui_up(emu_age_seconds(list(live)))
+            age = emu_age_seconds(list(live)) if live else 0.0
+            kind = steam_ui_kind(age) if live else ""
+            if kind == "exit" and azahar_on_hdmi():
+                exit_hold += 1
+                if exit_hold >= EXIT_QUIT_TICKS:
+                    for pid in list(live | stopped):
+                        cont_pid(pid)
+                    stopped.clear()
+                    ui = False
+                    quit_azahar()
+                    exit_hold = 0
+                    time.sleep(0.2)
+                    continue
+            else:
+                exit_hold = 0
+            now = bool(live) and kind in ("overlay", "qam", "exit")
             if now and not ui:
                 for pid in live:
                     if stop_pid(pid):
                         stopped.add(pid)
-                        log(f"SIGSTOP pid {pid} (Steam overlay/QAM)")
+                        log(f"SIGSTOP pid {pid} (Steam {kind})")
                 ui = True
             elif now:
                 for pid in live - stopped:
                     if stop_pid(pid):
                         stopped.add(pid)
-                        log(f"SIGSTOP pid {pid} (late)")
+                        log(f"SIGSTOP pid {pid} (late {kind})")
                 stopped = {pid for pid in stopped if pid in live}
             elif ui:
                 for pid in list(stopped):
@@ -319,7 +377,9 @@ def self_test() -> int:
     assert not BIND.is_azahar_comm("azahar-launcher")
     assert BIND.is_eden_comm("eden")
     assert steam_ui_up() in (True, False)
+    assert steam_ui_kind() in ("", "overlay", "qam", "exit")
     assert qam_on(":0") in (True, False)
+    assert azahar_on_hdmi() in (True, False)
     assert (1 << 14) == 0x4000
     print("inhibit-emu-input-on-steam-ui self-test ok")
     return 0

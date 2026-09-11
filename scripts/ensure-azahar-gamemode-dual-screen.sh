@@ -14,6 +14,8 @@
 # ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors
 # without restarting Azahar (needed after kms --start recreates :2).
 # --attach waits for an already-launching Azahar (no SteamLaunch).
+# --quit stops Azahar + reaper + mirror (Steam Exit cannot SIGTERM a
+# reaper whose parent is systemd --user, which is how the playbook launches).
 # Tender 3DS Play while :48200 is BUSY execs this script from rom-launcher
 # (standalone Flatpak, not RetroDECK azahar-launcher -f).
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
@@ -49,16 +51,18 @@ usage() {
 }
 
 DO_STOP=0
+DO_QUIT=0
 DO_MIRROR_ONLY=0
 DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
+    --quit) DO_QUIT=1 ;;
     --mirror-only) DO_MIRROR_ONLY=1 ;;
     --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop|--mirror-only|--attach]" >&2
+      echo "usage: $0 [--stop|--mirror-only|--attach|--quit]" >&2
       exit 2
       ;;
   esac
@@ -137,7 +141,7 @@ stop_azahar() {
   for pid in $(ps -eo pid=,comm= | awk '$2=="reaper"{print $1}'); do
     cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *"AppId=${APPID}"*)
+      *"AppId=${APPID}"*|*"org.azahar_emu.Azahar"*)
         echo "Stopping Azahar SteamLaunch reaper pid $pid."
         kill "$pid" 2>/dev/null || true
         ;;
@@ -420,11 +424,21 @@ minimize_library() {
   done
 }
 
+if [ "$DO_QUIT" -eq 1 ]; then
+  stop_focus_watch
+  stop_azahar
+  stop_mirror
+  bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  echo "Quit Azahar (SteamLaunch reaper + windows). Steam Exit can finish."
+  exit 0
+fi
+
 if [ "$DO_STOP" -eq 1 ]; then
   stop_mirror
   stop_focus_watch
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
-  echo "Left Azahar running (Steam Exit / Moonlight Quit still owns the game)."
+  echo "Left Azahar running (use --quit or sunshine-app-stop.sh to end the game)."
   exit 0
 fi
 

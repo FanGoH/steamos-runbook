@@ -21,6 +21,7 @@ const definePlugin = (fn) => {
 
 const getStatus = callable("get_status");
 const applyBinds = callable("apply");
+const setMuxMode = callable("set_mode");
 
 function padKind(pad) {
   if (pad?.sunshine === "true" || /sunshine/i.test(pad?.name || "")) return "Sunshine";
@@ -56,15 +57,21 @@ function Content() {
   const [cemuP1, setCemuP1] = SP_REACT.useState("gamepad");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const modeTouched = SP_REACT.useRef(false);
 
-  const refresh = SP_REACT.useCallback(async () => {
+  const refresh = SP_REACT.useCallback(async (opts) => {
     try {
       const next = await getStatus();
       setStatus(next);
       setError(next?.ok === false ? next.message || "status failed" : "");
-      const pads = next?.pads || [];
+      const rawPads = next?.pads || [];
+      const realPads = rawPads.filter((p) => p.steam !== "true");
+      const pads = realPads.length ? realPads : rawPads;
       setOrder((prev) => mergeOrder(prev, pads));
-      if (next?.mux?.mode === "multi" || next?.mux?.mode === "shared") {
+      if (
+        (!modeTouched.current || opts?.syncMode) &&
+        (next?.mux?.mode === "multi" || next?.mux?.mode === "shared")
+      ) {
         setMode(next.mux.mode);
       }
       if (next?.mux?.cemu_p1 === "pro" || next?.mux?.cemu_p1 === "gamepad") {
@@ -109,6 +116,20 @@ function Content() {
     });
   };
 
+  const persistMode = async (nextMode) => {
+    modeTouched.current = true;
+    setMode(nextMode);
+    try {
+      const result = await setMuxMode(nextMode);
+      if (result?.ok === false) {
+        return;
+      }
+      await refresh({ syncMode: true });
+    } catch (_err) {
+      // set_mode is missing until Decky reloads main.py; the check still sticks.
+    }
+  };
+
   const apply = async (emu) => {
     if (busy) return;
     if (!selected.length) {
@@ -134,7 +155,7 @@ function Content() {
         body: body || `${emu}: ${mode} ${selected.map((p) => p.name).join(" → ")}`,
         duration: result?.ok === false ? 7000 : 5000,
       });
-      await refresh();
+      await refresh({ syncMode: true });
     } catch (err) {
       toaster.toast({
         title: "Bind failed",
@@ -234,12 +255,12 @@ function Content() {
               children: [
                 SP_JSX.jsx(DFL.ButtonItem, {
                   layout: "below",
-                  onClick: () => setMode("shared"),
+                  onClick: () => persistMode("shared"),
                   children: mode === "shared" ? "Shared P1 ✓" : "Shared P1",
                 }),
                 SP_JSX.jsx(DFL.ButtonItem, {
                   layout: "below",
-                  onClick: () => setMode("multi"),
+                  onClick: () => persistMode("multi"),
                   children: mode === "multi" ? "Multiplayer ✓" : "Multiplayer",
                 }),
               ],

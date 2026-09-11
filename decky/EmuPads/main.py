@@ -122,6 +122,21 @@ class Plugin:
             data["pads"] = []
         return data
 
+    async def set_mode(self, mode: str = "shared", **kwargs: object) -> dict:
+        if kwargs:
+            mode = str(kwargs.get("mode", mode) or mode)
+        script = _bind_py()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        mode = (mode or "shared").strip().lower()
+        if mode not in ("shared", "multi"):
+            return {"ok": False, "message": f"Unknown mode {mode}"}
+        try:
+            proc = _run_as_deck(["python3", script, "set-mode", "--mode", mode], timeout=10)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "bind-gamepad set-mode timed out"}
+        return _json_from(proc)
+
     async def apply(
         self,
         emu: str = "all",

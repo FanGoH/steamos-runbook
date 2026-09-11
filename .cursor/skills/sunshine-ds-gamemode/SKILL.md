@@ -21,7 +21,7 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - Azahar Steam Exit `--quit` must not paint until `azahar` is gone. `timeout` `--paint` / xdotool or Steam sits on Exiting.
 - `--paint` must `systemd-run --user` the idle clock (`Type=oneshot`, `KillMode=process`). `setsid`/`disown` stay in `app-steam-app*.scope`; Steam's reaper waitpid on that clock is the Azahar “Exiting…” hang. Cemu usually avoids it because the tile `exec`s Cemu and the watcher paints after that process is already gone.
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
-- Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`).
+- Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`) or Steam wraps (`28de:11ff`) when Thor/Odin are present. Shared / Multiplayer must persist; a status poll must not flip the toggle back to Shared P1.
 
 ## What must be true
 

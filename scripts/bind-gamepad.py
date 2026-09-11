@@ -55,6 +55,8 @@ SKIP_PRODUCTS = {("1209", "0003")}  # libvirtualhid Mouse
 SINK_VENDOR = "1209"
 SINK_PRODUCTS = ("e301", "e302")
 SINK_NAMES = ("EmuPads P1", "EmuPads P2")
+STEAM_VIRTUAL_VENDOR = "28de"
+STEAM_VIRTUAL_PRODUCT = "11ff"
 MUX_SERVICE = "emupads-mux.service"
 EV_KEY = 1
 DEFAULT_CEMU_XML = Path.home() / ".var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml"
@@ -209,9 +211,25 @@ def _event_node(device: Path) -> str:
     return ""
 
 
+def is_steam_virtual_pad(pad: dict[str, str]) -> bool:
+    return (
+        pad.get("vendor") == STEAM_VIRTUAL_VENDOR
+        and pad.get("product") == STEAM_VIRTUAL_PRODUCT
+    )
+
+
+def _annotate_pad(pad: dict[str, str], index: int) -> dict[str, str]:
+    pad["index"] = str(index)
+    pad["sunshine"] = str("sunshine" in (pad.get("name") or "").lower()).lower()
+    pad["steam"] = str(is_steam_virtual_pad(pad)).lower()
+    pad["guid"] = sdl_guid(pad)
+    pad["cemu_uuid"] = cemu_uuid(pad)
+    pad["eden_guid"] = eden_guid(pad)
+    return pad
+
+
 def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
     pads: list[dict[str, str]] = []
-    index = 0
     for js in sorted(root.glob("js*/device"), key=lambda p: p.parent.name):
         vendor = _read(js / "id" / "vendor").lower().zfill(4)[-4:]
         product = _read(js / "id" / "product").lower().zfill(4)[-4:]
@@ -226,24 +244,24 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
             continue
         if vendor == SINK_VENDOR and product in SINK_PRODUCTS:
             continue
-        pad = {
-            "js": js.parent.name,
-            "name": name,
-            "vendor": vendor,
-            "product": product,
-            "version": version or "0000",
-            "bustype": bustype or "0003",
-            "event": _event_node(js),
-            "index": str(index),
-            "sunshine": str("sunshine" in name.lower()).lower(),
-            "steam": str(vendor == "28de" and product == "11ff").lower(),
-        }
-        pad["guid"] = sdl_guid(pad)
-        pad["cemu_uuid"] = cemu_uuid(pad)
-        pad["eden_guid"] = eden_guid(pad)
-        pads.append(pad)
-        index += 1
-    return pads
+        pads.append(
+            {
+                "js": js.parent.name,
+                "name": name,
+                "vendor": vendor,
+                "product": product,
+                "version": version or "0000",
+                "bustype": bustype or "0003",
+                "event": _event_node(js),
+            }
+        )
+    # Steam Input wraps every Sunshine / physical pad as Microsoft X-Box 360
+    # pad N (28de:11ff). Hide those when a real host pad is present — same
+    # rule as the mux. Steam-only boxes still see the wrap.
+    real = [p for p in pads if not is_steam_virtual_pad(p)]
+    if real:
+        pads = real
+    return [_annotate_pad(pad, i) for i, pad in enumerate(pads)]
 
 
 def mux_config_path() -> Path:
@@ -1405,6 +1423,33 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0 if payload["pads"] else 2
 
 
+def cmd_set_mode(args: argparse.Namespace) -> int:
+    mode = (getattr(args, "mode", None) or "").strip().lower()
+    if mode not in ("shared", "multi"):
+        json.dump({"ok": False, "message": f"Unknown mux mode {mode!r}."}, sys.stdout)
+        sys.stdout.write("\n")
+        return 1
+    cfg = load_mux_config()
+    write_mux_routing(mode, cfg.get("sources") or [], cemu_p1=cfg.get("cemu_p1"))
+    saved = load_mux_config()
+    payload = {
+        "ok": True,
+        "mode": saved.get("mode") or mode,
+        "cemu_p1": saved.get("cemu_p1") or "gamepad",
+        "mux": {
+            "running": mux_running(),
+            "muted": mux_muted(),
+            "mode": saved.get("mode") or mode,
+            "sources": saved.get("sources") or [],
+            "cemu_p1": saved.get("cemu_p1") or "gamepad",
+        },
+        "messages": [f"Mux mode {saved.get('mode') or mode}"],
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _emit_apply(
     *,
     rc: int,
@@ -1984,9 +2029,20 @@ def _self_test() -> int:
             product="0003",
             version="0114",
         )
+        _write_js(
+            root,
+            "js10",
+            name="Microsoft X-Box 360 pad 0",
+            vendor="28de",
+            product="11ff",
+            version="0001",
+        )
         listed = list_joysticks(root)
         assert all(not p["name"].startswith("EmuPads") for p in listed), listed
+        assert all(p["product"] not in SINK_PRODUCTS for p in listed)
         assert all(p["product"] != "0003" for p in listed)
+        assert all(p["product"] != "11ff" for p in listed), listed
+        assert any("Thor" in p["name"] for p in listed), listed
         sinks = list_sink_joysticks(root)
         assert [s["name"] for s in sinks] == ["EmuPads P1", "EmuPads P2"]
         assert sinks[0]["product"] == "e301"
@@ -2006,6 +2062,17 @@ def _self_test() -> int:
         write_mux_routing("shared", [], cemu_p1="pro")
         assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
         write_mux_routing("multi", [])
+        steam_only = Path(tmp) / "steam-only"
+        _write_js(
+            steam_only,
+            "js0",
+            name="Microsoft X-Box 360 pad 0",
+            vendor="28de",
+            product="11ff",
+            version="0001",
+        )
+        steam_listed = list_joysticks(steam_only)
+        assert [p["product"] for p in steam_listed] == ["11ff"], steam_listed
         assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
         os.environ.pop("EMUPADS_MUX_CONFIG", None)
         assert tile_cemu_p1(streaming=True) == "gamepad"
@@ -2051,6 +2118,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Cemu player 1 type: gamepad (Wii U GamePad) or pro (Wii U Pro Controller)",
     )
     p_apply.set_defaults(func=cmd_apply)
+
+    p_mode = sub.add_parser("set-mode", help="Write mux shared/multi without rebinding emulators")
+    p_mode.add_argument("--mode", required=True, help="shared or multi")
+    p_mode.set_defaults(func=cmd_set_mode)
 
     p_wait = sub.add_parser("wait", help="Print the pad that receives the next button")
     p_wait.add_argument("--timeout", type=float, default=20.0)

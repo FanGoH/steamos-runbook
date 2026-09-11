@@ -45,6 +45,16 @@ if [ -w "$PARENT" ]; then
   exit 0
 fi
 
+# ~/homebrew/plugins is often root:root while copied files are deck:deck.
+if [ -w "$PLUGIN_DEST/main.py" ] && [ -w "$PLUGIN_DEST/dist/index.js" ]; then
+  cp -a "$SRC/main.py" "$PLUGIN_DEST/main.py"
+  cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
+  [ -w "$PLUGIN_DEST/plugin.json" ] && cp -a "$SRC/plugin.json" "$PLUGIN_DEST/plugin.json"
+  [ -w "$PLUGIN_DEST/package.json" ] && cp -a "$SRC/package.json" "$PLUGIN_DEST/package.json"
+  echo "Updated writable Emu Pads files in $PLUGIN_DEST"
+  exit 0
+fi
+
 if sudo -n true 2>/dev/null; then
   sudo mkdir -p "$PLUGIN_DEST/dist"
   sudo cp -a "$SRC/main.py" "$SRC/plugin.json" "$SRC/package.json" "$PLUGIN_DEST/"

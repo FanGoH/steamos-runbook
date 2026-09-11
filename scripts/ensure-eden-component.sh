@@ -147,9 +147,9 @@ if [ -f "$engage_custom" ]; then
   python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"
 fi
 shortcuts_script="$ROOT/scripts/eden-component/set-steam-launch-options.py"
-# 3DS dumps often land in ~/emulation first. RetroDECK / Tender Play n3ds.
-# Symlink (no copy) and mark Tender rom_installs launchable. Do this before
-# writing shortcuts.vdf so empty-argv tiles can recover the n3ds dest.
+# 3DS dumps often land in ~/emulation first. Move them into RetroDECK n3ds
+# (same inode, no copy) and mark Tender rom_installs launchable. Do this
+# before writing shortcuts.vdf so empty-argv tiles can recover the n3ds dest.
 if [ -f "$shortcuts_script" ]; then
   python3 "$shortcuts_script" --repair-tender || true
   for shortcuts in /home/${STEAMOS_USER}/.local/share/Steam/userdata/*/config/shortcuts.vdf; do

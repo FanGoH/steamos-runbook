@@ -249,37 +249,36 @@ def _3ds_dump_for_name(base: Path, name: str) -> Path | None:
     return max(dumps, key=lambda p: p.stat().st_size)
 
 
-def link_3ds_emulation_into_n3ds(home: Path) -> int:
-    """Symlink ~/emulation/3ds/games dumps into RetroDECK n3ds (no copy)."""
+def move_3ds_emulation_into_n3ds(home: Path) -> int:
+    """Move ~/emulation/3ds/games dumps into RetroDECK n3ds (rename, no copy)."""
     src_root = home / "emulation/3ds/games"
     dest_root = home / "retrodeck/roms/n3ds"
     if not src_root.is_dir() or not dest_root.is_dir():
         return 0
-    linked = 0
+    moved = 0
     for dump in sorted(src_root.rglob("*")):
         if not dump.is_file() or dump.suffix.lower() not in DS_EXT:
             continue
         dest = dest_root / dump.name
         if dest.is_symlink():
-            try:
-                if dest.resolve() == dump.resolve():
-                    continue
-            except OSError:
-                pass
             dest.unlink()
-        elif dest.is_file():
-            if dest.stat().st_size == dump.stat().st_size:
-                dest.unlink()
-            else:
-                print(f"skip 3ds {dest} (size differs from {dump})")
-                continue
         elif dest.exists():
-            print(f"skip 3ds {dest} (not a file)")
+            if dest.resolve() == dump.resolve():
+                continue
+            if dest.is_file() and dest.stat().st_size == dump.stat().st_size:
+                dump.unlink()
+                print(f"removed duplicate {dump}")
+                moved += 1
+                continue
+            print(f"skip 3ds {dest} (already exists)")
             continue
-        dest.symlink_to(dump)
-        print(f"linked {dest} -> {dump}")
-        linked += 1
-    return linked
+        dump.rename(dest)
+        print(f"moved {dump} -> {dest}")
+        moved += 1
+    for folder in sorted(src_root.rglob("*"), reverse=True):
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+    return moved
 
 
 def _tender_launch_options(platform: str, dump: Path) -> str:
@@ -597,7 +596,7 @@ def repair_tender_3ds_installs(home: Path) -> int:
     db = home / TENDER_DB
     if not db.is_file():
         return 0
-    link_3ds_emulation_into_n3ds(home)
+    move_3ds_emulation_into_n3ds(home)
     con = sqlite3.connect(db)
     con.row_factory = sqlite3.Row
     fixed = 0
@@ -794,10 +793,13 @@ def _self_test() -> None:
         src.write_bytes(b"3" * 16)
         n3ds = home / "retrodeck/roms/n3ds"
         n3ds.mkdir(parents=True)
-        assert link_3ds_emulation_into_n3ds(home) == 1
         dest = n3ds / src.name
-        assert dest.is_symlink() and dest.resolve() == src.resolve()
-        assert link_3ds_emulation_into_n3ds(home) == 0
+        dest.symlink_to(src)
+        assert move_3ds_emulation_into_n3ds(home) == 1
+        assert dest.is_file() and not dest.is_symlink()
+        assert dest.read_bytes() == b"3" * 16
+        assert not src.exists()
+        assert move_3ds_emulation_into_n3ds(home) == 0
         assert _3ds_dump_for_name(n3ds, "Fire Emblem Awakening") == dest
         assert _fold_3ds_name("Pokémon Ultra Sun") == "pokemon ultra sun"
 

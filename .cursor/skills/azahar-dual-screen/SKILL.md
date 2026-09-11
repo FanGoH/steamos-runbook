@@ -43,7 +43,7 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$(python3 scripts/pad_profile.p
 flatpak run --env=QT_QPA_PLATFORM=xcb org.azahar_emu.Azahar "<3ds>"
 ```
 
-If `AZAHAR_ROM` is set and Azahar is not running, the script launches. Example dump: `~/emulation/3ds/games/.../*.3ds`. Do not commit a personal ROM path. Do not inherit Steam’s ignore list. Do not use RetroDECK `-f` / `azahar-launcher`.
+If `AZAHAR_ROM` is set and Azahar is not running, the script launches. Example dump: `~/retrodeck/roms/n3ds/*.3ds`. Do not commit a personal ROM path. Do not inherit Steam’s ignore list. Do not use RetroDECK `-f` / `azahar-launcher`.
 
 ## Game Mode (`:48200`)
 

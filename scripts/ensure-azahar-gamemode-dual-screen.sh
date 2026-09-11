@@ -18,7 +18,8 @@
 # reaper whose parent is systemd --user, which is how the playbook launches).
 # Tender 3DS Play while :48200 is BUSY runs this script from rom-launcher
 # (standalone Flatpak, not RetroDECK azahar-launcher -f) and waits for
-# Azahar so Steam Exit / tile end can --quit and --paint :2.
+# Azahar so Steam Exit / tile end can --quit. Paint :2 only after azahar
+# is gone; --paint hops out of Steam's reaper via systemd-run.
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
 
@@ -443,9 +444,14 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_focus_watch
   stop_azahar
   stop_mirror
-  # xdotool search on a wedged :2 can hang --paint and leave Steam on Exiting.
-  timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   timeout 2 bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
+  # Do not paint while azahar is still up. The clock used to start inside
+  # Steam's reaper (setsid is not enough) and Steam sat on Exiting.
+  if azahar_running; then
+    echo "Quit Azahar requested but azahar is still running; not painting :2."
+  else
+    timeout 8 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
+  fi
   echo "Quit Azahar (SteamLaunch reaper + windows). Steam Exit can finish."
   exit 0
 fi

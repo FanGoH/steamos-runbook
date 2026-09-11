@@ -259,6 +259,12 @@ if [ "$is_azahar" -eq 1 ]; then
       done
       azahar_quit
       trap - EXIT INT TERM
+      # Paint only after Azahar is confirmed gone. --paint systemd-runs
+      # outside Steam's reaper; starting the clock from --quit used to
+      # leave "Exiting…" up (Cemu execs, so its watcher paints later).
+      if ! pgrep -x azahar >/dev/null 2>&1; then
+        timeout 8 bash "$PLAYBOOK/scripts/sunshine-ds-gamemode-virtual.sh" --paint >/dev/null 2>&1 || true
+      fi
       exit 0
     fi
   fi

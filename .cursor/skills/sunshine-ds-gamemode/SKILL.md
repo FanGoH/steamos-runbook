@@ -14,12 +14,12 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - **Cemu “crash” on Home** was inhibit treating `FOCUSED_APP=769` as Exit (`Steam Exit — FOCUSED_APP=769, quitting`). `log.txt` stopping mid-`FSGetVolumeState` is SIGTERM, not a Cemu fault. Mute only. Do not restore the 8s-769 `--quit` gate.
 - **Tender “RomM disconnected”** on a 3DS tile usually means no `rom_installs` row (UI shows Download and hits RomM) even when the `.3ds` is already in `n3ds`. `set-steam-launch-options.py --repair-tender`, then **reopen Tender**. Empty Steam LaunchOptions recover via `SteamAppId` → Tender DB. Do not rewrite `shortcuts.vdf` in Game Mode.
 - **Older tiles** still `exec` missing `~/homebrew/plugins/decky-romm-sync/bin/rom-launcher` (Tender replaced that plugin). `ensure-eden-component.sh` `record_manual` has the `sudo mkdir/cp/chmod/chown` — `~/homebrew/plugins` is often `root:root` and `sudo -n` fails.
-- **Azahar Game Mode path:** Tender `rom-launcher` **runs** `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`). Disown the focus watcher (same as Cemu). Wait for `azahar`, then `--quit`/`--paint`. `azahar_on_hdmi()` searches `:0` and `:1`. Inhibit `restore_bottom_screen()` paints `:2` when the last emu is gone (skip if Cemu/Azahar still up). Unset `LD_PRELOAD` in that script (Steam ELFCLASS32 spam).
+- **Azahar Game Mode path:** Tender `rom-launcher` **runs** `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`). Disown the focus watcher (same as Cemu). Wait for `azahar`, then `--quit`. Paint `:2` only after `azahar` is gone. `azahar_on_hdmi()` searches `:0` and `:1`. Inhibit `restore_bottom_screen()` paints `:2` when the last emu is gone (skip if Cemu/Azahar still up). Unset `LD_PRELOAD` in that script (Steam ELFCLASS32 spam).
 - **Mux restart:** `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`). Then restart Cemu/Azahar/Eden — new uinput nodes. Config `~/.config/emupads/mux.json`.
 - Bind Cemu/Azahar/Eden to **EmuPads P1/P2** only. The `wait-appear --match Thor` / `cemu --match Thor` lines below are wait-for-pad helpers, not XML bind targets.
 - Game Mode `apps.json` is **Desktop only**. Do not re-add **Cemu Dual-Screen** — Tender tiles own Cemu.
-- Azahar Steam Exit `--quit` must `timeout` `--paint` / xdotool or Steam sits on Exiting.
-- `--paint` must `setsid` the idle clock. Steam's reaper waits for every child; a clock started from `rom-launcher --quit` is the ALBW “Exiting…” hang (reaper still waiting on `sunshine-ds-bottom-screensaver.py`).
+- Azahar Steam Exit `--quit` must not paint until `azahar` is gone. `timeout` `--paint` / xdotool or Steam sits on Exiting.
+- `--paint` must `systemd-run --user` the idle clock (`Type=oneshot`, `KillMode=process`). `setsid`/`disown` stay in `app-steam-app*.scope`; Steam's reaper waitpid on that clock is the Azahar “Exiting…” hang. Cemu usually avoids it because the tile `exec`s Cemu and the watcher paints after that process is already gone.
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
 - Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`).
 
@@ -105,7 +105,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - `/launch` `881448767` or Low Res Desktop on kms
 - Leave `logs/cemu-gamemode-ds.want` after a failed launch (Tender auto-DS does **not** write that file)
 - Expect Tender Cemu Play to stay `-f` while `:48200` is BUSY and the virtual sidecar is up — that path is windowed `--attach`
-- Expect Tender 3DS Play to stay RetroDECK `azahar-launcher` while `:48200` is BUSY — that path **runs** standalone `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`; wait then `--quit`/`--paint`)
+- Expect Tender 3DS Play to stay RetroDECK `azahar-launcher` while `:48200` is BUSY — that path **runs** standalone `ensure-azahar-gamemode-dual-screen.sh` (do not `exec`; wait then `--quit`; `--paint` only after `azahar` is gone)
 - Treat `FOCUSED_APP=769` as Steam Exit / `--quit` after 8s — that killed Cemu on Home
 - Bind Cemu/Azahar/Eden to a Sunshine pad when the mux is down — start `emupads-mux.service` instead
 - Set `:0` `GAMESCOPECTRL_BASELAYER_WINDOW` to a 10×10 Cemu stub

@@ -358,7 +358,8 @@ def restore_bottom_screen() -> None:
 
     Azahar's focus watcher can die with the Tender tile before Azahar
     itself exits, which leaves Moonlight video/1 on the last 3DS bottom
-    frame. Safe no-op while Cemu/Azahar is still up.
+    frame. Safe no-op while Cemu/Azahar is still up. --paint hops out
+    of Steam's reaper; do not start the clock until the emu is gone.
     """
     if BIND.cemu_running() or BIND.azahar_running():
         return

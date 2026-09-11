@@ -212,8 +212,8 @@ start_paint() {
     return 1
   fi
   # Isolated: inheriting WAYLAND_DISPLAY=gamescope-0 puts this on the TV.
-  # setsid: Steam's reaper waits for every child. --paint from rom-launcher
-  # --quit used to leave this clock in the tile cgroup → "Exiting…".
+  # --paint hops out of Steam's reaper via systemd-run (see DO_PAINT).
+  # setsid here is only extra isolation for the in-process fallback.
   setsid env -u WAYLAND_DISPLAY DISPLAY="$x11" \
     python3 "$saver" --display "$x11" >>"$LOG" 2>&1 </dev/null &
   printf '%s\n' "$!" >"$PAINT_PIDFILE"
@@ -433,7 +433,36 @@ if [ "$DO_SMOKE" -eq 1 ]; then
   exit 0
 fi
 
+# Steam's reaper is a subreaper and waitpid()s every descendant in the
+# tile cgroup. setsid/disown do not leave app-steam-app*.scope, so a clock
+# started from rom-launcher / --quit / inhibit-in-tile leaves Steam on
+# "Exiting…". Hop the whole --paint oneshot onto the user bus; KillMode=
+# process so the Tk child survives after this script exits.
+paint_outside_steam_scope() {
+  if ! command -v systemd-run >/dev/null 2>&1; then
+    return 1
+  fi
+  systemctl --user reset-failed sunshine-ds-bottom-paint.service 2>/dev/null || true
+  systemd-run --user --collect --quiet \
+    --unit=sunshine-ds-bottom-paint \
+    --property=Type=oneshot \
+    --property=KillMode=process \
+    --setenv=SUNSHINE_DS_PAINT_INNER=1 \
+    --setenv=XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" \
+    --setenv=HOME="${HOME:-/home/deck}" \
+    --setenv=DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}" \
+    /bin/bash "$ROOT/scripts/sunshine-ds-gamemode-virtual.sh" --paint
+}
+
 if [ "$DO_PAINT" -eq 1 ]; then
+  if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
+    if paint_outside_steam_scope; then
+      echo "Bottom screensaver armed outside Steam scope."
+      print_status
+      exit 0
+    fi
+    echo "systemd-run --paint unavailable; starting in-process."
+  fi
   # Frozen GamePad after Cemu exit is leftover x11grab on :2. Kill it
   # before start_paint's "ffplay already here" skip.
   x11="$(x11_display || true)"

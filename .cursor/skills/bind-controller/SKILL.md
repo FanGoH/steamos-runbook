@@ -25,7 +25,7 @@ python3 scripts/bind-gamepad.py cemu --wait
 
 Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPads P1** / **P2**. Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Emulators bind the sinks once; Apply only changes routing. Independent of dual-screen — works with vanilla Decky Sunshine.
 
-- **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too.
+- **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too. Steam virtual `28de:11ff` is skipped when a Sunshine / physical pad is present (Steam’s curve stacked on SDL made Cemu sticks feel short/wonky). Axes are rescaled to the sink ±32767 range.
 - **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
 - Overlay/QAM mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads.

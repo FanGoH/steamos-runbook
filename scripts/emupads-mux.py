@@ -31,6 +31,7 @@ SINK_NAMES = ("EmuPads P1", "EmuPads P2")
 SINK_VERSION = 0x0114
 SKIP_VENDORS = {0x0000, 0x001F, 0x26CE, 0x046D, 0xBEEF}
 SKIP_PRODUCTS = {(0x1209, 0x0003)}  # libvirtualhid Mouse
+STEAM_VIRTUAL = (0x28DE, 0x11FF)  # Steam Input wrap; duplicates Sunshine / physical
 CONFIG_PATH = Path(os.environ.get("EMUPADS_MUX_CONFIG", Path.home() / ".config/emupads/mux.json"))
 PID_NAME = "emupads-mux.pid"
 MUTE_NAME = "emupads-mute"
@@ -94,6 +95,27 @@ def _abs_info(code: int) -> AbsInfo:
     return AbsInfo(value=0, min=-32768, max=32767, fuzz=16, flat=128, resolution=0)
 
 
+def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: int) -> int:
+    """Map a source axis sample onto the sink range (fixes 0–255 vs ±32767)."""
+    if src_max == src_min:
+        return 0
+    t = (value - src_min) / float(src_max - src_min)
+    out = dst_min + t * (dst_max - dst_min)
+    return int(round(max(dst_min, min(dst_max, out))))
+
+
+def vid_pid(dev) -> tuple[int, int] | None:
+    try:
+        return int(dev.info.vendor), int(dev.info.product)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def is_steam_virtual(dev) -> bool:
+    pair = vid_pid(dev)
+    return pair == STEAM_VIRTUAL
+
+
 def sink_capabilities() -> dict:
     return {
         ecodes.EV_KEY: list(_BTN),
@@ -131,11 +153,10 @@ def is_source_name(name: str) -> bool:
 def is_source_device(dev) -> bool:
     if not is_source_name(dev.name or ""):
         return False
-    try:
-        vendor = int(dev.info.vendor)
-        product = int(dev.info.product)
-    except (AttributeError, TypeError, ValueError):
+    pair = vid_pid(dev)
+    if pair is None:
         return True
+    vendor, product = pair
     if vendor in SKIP_VENDORS:
         return False
     if (vendor, product) in SKIP_PRODUCTS:
@@ -181,6 +202,11 @@ def source_spec_matches(spec: dict, name: str, path: str) -> bool:
 def selected_sources(cfg: dict, devices: list[InputDevice]) -> list[InputDevice]:
     specs = cfg.get("sources") or []
     eligible = [dev for dev in devices if is_source_device(dev)]
+    # Steam Input wraps the held pad (Sunshine / Xbox). Prefer the real
+    # device so Cemu does not see Steam's deadzone/curve on top of SDL.
+    non_steam = [dev for dev in eligible if not is_steam_virtual(dev)]
+    if non_steam:
+        eligible = non_steam
     if not specs:
         return eligible
     out: list[InputDevice] = []
@@ -218,7 +244,17 @@ def zero_sink(ui: UInput) -> None:
     ui.syn()
 
 
-def forward_event(ui: UInput, ev) -> None:
+def source_abs_range(dev, code: int) -> tuple[int, int] | None:
+    try:
+        info = dev.absinfo(code)
+    except (OSError, AttributeError, KeyError):
+        return None
+    if info is None:
+        return None
+    return int(info.min), int(info.max)
+
+
+def forward_event(ui: UInput, ev, src=None) -> None:
     if ev.type == ecodes.EV_SYN:
         ui.syn()
         return
@@ -226,8 +262,12 @@ def forward_event(ui: UInput, ev) -> None:
         ui.write(ev.type, ev.code, ev.value)
         return
     if ev.type == ecodes.EV_ABS and ev.code in _ABS:
-        info = _abs_info(ev.code)
-        value = max(info.min, min(info.max, ev.value))
+        dst = _abs_info(ev.code)
+        src_range = source_abs_range(src, ev.code) if src is not None else None
+        if src_range is not None:
+            value = scale_axis(ev.value, src_range[0], src_range[1], dst.min, dst.max)
+        else:
+            value = max(dst.min, min(dst.max, ev.value))
         ui.write(ev.type, ev.code, value)
 
 
@@ -332,19 +372,18 @@ def loop() -> int:
                         if active[slot] not in (None, dev.path):
                             zero_sink(ui)
                         active[slot] = dev.path
-                    for ev in events:
-                        forward_event(ui, ev)
+                    if active[slot] == dev.path:
+                        for ev in events:
+                            forward_event(ui, ev, src=dev)
                     continue
                 ui = sinks[0]
                 if any(is_activity(ev) for ev in events):
                     if active[0] not in (None, dev.path):
                         zero_sink(ui)
                     active[0] = dev.path
-                if active[0] in (None, dev.path):
-                    if active[0] is None:
-                        active[0] = dev.path
+                if active[0] == dev.path:
                     for ev in events:
-                        forward_event(ui, ev)
+                        forward_event(ui, ev, src=dev)
     finally:
         for ui in sinks:
             try:
@@ -385,6 +424,7 @@ def self_test() -> int:
         Fake("Sunshine (libvirtualhid) Mouse", "/dev/input/event11", 0x1209, 0x0003),
         Fake("Odin2_Portal", "/dev/input/event12"),
         Fake("ASRock LED Controller", "/dev/input/event13", 0x26CE, 0x01A2),
+        Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF),
     ]
     # selected_sources expects InputDevice; duck-type name/path
     got = selected_sources(cfg, devices)  # type: ignore[arg-type]
@@ -394,6 +434,16 @@ def self_test() -> int:
     assert "ASRock LED Controller" not in names
     assert "Sunshine (libvirtualhid) AYN_Thor" in names
     assert "Odin2_Portal" in names
+    assert "Microsoft X-Box 360 pad 0" not in names
+    steam_only = [Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF)]
+    steam_got = selected_sources(cfg, steam_only)  # type: ignore[arg-type]
+    assert [d.name for d in steam_got] == ["Microsoft X-Box 360 pad 0"]
+    assert scale_axis(0, -32768, 32767, -32768, 32767) == 0
+    assert scale_axis(32767, -32768, 32767, -32768, 32767) == 32767
+    assert scale_axis(-32768, -32768, 32767, -32768, 32767) == -32768
+    assert abs(scale_axis(128, 0, 255, -32768, 32767)) < 256
+    assert scale_axis(0, 0, 255, -32768, 32767) == -32768
+    assert scale_axis(255, 0, 255, -32768, 32767) == 32767
     cfg2 = {
         "mode": "multi",
         "sources": [{"name": "Odin2_Portal"}, {"name": "Sunshine (libvirtualhid) AYN_Thor"}],

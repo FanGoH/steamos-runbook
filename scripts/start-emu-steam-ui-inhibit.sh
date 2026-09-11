@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Steam overlay / qAM emulator-input inhibitor if it is not up.
+# Start the Steam overlay / QAM / Home mute watcher if it is not up.
 # Safe to call from rom-launcher, Game Mode dual-screen, and Eden wrap.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -18,7 +18,8 @@
 # --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
 # --quit stops Cemu + reaper + mirror. Do not SIGSTOP on Steam Exit
 # (that holds SIGTERM and makes Exiting… wait). SIGTERM pending or
-# FOCUSED_APP=769 (after 8s) quits on the first tick.
+# SIGTERM pending quits on the first tick. Home/Library (FOCUSED_APP=769)
+# only mutes EmuPads sinks — do not treat that as Exit.
 #
 # Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
 set -uo pipefail

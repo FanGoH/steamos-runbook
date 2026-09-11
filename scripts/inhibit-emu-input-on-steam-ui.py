@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Mute EmuPads sinks while Steam overlay or QAM has focus.
+"""Mute EmuPads sinks while any Steam UI has focus.
 
 Steam and the emulator both keep pads open. EVIOCGRAB on a Sunshine
-node would also steal overlay / QAM navigation. Touch
+node would also steal overlay / QAM / Home navigation. Touch
 ``$XDG_RUNTIME_DIR/emupads-mute`` so the mux emits zeros; Steam still
 reads the real pads. Do not SIGSTOP the emulator (that holds Steam's
 SIGTERM on Exit).
 
-Steam UI:
+Steam UI (mute only — do not quit):
 - Overlay (Guide / Hold-Select): ``STEAM_OVERLAY=1``
 - QAM (Quick Access Menu, ``...``): ``GAMESCOPE_BLUR_MODE`` != 0 on HDMI ``:0``.
   FOCUSED_APP stays the game — do not treat 769 as QAM.
-- Exit: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0`` after the emulator has been
-  up (8s gate so Launching 769 does not kill the stub). Overlay/QAM only
-  mute sinks. Exit **quits** Azahar or Cemu on the first tick — do not
-  SIGSTOP (that holds Steam's SIGTERM) and do not wait extra sleeps.
-  SIGTERM pending is the same event (playbook SteamLaunch may not be a
-  Steam child).
+- Home / Library / other BPM menus: ``GAMESCOPE_FOCUSED_APP=769`` on ``:0``
+  while the emulator is still running. Overlay closing into Home used to
+  unmute, then the 8s 769 gate ``--quit``'d Cemu (looked like a crash).
+
+Exit **quits** Azahar or Cemu only when SIGTERM is pending (Steam Exit).
+Do not SIGSTOP. Playbook SteamLaunch may not be a Steam child.
 
 Do not grab ``/dev/input``. Never pgrep -f sunshine.
 """
@@ -36,8 +36,7 @@ PIDFILE = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_PIDFILE", ROOT / "logs/emu-s
 LOG = Path(os.environ.get("EMU_STEAM_UI_INHIBIT_LOG", ROOT / "logs/emu-steam-ui-inhibit.log"))
 STEAM_CLIENT_ID = "769"
 DISPLAYS = (":0", ":1")
-# Launching sets FOCUSED_APP=769; ignore that until the emulator has been up.
-EXIT_MIN_AGE_S = 8.0
+MUTE_KINDS = ("overlay", "qam", "menu")
 
 
 def _load_bind():
@@ -61,11 +60,19 @@ def log(msg: str) -> None:
         fh.write(line + "\n")
 
 
+def _x11_env(display: str) -> dict[str, str]:
+    env = {**os.environ, "DISPLAY": display}
+    env.pop("LD_PRELOAD", None)
+    env.pop("LD_PRELOAD_32", None)
+    env.pop("LD_PRELOAD_64", None)
+    return env
+
+
 def xprop_root(display: str, atom: str) -> str:
     try:
         out = subprocess.check_output(
             ["xprop", "-root", atom],
-            env={**os.environ, "DISPLAY": display},
+            env=_x11_env(display),
             stderr=subprocess.DEVNULL,
             text=True,
         )
@@ -80,7 +87,7 @@ def overlay_on(display: str) -> bool:
     try:
         ids = subprocess.check_output(
             ["xdotool", "search", "--class", "steam"],
-            env={**os.environ, "DISPLAY": display},
+            env=_x11_env(display),
             stderr=subprocess.DEVNULL,
             text=True,
         ).split()
@@ -89,7 +96,7 @@ def overlay_on(display: str) -> bool:
     try:
         ids += subprocess.check_output(
             ["xdotool", "search", "--class", "steamwebhelper"],
-            env={**os.environ, "DISPLAY": display},
+            env=_x11_env(display),
             stderr=subprocess.DEVNULL,
             text=True,
         ).split()
@@ -99,7 +106,7 @@ def overlay_on(display: str) -> bool:
         try:
             out = subprocess.check_output(
                 ["xprop", "-id", xid, "STEAM_OVERLAY"],
-                env={**os.environ, "DISPLAY": display},
+                env=_x11_env(display),
                 stderr=subprocess.DEVNULL,
                 text=True,
             )
@@ -164,31 +171,27 @@ def qam_on(display: str = ":0") -> bool:
     return bool(mode) and mode != "0"
 
 
-def steam_ui_kind(emu_age_s: float = 0.0) -> str:
-    """overlay | qam | exit | ''."""
-    overlay = False
+def steam_ui_kind() -> str:
+    """overlay | qam | menu | ''."""
     for display in DISPLAYS:
         if overlay_on(display):
-            overlay = True
-    if overlay:
-        return "overlay"
+            return "overlay"
     if qam_on(":0"):
         return "qam"
-    focused_steam = xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID
-    if focused_steam and emu_age_s >= EXIT_MIN_AGE_S:
-        return "exit"
+    if xprop_root(":0", "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID:
+        return "menu"
     return ""
 
 
-def steam_ui_up(emu_age_s: float = 0.0) -> bool:
-    return steam_ui_kind(emu_age_s) in ("overlay", "qam", "exit")
+def steam_ui_up() -> bool:
+    return steam_ui_kind() in MUTE_KINDS
 
 
 def azahar_on_hdmi() -> bool:
     try:
         out = subprocess.check_output(
             ["xdotool", "search", "--class", "Azahar"],
-            env={**os.environ, "DISPLAY": ":0"},
+            env=_x11_env(":0"),
             stderr=subprocess.DEVNULL,
             text=True,
         )
@@ -218,7 +221,7 @@ def cemu_on_session() -> bool:
         try:
             out = subprocess.check_output(
                 ["xdotool", "search", "--name", "Cemu"],
-                env={**os.environ, "DISPLAY": display},
+                env=_x11_env(display),
                 stderr=subprocess.DEVNULL,
                 text=True,
             )
@@ -391,17 +394,8 @@ def loop() -> int:
                 time.sleep(0.1)
                 continue
             live = pids
-            age = emu_age_seconds(list(live))
-            kind = steam_ui_kind(age)
-            if kind == "exit" and (azahar_on_hdmi() or cemu_on_session()):
-                unmute_sinks()
-                log("Steam Exit — FOCUSED_APP=769, quitting")
-                quit_for_steam_exit(stopped, live)
-                stopped.clear()
-                ui = False
-                time.sleep(0.1)
-                continue
-            now = bool(live) and kind in ("overlay", "qam")
+            kind = steam_ui_kind()
+            now = bool(live) and kind in MUTE_KINDS
             if now and not ui:
                 mute_sinks()
                 for pid in live:
@@ -443,7 +437,8 @@ def self_test() -> int:
     assert not BIND.is_azahar_comm("azahar-launcher")
     assert BIND.is_eden_comm("eden")
     assert steam_ui_up() in (True, False)
-    assert steam_ui_kind() in ("", "overlay", "qam", "exit")
+    assert steam_ui_kind() in ("", "overlay", "qam", "menu")
+    assert MUTE_KINDS == ("overlay", "qam", "menu")
     assert qam_on(":0") in (True, False)
     assert azahar_on_hdmi() in (True, False)
     assert cemu_on_session() in (True, False)

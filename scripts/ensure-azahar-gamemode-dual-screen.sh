@@ -11,6 +11,9 @@
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
 # ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors
 # without restarting Azahar (needed after kms --start recreates :2).
+# --attach waits for an already-launching Azahar (no SteamLaunch).
+# Tender 3DS Play while :48200 is BUSY execs this script from rom-launcher
+# (standalone Flatpak, not RetroDECK azahar-launcher -f).
 # Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
 set -uo pipefail
 
@@ -40,18 +43,20 @@ mkdir -p "$ROOT/logs"
 : >>"$LOG"
 
 usage() {
-  sed -n '2,14p' "$0"
+  sed -n '2,16p' "$0"
 }
 
 DO_STOP=0
 DO_MIRROR_ONLY=0
+DO_ATTACH=0
 for arg in "$@"; do
   case "$arg" in
     --stop) DO_STOP=1 ;;
     --mirror-only) DO_MIRROR_ONLY=1 ;;
+    --attach) DO_ATTACH=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "usage: $0 [--stop|--mirror-only]" >&2
+      echo "usage: $0 [--stop|--mirror-only|--attach]" >&2
       exit 2
       ;;
   esac
@@ -73,6 +78,27 @@ stop_paint() {
   DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
 }
 
+# pgrep -x ffplay, then argv / DISPLAY. Never pgrep -f sunshine.
+kill_pad_x11grab() {
+  local pid cmd disp
+  command -v pgrep >/dev/null 2>&1 || return 0
+  for pid in $(pgrep -x ffplay || true); do
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *x11grab*) ;;
+      *) continue ;;
+    esac
+    disp="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1 || true)"
+    case "$disp" in
+      "$PAD_DISPLAY"|"${PAD_DISPLAY}.0"|":2"|":2.0")
+        echo "Stopping leftover Azahar x11grab ffplay pid $pid."
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
 stop_mirror() {
   local pid
   pid="$(cat "$MIRROR_PIDFILE" 2>/dev/null || true)"
@@ -90,6 +116,7 @@ stop_mirror() {
     fi
   fi
   rm -f "$CEMU_MIRROR_PIDFILE"
+  kill_pad_x11grab
 }
 
 stop_focus_watch() {
@@ -167,12 +194,19 @@ bind_odin() {
 }
 
 find_wid() {
-  local needle="$1" id name
-  for id in $(DISPLAY="$TV_DISPLAY" xdotool search --name "$needle" 2>/dev/null || true); do
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$id" 2>/dev/null || true)"
-    case "$name" in
-      *"$needle"*) printf '%s\n' "$id"; return 0 ;;
-    esac
+  local needle="$1" d id name
+  for d in "$TV_DISPLAY" :1 :0; do
+    [ -n "$d" ] || continue
+    for id in $(DISPLAY="$d" xdotool search --name "$needle" 2>/dev/null || true); do
+      name="$(DISPLAY="$d" xdotool getwindowname "$id" 2>/dev/null || true)"
+      case "$name" in
+        *"$needle"*)
+          TV_DISPLAY="$d"
+          printf '%s\n' "$id"
+          return 0
+          ;;
+      esac
+    done
   done
   return 1
 }
@@ -389,6 +423,44 @@ if [ "$DO_MIRROR_ONLY" -eq 1 ]; then
   echo "Remirroring Secondary=$SECONDARY_WID onto $PAD_DISPLAY (no Azahar restart)."
   start_mirror "$SECONDARY_WID"
   present_primary || true
+  start_focus_watch
+  exit 0
+fi
+
+# Already launching (or host-opened). Do not SteamLaunch again.
+if [ "$DO_ATTACH" -eq 1 ]; then
+  focus_pid="$(cat "$FOCUS_PIDFILE" 2>/dev/null || true)"
+  if [ -n "${focus_pid:-}" ] && [ -d "/proc/$focus_pid" ]; then
+    echo "Azahar dual-stream already watching pid $focus_pid; remirroring only."
+    SECONDARY_WID="$(find_secondary_wid || true)"
+    if [ -n "${SECONDARY_WID:-}" ]; then
+      start_mirror "$SECONDARY_WID"
+    fi
+    present_primary || true
+    exit 0
+  fi
+  ensure_virtual_display || {
+    echo "Headless gamescope $PAD_DISPLAY is not available."
+    exit 1
+  }
+  if ! wait_azahar; then
+    echo "Azahar did not start (attach). See $LOG"
+    exit 1
+  fi
+  bind_odin || echo "Azahar bind failed; continuing with whatever GUID is in qt-config.ini."
+  echo "Waiting for Primary/Secondary windows (attach)..."
+  if ! wait_game_windows; then
+    echo "No Azahar game windows (attach). Watching for exit so :2 can screensaver."
+    start_focus_watch
+    exit 2
+  fi
+  PRIMARY_WID="$(find_primary_wid)"
+  SECONDARY_WID="$(find_secondary_wid)"
+  echo "Primary=$PRIMARY_WID Secondary=$SECONDARY_WID on $TV_DISPLAY"
+  minimize_library
+  start_mirror "$SECONDARY_WID"
+  start_focus_watch
+  echo "Attached Game Mode Azahar dual-stream: top on $TV_DISPLAY, bottom on $PAD_DISPLAY."
   exit 0
 fi
 

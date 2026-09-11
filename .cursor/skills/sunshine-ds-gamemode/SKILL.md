@@ -76,6 +76,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - `/launch` `881448767` or Low Res Desktop on kms
 - Leave `logs/cemu-gamemode-ds.want` after a failed launch (Tender auto-DS does **not** write that file)
 - Expect Tender Cemu Play to stay `-f` while `:48200` is BUSY and the virtual sidecar is up — that path is windowed `--attach`
+- Expect Tender 3DS Play to stay RetroDECK `azahar-launcher` while `:48200` is BUSY — that path is standalone `ensure-azahar-gamemode-dual-screen.sh`
 - Set `:0` `GAMESCOPECTRL_BASELAYER_WINDOW` to a 10×10 Cemu stub
 - RetroDECK `-f` / `ensure-cemu-dual-screen.sh` (KWin) in Game Mode
 - `sudo systemctl --user`, `POST /api/restart`, `kwin_wayland --replace`, Decky `:47989`

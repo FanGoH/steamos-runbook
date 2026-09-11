@@ -86,7 +86,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
 | `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-10-gamemode-tender-ds`): Tender Play while streaming `--attach`s windowed GamePad; or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` onto `:2`. Exit kills leftover x11grab then `--paint` |
-| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`, overlay focus watcher. Default pad `--match Odin`. |
+| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`. Tender 3DS Play while streaming execs this (not RetroDECK). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |

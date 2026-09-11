@@ -185,4 +185,57 @@ if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; t
     "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" >/dev/null 2>&1 &
 fi
 
+pick_3ds_rom() {
+  local dir="$1"
+  local match
+  match="$(find "$dir" -type f \( -iname '*.3ds' -o -iname '*.cci' -o -iname '*.cxi' \
+    -o -iname '*.cia' \) -printf '%s %p\n' 2>/dev/null \
+    | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
+  printf '%s' "${match:-}"
+}
+
+is_azahar=0
+azahar_rom=""
+for arg in "$@"; do
+  case "$arg" in
+    *EMULATOR_AZAHAR*|*azahar-launcher*|*org.azahar_emu.Azahar*)
+      is_azahar=1
+      ;;
+    *.3ds|*.3DS|*.cci|*.CCI|*.cxi|*.CXI|*.cia|*.CIA)
+      is_azahar=1
+      if [ -f "$arg" ]; then
+        azahar_rom="$arg"
+      elif [ -d "$(dirname "$arg")" ]; then
+        azahar_rom="$(pick_3ds_rom "$(dirname "$arg")")"
+      fi
+      ;;
+    */3ds/*|*/3DS/*)
+      is_azahar=1
+      if [ -z "$azahar_rom" ] && [ -d "$arg" ]; then
+        azahar_rom="$(pick_3ds_rom "$arg")"
+      fi
+      ;;
+  esac
+done
+
+# RetroDECK Azahar is fullscreen stacked. Game Mode dual-stream is standalone
+# Flatpak Separate Windows + ffplay onto :2. Replace the tile when :48200
+# is streaming the second screen. Local Play (kms FREE) stays RetroDECK.
+if [ "$is_azahar" -eq 1 ]; then
+  stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
+  azahar_ds="$PLAYBOOK/scripts/ensure-azahar-gamemode-dual-screen.sh"
+  if [ -x "$stream_chk" ] && [ -x "$azahar_ds" ] && "$stream_chk"; then
+    if [ -z "$azahar_rom" ] || [ ! -f "$azahar_rom" ]; then
+      echo "rom-launcher: :48200 second screen BUSY but no 3DS dump in argv" >&2
+    else
+      echo "rom-launcher: :48200 second screen BUSY — standalone Azahar dual-screen $azahar_rom" >&2
+      exec env \
+        AZAHAR_ROM="$azahar_rom" \
+        AZAHAR_PAD_MATCH="${AZAHAR_PAD_MATCH:-Thor}" \
+        AZAHAR_STEAM_APPID="${SteamAppId:-${AZAHAR_STEAM_APPID:-2577949069}}" \
+        "$azahar_ds"
+    fi
+  fi
+fi
+
 exec "$@"

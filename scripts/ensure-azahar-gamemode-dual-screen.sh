@@ -323,10 +323,12 @@ set_gamescope_focus() {
 }
 
 present_primary() {
+  local sw sh
   find_primary_wid || return 1
+  read -r sw sh <<<"$(gamescope_session_size "$TV_DISPLAY")"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$PRIMARY_WID" 1920 1080 2>/dev/null || true
+  x11_resize_if_needed "$TV_DISPLAY" "$PRIMARY_WID" "$sw" "$sh"
   DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowfocus "$PRIMARY_WID" windowactivate "$PRIMARY_WID" windowraise "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$PRIMARY_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true

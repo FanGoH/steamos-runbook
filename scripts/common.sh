@@ -811,3 +811,37 @@ nic_wake_on() {
   local nic="$1"
   ethtool "$nic" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}'
 }
+
+# Session gamescope X size (HDMI / :0 or :1). Headless :2 stays 1920x1080.
+# Hardcoding 1920x1080 on the TV window while HDMI is 4K makes Cemu/Azahar
+# shrink and fullscreen snap back — Steam's status bar resizes every tick.
+gamescope_session_size() {
+  local display="${1:-:0}"
+  local w h
+  w="$(DISPLAY="$display" xwininfo -root 2>/dev/null | awk '/^  Width:/{print $2; exit}')"
+  h="$(DISPLAY="$display" xwininfo -root 2>/dev/null | awk '/^  Height:/{print $2; exit}')"
+  if [ -n "${w:-}" ] && [ -n "${h:-}" ] && [ "$w" -ge 64 ] && [ "$h" -ge 64 ] 2>/dev/null; then
+    printf '%s %s\n' "$w" "$h"
+    return 0
+  fi
+  printf '1920 1080\n'
+}
+
+x11_window_wh() {
+  local display="$1" id="$2"
+  DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/^  Width:/{w=$2} /^  Height:/{h=$2} END{if (w && h) print w, h}'
+}
+
+# Avoid xdotool windowsize when the window already matches — a 4K↔1080 fight
+# is a ConfigureNotify + black frame even if fullscreen immediately restores.
+x11_resize_if_needed() {
+  local display="$1" id="$2" w="$3" h="$4"
+  local cur cw ch
+  cur="$(x11_window_wh "$display" "$id")"
+  cw="${cur%% *}"
+  ch="${cur##* }"
+  if [ -n "$cw" ] && [ -n "$ch" ] && [ "$cw" = "$w" ] && [ "$ch" = "$h" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xdotool windowsize "$id" "$w" "$h" 2>/dev/null || true
+}

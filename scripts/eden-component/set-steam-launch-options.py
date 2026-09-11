@@ -17,6 +17,7 @@ import sqlite3
 import struct
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -190,9 +191,13 @@ LAUNCHABLE_EXT = {
     ".z64",
     ".n64",
     ".3ds",
+    ".cci",
+    ".cxi",
+    ".cia",
 }
 ARCHIVE_EXT = {".zip", ".rar", ".7z"}
 TENDER_DB = Path("homebrew/data/romm-tender/romm_sync.db")
+DS_EXT = {".3ds", ".cci", ".cxi", ".cia"}
 
 
 def pick_launchable_dump(target: Path) -> Path | None:
@@ -214,6 +219,69 @@ def pick_launchable_dump(target: Path) -> Path | None:
     return max(dumps, key=lambda p: p.stat().st_size)
 
 
+def _fold_3ds_name(name: str) -> str:
+    text = name.casefold()
+    text = text.replace("the legend of zelda:", "legend of zelda the -")
+    text = text.replace("the legend of zelda", "legend of zelda the")
+    text = text.replace("pokémon", "pokemon")
+    text = text.replace(":", "")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+
+def _3ds_dump_for_name(base: Path, name: str) -> Path | None:
+    """Match a Tender/Steam title to a .3ds under n3ds or emulation/3ds/games."""
+    if not base.is_dir():
+        return None
+    want = _fold_3ds_name(name)
+    if not want:
+        return None
+    dumps: list[Path] = []
+    for path in base.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in DS_EXT:
+            continue
+        hay = _fold_3ds_name(path.stem)
+        parent = _fold_3ds_name(path.parent.name)
+        if want in hay or hay in want or want in parent or parent in want:
+            dumps.append(path)
+    if not dumps:
+        return None
+    return max(dumps, key=lambda p: p.stat().st_size)
+
+
+def link_3ds_emulation_into_n3ds(home: Path) -> int:
+    """Symlink ~/emulation/3ds/games dumps into RetroDECK n3ds (no copy)."""
+    src_root = home / "emulation/3ds/games"
+    dest_root = home / "retrodeck/roms/n3ds"
+    if not src_root.is_dir() or not dest_root.is_dir():
+        return 0
+    linked = 0
+    for dump in sorted(src_root.rglob("*")):
+        if not dump.is_file() or dump.suffix.lower() not in DS_EXT:
+            continue
+        dest = dest_root / dump.name
+        if dest.is_symlink():
+            try:
+                if dest.resolve() == dump.resolve():
+                    continue
+            except OSError:
+                pass
+            dest.unlink()
+        elif dest.is_file():
+            if dest.stat().st_size == dump.stat().st_size:
+                dest.unlink()
+            else:
+                print(f"skip 3ds {dest} (size differs from {dump})")
+                continue
+        elif dest.exists():
+            print(f"skip 3ds {dest} (not a file)")
+            continue
+        dest.symlink_to(dump)
+        print(f"linked {dest} -> {dump}")
+        linked += 1
+    return linked
+
+
 def _tender_launch_options(platform: str, dump: Path) -> str:
     if platform == "ps2":
         inner = "%EMULATOR_PCSX2% -batch %ROM%"
@@ -221,6 +289,8 @@ def _tender_launch_options(platform: str, dump: Path) -> str:
         inner = "%EMULATOR_RPCS3% --no-gui %ROM%"
     elif platform in ("wiiu", "wii-u"):
         inner = "%EMULATOR_CEMU% -g %ROM%"
+    elif platform in ("3ds", "n3ds"):
+        inner = "%EMULATOR_AZAHAR% %ROM%"
     else:
         inner = "%EMULATOR_RYUBING% %ROM%"
     return f'flatpak run net.retrodeck.retrodeck -e "{inner}" "{dump}"'
@@ -276,6 +346,8 @@ def rom_for_appid(appid: str, home: Path) -> Path | None:
     roots = (
         home / "retrodeck/roms/switch",
         home / "emulation/switch/games",
+        home / "retrodeck/roms/n3ds",
+        home / "emulation/3ds/games",
     )
     for vdf in find_shortcut_vdfs(home):
         try:
@@ -289,7 +361,7 @@ def rom_for_appid(appid: str, home: Path) -> Path | None:
             if not isinstance(name, str) or not name:
                 continue
             for base in roots:
-                dump = pick_switch_dump(base / name)
+                dump = pick_launchable_dump(base / name)
                 if dump is not None:
                     return dump
             for base in roots:
@@ -298,9 +370,12 @@ def rom_for_appid(appid: str, home: Path) -> Path | None:
                 folded = name.casefold()
                 for child in sorted(base.iterdir()):
                     if child.name.casefold() == folded:
-                        dump = pick_switch_dump(child)
+                        dump = pick_launchable_dump(child)
                         if dump is not None:
                             return dump
+                dump = _3ds_dump_for_name(base, name)
+                if dump is not None:
+                    return dump
     row = _tender_row_for_appid(appid, home)
     if row is not None:
         if row["file_path"]:
@@ -497,6 +572,100 @@ def repair_tender_switch_installs(home: Path) -> int:
     return fixed
 
 
+def _3ds_dump_for_tender_row(home: Path, fs_name: str | None, name: str | None) -> Path | None:
+    n3ds = home / "retrodeck/roms/n3ds"
+    emu = home / "emulation/3ds/games"
+    if fs_name:
+        for base in (n3ds, emu):
+            if not base.is_dir():
+                continue
+            exact = base / fs_name
+            if exact.is_file():
+                return exact.resolve() if exact.is_symlink() else exact
+            for path in base.rglob(fs_name):
+                if path.is_file():
+                    return path.resolve() if path.is_symlink() else path
+    for base in (n3ds, emu):
+        dump = _3ds_dump_for_name(base, name or "")
+        if dump is not None:
+            return dump
+    return None
+
+
+def repair_tender_3ds_installs(home: Path) -> int:
+    """Tender shows Download when 3DS dumps live only under ~/emulation."""
+    db = home / TENDER_DB
+    if not db.is_file():
+        return 0
+    link_3ds_emulation_into_n3ds(home)
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    fixed = 0
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        rows = list(
+            con.execute(
+                "SELECT r.rom_id, r.name, r.fs_name, r.platform_slug, "
+                "r.applied_launch_options, i.file_path, i.rom_dir, i.launchable "
+                "FROM roms r LEFT JOIN rom_installs i ON i.rom_id = r.rom_id "
+                "WHERE r.platform_slug IN ('3ds', 'n3ds')"
+            )
+        )
+        for row in rows:
+            dump = None
+            if row["file_path"]:
+                dump = pick_launchable_dump(Path(row["file_path"]))
+            if dump is None and row["rom_dir"]:
+                dump = pick_launchable_dump(Path(row["rom_dir"]))
+            if dump is None:
+                dump = _3ds_dump_for_tender_row(home, row["fs_name"], row["name"])
+            if dump is None:
+                continue
+            # Tender / RetroDECK Play the n3ds dest (symlink is fine).
+            n3ds = home / "retrodeck/roms/n3ds" / dump.name
+            if n3ds.exists():
+                dump = n3ds
+            lo = _tender_launch_options("3ds", dump)
+            fp = row["file_path"] or ""
+            need = (
+                row["launchable"] != 1
+                or Path(fp) != dump
+                or not (row["applied_launch_options"] or "").strip()
+            )
+            if not need:
+                continue
+            existing = con.execute(
+                "SELECT rom_id FROM rom_installs WHERE rom_id = ?",
+                (row["rom_id"],),
+            ).fetchone()
+            if existing:
+                con.execute(
+                    "UPDATE rom_installs SET file_path = ?, rom_dir = ?, "
+                    "platform_slug = '3ds', system = 'n3ds', launchable = 1 "
+                    "WHERE rom_id = ?",
+                    (str(dump), str(dump.parent), row["rom_id"]),
+                )
+            else:
+                con.execute(
+                    "INSERT INTO rom_installs "
+                    "(rom_id, file_path, rom_dir, platform_slug, system, "
+                    "installed_at, launchable) VALUES (?, ?, ?, '3ds', 'n3ds', ?, 1)",
+                    (row["rom_id"], str(dump), str(dump.parent), now),
+                )
+            con.execute(
+                "UPDATE roms SET applied_launch_options = ?, fs_size_bytes = ?, "
+                "fs_name = ? WHERE rom_id = ?",
+                (lo, dump.stat().st_size, dump.name, row["rom_id"]),
+            )
+            print(f"tender rom_id={row['rom_id']} launchable {dump}")
+            fixed += 1
+        if fixed:
+            con.commit()
+    finally:
+        con.close()
+    return fixed
+
+
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "--rom-for-appid":
         if len(sys.argv) != 3:
@@ -533,6 +702,7 @@ def main() -> int:
         stash_ps2_archives(home)
         repair_tender_switch_installs(home)
         repair_tender_ps2_installs(home)
+        repair_tender_3ds_installs(home)
         return 0
     if len(sys.argv) != 2:
         print(
@@ -551,6 +721,7 @@ def main() -> int:
     stash_ps2_archives(Path.home())
     repair_tender_switch_installs(Path.home())
     repair_tender_ps2_installs(Path.home())
+    repair_tender_3ds_installs(Path.home())
     patch_file(path, updates())
     return 0
 
@@ -614,6 +785,21 @@ def _self_test() -> None:
         wux = Path("/tmp/dummy.wux")
         assert "%EMULATOR_CEMU%" in _tender_launch_options("wiiu", wux)
         assert "%EMULATOR_RYUBING%" not in _tender_launch_options("wiiu", wux)
+        ds = Path("/tmp/dummy.3ds")
+        assert "%EMULATOR_AZAHAR%" in _tender_launch_options("3ds", ds)
+        assert "%EMULATOR_RYUBING%" not in _tender_launch_options("3ds", ds)
+        emu_3ds = home / "emulation/3ds/games/Fire Emblem - Awakening"
+        emu_3ds.mkdir(parents=True)
+        src = emu_3ds / "Fire Emblem - Awakening (USA).3ds"
+        src.write_bytes(b"3" * 16)
+        n3ds = home / "retrodeck/roms/n3ds"
+        n3ds.mkdir(parents=True)
+        assert link_3ds_emulation_into_n3ds(home) == 1
+        dest = n3ds / src.name
+        assert dest.is_symlink() and dest.resolve() == src.resolve()
+        assert link_3ds_emulation_into_n3ds(home) == 0
+        assert _3ds_dump_for_name(n3ds, "Fire Emblem Awakening") == dest
+        assert _fold_3ds_name("Pokémon Ultra Sun") == "pokemon ultra sun"
 
 
 if __name__ == "__main__":

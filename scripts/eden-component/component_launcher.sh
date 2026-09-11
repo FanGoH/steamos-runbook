@@ -42,7 +42,14 @@ export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # Steam "Launching…" hang that ends in earlyoom SIGTERM on big titles.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
-if [ -f "$ini" ] && [ -f "$patcher" ]; then
+bind_py="/home/deck/steamos-playbook/scripts/bind-gamepad.py"
+if [ -f "$bind_py" ]; then
+  if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null; then
+    flatpak-spawn --host python3 "$bind_py" apply --emu eden --force >/dev/null 2>&1 || true
+  else
+    python3 "$bind_py" apply --emu eden --force >/dev/null 2>&1 || true
+  fi
+elif [ -f "$ini" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$ini" || true
 fi
 

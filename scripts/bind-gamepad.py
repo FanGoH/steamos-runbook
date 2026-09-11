@@ -66,6 +66,11 @@ DEFAULT_CEMU_XMLS = (
 DEFAULT_AZAHAR_INI = (
     Path.home() / ".var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini"
 )
+DEFAULT_AZAHAR_INIS = (
+    DEFAULT_AZAHAR_INI,
+    Path.home()
+    / ".var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini",
+)
 DEFAULT_EDEN_INI = Path.home() / ".config/eden/qt-config.ini"
 EMUS = ("cemu", "azahar", "eden")
 
@@ -1082,6 +1087,12 @@ def _cemu_xml_paths(explicit: str | None) -> list[Path]:
     return [path for path in DEFAULT_CEMU_XMLS if path.is_file()]
 
 
+def _azahar_ini_paths(explicit: str | None) -> list[Path]:
+    if explicit:
+        return [Path(explicit)]
+    return [path for path in DEFAULT_AZAHAR_INIS if path.is_file()]
+
+
 def _pad_summary(pad: dict[str, str] | None) -> dict[str, str]:
     if pad is None:
         return {}
@@ -1190,11 +1201,14 @@ def status_payload(
     sinks = list_sink_joysticks(sysfs)
     lookup = pads + sinks
     cemu_paths = _cemu_xml_paths(cemu_xml)
-    azahar_path = Path(azahar_ini) if azahar_ini else DEFAULT_AZAHAR_INI
+    azahar_paths = _azahar_ini_paths(azahar_ini)
     eden_path = Path(eden_ini) if eden_ini else DEFAULT_EDEN_INI
     cemu_players: list[dict] = []
     for path in cemu_paths:
         cemu_players.extend(cemu_players_from_xml(path, lookup))
+    azahar_players: list[dict] = []
+    for path in azahar_paths:
+        azahar_players.extend(azahar_players_from_ini(path, lookup))
     mux_cfg = load_mux_config()
     return {
         "pads": pads,
@@ -1219,8 +1233,8 @@ def status_payload(
             },
             "azahar": {
                 "running": azahar_running(),
-                "paths": [str(azahar_path)] if azahar_path.is_file() else [],
-                "players": azahar_players_from_ini(azahar_path, lookup),
+                "paths": [str(p) for p in azahar_paths],
+                "players": azahar_players,
                 "p2": "Shared P1 even if Azahar barely does MP. Multi writes profiles\\2\\ (one active profile per instance).",
             },
             "eden": {
@@ -1314,35 +1328,41 @@ def apply_cemu_pads(
 
 
 def apply_azahar_pads(
-    path: Path,
+    paths: list[Path],
     ordered: list[dict[str, str]],
     *,
     force: bool,
 ) -> tuple[list[str], int, bool]:
     messages: list[str] = []
-    if not path.is_file():
-        return [f"Missing {path}"], 1, False
+    rc = 0
+    changed_any = False
     if not ordered:
         return messages, 2, False
-    text = path.read_text()
-    new = text
-    try:
-        new = patch_azahar_ini(new, ordered[0]["guid"], slot=1)
-        if len(ordered) >= 2:
-            new = patch_azahar_ini(new, ordered[1]["guid"], slot=2)
-    except ValueError as exc:
-        return [str(exc)], 1, False
     names = " + ".join(p["name"] for p in ordered[:2])
-    changed = _write_changed(path, text, new, ".bak-bind-gamepad")
-    if changed:
-        messages.append(f"Bound Azahar to {names} in {path}")
-    else:
-        messages.append(f"Azahar already bound to {names} in {path}")
-    rc = 0
-    if changed and azahar_running() and not force:
+    for path in paths:
+        if not path.is_file():
+            messages.append(f"Missing {path}")
+            rc = max(rc, 1)
+            continue
+        text = path.read_text()
+        try:
+            new = patch_azahar_ini(text, ordered[0]["guid"], slot=1)
+            if len(ordered) >= 2:
+                new = patch_azahar_ini(new, ordered[1]["guid"], slot=2)
+        except ValueError as exc:
+            messages.append(str(exc))
+            rc = max(rc, 1)
+            continue
+        changed = _write_changed(path, text, new, ".bak-bind-gamepad")
+        changed_any = changed_any or changed
+        if changed:
+            messages.append(f"Bound Azahar to {names} in {path}")
+        else:
+            messages.append(f"Azahar already bound to {names} in {path}")
+    if changed_any and azahar_running() and not force:
         messages.append("Azahar is running; restart it for the bind to apply.")
-        rc = 2
-    return messages, rc, changed
+        rc = max(rc, 2)
+    return messages, rc, changed_any
 
 
 def apply_eden_pads(
@@ -1487,8 +1507,12 @@ def cmd_apply(args: argparse.Namespace) -> int:
             )
         elif name == "azahar":
             ini = getattr(args, "ini", None) if emu == "azahar" else None
-            path = Path(ini) if ini else DEFAULT_AZAHAR_INI
-            msgs, code, changed = apply_azahar_pads(path, sinks, force=force)
+            paths = _azahar_ini_paths(ini)
+            if not paths:
+                messages.append("No Azahar qt-config.ini found.")
+                rc = max(rc, 1)
+                continue
+            msgs, code, changed = apply_azahar_pads(paths, sinks, force=force)
         else:
             ini = getattr(args, "ini", None) if emu == "eden" else None
             path = Path(ini) if ini else DEFAULT_EDEN_INI
@@ -1891,6 +1915,11 @@ def _self_test() -> int:
         two = patch_azahar_ini(two, odin["guid"], slot=2)
         assert azahar_guid_for_slot(two, 1) == thor["guid"]
         assert azahar_guid_for_slot(two, 2) == odin["guid"]
+        az_path = Path(tmp) / "azahar-qt-config.ini"
+        az_path.write_text(ini)
+        az_msgs, az_code, az_changed = apply_azahar_pads([az_path], [thor], force=True)
+        assert az_code == 0 and az_changed
+        assert azahar_guid_for_slot(az_path.read_text(), 1) == thor["guid"]
         assert "profiles\\2\\name=Player 2" in two
         assert "profiles\\size=2" in two
         pro = patch_cemu_pro_xml(MINIMAL_CEMU_PRO_XML, cemu_uuid(odin), odin["name"])

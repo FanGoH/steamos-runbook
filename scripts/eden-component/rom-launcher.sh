@@ -103,7 +103,9 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
     export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
-    if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
+    if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+      python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu eden --force >/dev/null 2>&1 || true
+    elif [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
     echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2
@@ -227,6 +229,12 @@ done
 # Flatpak Separate Windows + ffplay onto :2. Replace the tile when :48200
 # is streaming the second screen. Local Play (kms FREE) stays RetroDECK.
 if [ "$is_azahar" -eq 1 ]; then
+  unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+  export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+  export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+  if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+    python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu azahar --force >/dev/null 2>&1 || true
+  fi
   stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
   azahar_ds="$PLAYBOOK/scripts/ensure-azahar-gamemode-dual-screen.sh"
   if [ -x "$stream_chk" ] && [ -x "$azahar_ds" ] && "$stream_chk"; then

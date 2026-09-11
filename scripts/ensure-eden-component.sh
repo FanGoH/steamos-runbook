@@ -100,8 +100,19 @@ install -m 0755 "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" \
 wrap_src="$ROOT/scripts/eden-component/rom-launcher.sh"
 while IFS= read -r wrap_dst; do
   [ -n "$wrap_dst" ] || continue
-  install -m 0755 "$wrap_src" "$wrap_dst"
-  echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
+  wrap_dir="$(dirname "$wrap_dst")"
+  if mkdir -p "$wrap_dir" 2>/dev/null && install -m 0755 "$wrap_src" "$wrap_dst"; then
+    echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
+    continue
+  fi
+  # Older Steam tiles still exec decky-romm-sync after Tender replaced it.
+  # ~/homebrew/plugins is often root:root.
+  record_manual "Install rom-launcher wrap at $wrap_dst" <<EOF
+sudo mkdir -p '$wrap_dir'
+sudo cp '$wrap_src' '$wrap_dst'
+sudo chmod 0755 '$wrap_dst'
+sudo chown ${STEAMOS_USER}:${STEAMOS_USER} '$wrap_dst'
+EOF
 done <<EOF
 /home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
 /home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
@@ -136,7 +147,11 @@ if [ -f "$engage_custom" ]; then
   python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"
 fi
 shortcuts_script="$ROOT/scripts/eden-component/set-steam-launch-options.py"
+# 3DS dumps often land in ~/emulation first. RetroDECK / Tender Play n3ds.
+# Symlink (no copy) and mark Tender rom_installs launchable. Do this before
+# writing shortcuts.vdf so empty-argv tiles can recover the n3ds dest.
 if [ -f "$shortcuts_script" ]; then
+  python3 "$shortcuts_script" --repair-tender || true
   for shortcuts in /home/${STEAMOS_USER}/.local/share/Steam/userdata/*/config/shortcuts.vdf; do
     [ -f "$shortcuts" ] || continue
     python3 "$shortcuts_script" "$shortcuts" || true

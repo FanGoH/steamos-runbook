@@ -78,7 +78,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
-| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); 3DS emulation dumps → `retrodeck/roms/n3ds` |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
 | `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |

@@ -7,7 +7,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
-**Checkpoint `checkpoint-2026-09-11-emupads-mux`:** always-on EmuPads P1/P2 mux (Sunshine, not Steam wrap); Tender tiles pick GamePad vs Pro from second-screen stream; overlay / QAM / Home / Library **mute** sinks; Steam Exit `--quit`s only on SIGTERM (do not treat `FOCUSED_APP=769` as Exit — that killed Cemu when opening Home). Tile/GamePad grab recipe is still `checkpoint-2026-09-11-gamemode-tender-ds` (`--attach`, no `-f`, x11grab session `:1`). Local Play (kms FREE) stays `-f`. Steam menu clicks still **pending**.
+**Checkpoint `checkpoint-2026-09-11-steam-menu-mute`:** opening Steam Home / Library while Cemu is running **mutes** EmuPads sinks (`FOCUSED_APP=769` is a menu, not Exit). User: “AMAZING”. Do not `--quit` on 769. Mux + tile GamePad-vs-Pro + overlay/QAM mute remain `checkpoint-2026-09-11-emupads-mux`. Tile/GamePad grab recipe is still `checkpoint-2026-09-11-gamemode-tender-ds` (`--attach`, no `-f`, x11grab session `:1`). Local Play (kms FREE) stays `-f`. Steam **audio** menu clicks still **pending**.
 
 ## What must be true
 

@@ -28,7 +28,7 @@ Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPa
 - **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too. Steam virtual `28de:11ff` is skipped when a Sunshine / physical pad is present (Steam’s curve stacked on SDL made Cemu sticks feel short/wonky). Axes are rescaled to the sink ±32767 range.
 - **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
-- Overlay/QAM mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads.
+- Overlay/QAM/Home/Library mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads. `checkpoint-2026-09-11-steam-menu-mute`.
 
 Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
 
@@ -42,8 +42,9 @@ Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Defau
 
 Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
 RetroDECK Cemu XML: `~/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml`.
-Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`.
-Eden INI: `~/.config/eden/qt-config.ini`. Maps for Azahar come from the active pad profile. x360 is a 15-button SDL joystick (not Steam xpad 11): A/B/X/Y = 0/1/3/4, L/R = 6/7, Select/Start/Home = 10/11/12, ZL/ZR = LT/RT. Do not use 4/5 for L/R on x360. Do not copy RetroDECK’s L=LT / ZL=LB swap.
+Standalone Azahar INI: `~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini`.
+RetroDECK Azahar INI: `~/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini`.
+Eden INI: `~/.config/eden/qt-config.ini`. Every Eden/Azahar launch rebinds those files to EmuPads P1 (same mux as Cemu). Maps for Azahar come from the active pad profile. x360 is a 15-button SDL joystick (not Steam xpad 11): A/B/X/Y = 0/1/3/4, L/R = 6/7, Select/Start/Home = 10/11/12, ZL/ZR = LT/RT. Do not use 4/5 for L/R on x360. Do not copy RetroDECK’s L=LT / ZL=LB swap.
 
 Cemu `set_mapping` is last-write-wins: if Steam’s wrap is listed after Sunshine and both have `<mappings>`, every button is bound to the idle Steam pad. Reordering Sunshine first does **not** fix that. The script adds the named Sunshine pad and puts mappings **only** on it; Steam can stay listed with empty mappings. Drop stale `AYN20Thor`. Do not copy the same mappings onto every `<controller>`.
 

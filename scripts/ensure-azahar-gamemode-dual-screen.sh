@@ -325,7 +325,7 @@ set_gamescope_focus() {
 present_primary() {
   local sw sh
   find_primary_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_ui_size)"
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$PRIMARY_WID" "$sw" "$sh"

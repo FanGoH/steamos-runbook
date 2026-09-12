@@ -204,7 +204,7 @@ bind_cemu_pads() {
 
 write_rd_geometry() {
   local sw sh
-  read -r sw sh <<<"$(gamescope_hdmi_ui_size)"
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
   python3 - "$RD_SETTINGS" "$sw" "$sh" <<'PY'
 import sys, xml.etree.ElementTree as ET
 from pathlib import Path
@@ -232,9 +232,8 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
         node = ET.SubElement(root, tag)
     node.text = val
 set_xy(root, "window_position", 0, 0)
-# TV follows Steam :0 (HDMI UI). :1 can be 4K after fullscreen while
-# Steam stays 1080p — matching :1 is the status-bar fight. GamePad / :2
-# stay 1920x1080.
+# TV follows HDMI native (4K TV → 3840x2160) so the top fills. GamePad
+# / :2 stay 1920x1080; Moonlight stretches that onto Thor's bottom.
 set_xy(root, "window_size", tv_w, tv_h)
 # Off-screen pad (1920,0) cannot be x11grab'd (MIT-SHM BadMatch). Keep it
 # mapped on-screen under the TV; window_id grab still sees GamePad pixels.
@@ -435,20 +434,15 @@ set_gamescope_focus() {
 }
 
 present_cemu_tv() {
-  local sw sh rw rh
+  local sw sh
   find_tv_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_ui_size)"
-  read -r rw rh <<<"$(gamescope_session_size "$TV_DISPLAY")"
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
-  # Fullscreen on a 4K :1 while Steam :0 is 1080p snaps Cemu to 4K and
-  # Steam's header grows/shrinks. Match Steam; leave GamePad / :2 at 1080p.
-  if [ "$rw" = "$sw" ] && [ "$rh" = "$sh" ]; then
-    DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
-  else
-    DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$TV_WID" 2>/dev/null || true
-  fi
+  # HDMI native (4K) on top, GamePad stays 1080p. Only resize when the
+  # TV window does not already match — that loop was the flicker.
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
+  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true

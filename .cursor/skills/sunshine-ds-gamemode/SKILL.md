@@ -22,13 +22,13 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - `--paint` must `systemd-run --user` the idle clock (`Type=oneshot`, `KillMode=process`). `setsid`/`disown` stay in `app-steam-app*.scope`; Steam's reaper waitpid on that clock is the Azahar “Exiting…” hang. Cemu usually avoids it because the tile `exec`s Cemu and the watcher paints after that process is already gone.
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
 - Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`) or Steam wraps (`28de:11ff`) when Thor/Odin are present. Shared / Multiplayer must persist; a status poll must not flip the toggle back to Shared P1.
-- **4K HDMI + 1080p `:2`:** Steam status-bar resize is Cemu TV on `:1` at 3840×2160 while Steam `:0` stays 1920×1080. Size TV with `gamescope_hdmi_ui_size` (`:0`). Do not fullscreen-snap to `:1`. Do not resize `:2` / GamePad to 4K.
+- **4K HDMI + 1080p `:2`:** Top fills HDMI native (`gamescope_hdmi_tv_size`, 4K TV → 3840×2160). Bottom / GamePad / `:2` stay 1920×1080; Moonlight **stretches** that onto Thor’s bottom (no letterbox bars). Flicker was the focus loop resizing every tick — `x11_resize_if_needed` only. Do not shrink the TV to Steam `:0` 1080p (that was the padding). Do not resize `:2` to 4K.
 
 ## What must be true
 
 | Surface | Idle (Desktop `958645192`) | Cemu playing |
 |---|---|---|
-| HDMI / Thor top (video/0) | Steam Big Picture / focused game | Cemu TV at **Steam `:0` size** (`gamescope_hdmi_ui_size`). Do not match inflated `:1` (4K fullscreen) or `:2`. |
+| HDMI / Thor top (video/0) | Steam Big Picture / focused game | Cemu TV at **HDMI native** (`gamescope_hdmi_tv_size`). GamePad / `:2` stay 1920×1080; client stretches the bottom. |
 | `:2` / Thor bottom (video/1) | Screensaver clock + moving bar (`sunshine-ds-bottom-screensaver.py`) | GamePad View via `ffplay` `x11grab` |
 | Overlay | Hold Select 0.5s → `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` | Same; hide restores Cemu TV. **QAM** is Quick Access (`...`): `GAMESCOPE_BLUR_MODE!=0`, FOCUSED_APP stays the game. Home / Library / other BPM menus are `FOCUSED_APP=769` with the game still running — **mute** sinks, do not `--quit`. Focus watcher must not reclaim while overlay, QAM, or Steam menus are up. Mute is `scripts/inhibit-emu-input-on-steam-ui.py`. Steam Exit `--quit`s only on SIGTERM pending — do not SIGSTOP. After the emulator dies, restore `FOCUSED_APP=769` on `:0` (leave `:1` if Cemu is still there). Steam keeps the Sunshine pad for overlay / QAM / menus. |
 | Audio | Pulse default HDMI (Steam UI; `STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1`). Cemu Cubeb → **Virtual Surround Sound** → that HDMI | Moonlight captures the **HDMI** sink monitor (leaf), not VSS and not `sink-sunshine-stereo`. Cemu on that sink is proven. **PENDING:** Steam menu / BPM nav clicks still silent on Thor after HDMI capture + unsuspend. Not a Moonlight record-stream bug (`sunshine-record` links; Cemu is audible). Steam has no UI playback stream. Check TV speakers while clicking menus: silent on TV = host/Steam (Game Mode **Settings → Audio**). Do **not** unmute WirePlumber `Notification` or edit Steam settings unless asked. |
@@ -99,7 +99,7 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 
 ## Do not
 
-- Force Cemu/Azahar TV to 1920×1080 when HDMI/session is 4K (status-bar resize + black flicker). Use `gamescope_session_size`. Keep GamePad / `:2` at 1920×1080.
+- Shrink Cemu/Azahar TV to Steam `:0` 1080p on a 4K HDMI (letterbox/padding). Use `gamescope_hdmi_tv_size`. Keep GamePad / `:2` at 1920×1080 and stretch on the client.
 - Switch Game Mode ↔ Desktop to “fix” capture
 - Kill session gamescope (HDMI / `:0`/`:1`)
 - `--start` kms while headless `:2` is already up

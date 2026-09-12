@@ -203,10 +203,13 @@ bind_cemu_pads() {
 }
 
 write_rd_geometry() {
-  python3 - "$RD_SETTINGS" <<'PY'
+  local sw sh
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  python3 - "$RD_SETTINGS" "$sw" "$sh" <<'PY'
 import sys, xml.etree.ElementTree as ET
 from pathlib import Path
 path = Path(sys.argv[1])
+tv_w, tv_h = int(sys.argv[2]), int(sys.argv[3])
 if not path.is_file():
     sys.stderr.write("Missing %s\n" % path)
     sys.exit(1)
@@ -229,13 +232,15 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
         node = ET.SubElement(root, tag)
     node.text = val
 set_xy(root, "window_position", 0, 0)
-set_xy(root, "window_size", 1920, 1080)
+# TV follows HDMI native (4K TV → 3840x2160) so the top fills. GamePad
+# / :2 stay 1920x1080; Moonlight stretches that onto Thor's bottom.
+set_xy(root, "window_size", tv_w, tv_h)
 # Off-screen pad (1920,0) cannot be x11grab'd (MIT-SHM BadMatch). Keep it
 # mapped on-screen under the TV; window_id grab still sees GamePad pixels.
 set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
 tree.write(path, encoding="UTF-8", xml_declaration=True)
-print("Wrote RetroDECK Cemu TV/pad geometry in", path)
+print("Wrote RetroDECK Cemu TV %sx%s / pad 1920x1080 in %s" % (tv_w, tv_h, path))
 PY
 }
 
@@ -429,10 +434,14 @@ set_gamescope_focus() {
 }
 
 present_cemu_tv() {
+  local sw sh
   find_tv_wid || return 1
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$TV_WID" 1920 1080 2>/dev/null || true
+  # HDMI native (4K) on top, GamePad stays 1080p. Only resize when the
+  # TV window does not already match — that loop was the flicker.
+  x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
   DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true

@@ -811,3 +811,77 @@ nic_wake_on() {
   local nic="$1"
   ethtool "$nic" 2>/dev/null | awk -F': ' '/^[[:space:]]*Wake-on:/{print $2; exit}'
 }
+
+# One Xwayland's current size. Headless :2 is the GamePad virtual display
+# and must stay 1920x1080 — never pass :2 in here for TV layout.
+gamescope_session_size() {
+  local display="${1:-:0}"
+  local w h
+  w="$(DISPLAY="$display" xwininfo -root 2>/dev/null | awk '/^  Width:/{print $2; exit}')"
+  h="$(DISPLAY="$display" xwininfo -root 2>/dev/null | awk '/^  Height:/{print $2; exit}')"
+  if [ -n "${w:-}" ] && [ -n "${h:-}" ] && [ "$w" -ge 64 ] && [ "$h" -ge 64 ] 2>/dev/null; then
+    printf '%s %s\n' "$w" "$h"
+    return 0
+  fi
+  printf '1920 1080\n'
+}
+
+# HDMI / top-stream size. 4K TV → 3840x2160 so Cemu/Azahar fill the panel
+# (no letterbox bars). Steam :0 can stay 1080p; do not shrink the TV window
+# to match it. Never use :2 — GamePad virtual stays 1920x1080.
+# Flicker was the focus loop resizing every tick, not 4K vs 1080p itself.
+gamescope_hdmi_tv_size() {
+  local w="" h="" mode card
+  for card in /sys/class/drm/card*-HDMI-A-*/modes; do
+    [ -r "$card" ] || continue
+    enabled="$(dirname "$card")/enabled"
+    if [ -r "$enabled" ] && [ "$(cat "$enabled" 2>/dev/null)" != "enabled" ]; then
+      continue
+    fi
+    mode="$(head -1 "$card" 2>/dev/null || true)"
+    case "$mode" in
+      [0-9]*x[0-9]*)
+        w="${mode%x*}"
+        h="${mode#*x}"
+        h="${h%%[^0-9]*}"
+        break
+        ;;
+    esac
+  done
+  if [ -n "$w" ] && [ -n "$h" ] && [ "$w" -ge 64 ] && [ "$h" -ge 64 ] 2>/dev/null; then
+    printf '%s %s\n' "$w" "$h"
+    return 0
+  fi
+  local aw ah bw bh
+  read -r aw ah <<<"$(gamescope_session_size :0)"
+  read -r bw bh <<<"$(gamescope_session_size :1)"
+  if [ $((bw * bh)) -gt $((aw * ah)) ]; then
+    printf '%s %s\n' "$bw" "$bh"
+  else
+    printf '%s %s\n' "$aw" "$ah"
+  fi
+}
+
+# Back-compat name used by older callers.
+gamescope_hdmi_ui_size() {
+  gamescope_hdmi_tv_size
+}
+
+x11_window_wh() {
+  local display="$1" id="$2"
+  DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/^  Width:/{w=$2} /^  Height:/{h=$2} END{if (w && h) print w, h}'
+}
+
+# Avoid xdotool windowsize when the window already matches — a 4K↔1080 fight
+# is a ConfigureNotify + black frame even if fullscreen immediately restores.
+x11_resize_if_needed() {
+  local display="$1" id="$2" w="$3" h="$4"
+  local cur cw ch
+  cur="$(x11_window_wh "$display" "$id")"
+  cw="${cur%% *}"
+  ch="${cur##* }"
+  if [ -n "$cw" ] && [ -n "$ch" ] && [ "$cw" = "$w" ] && [ "$ch" = "$h" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xdotool windowsize "$id" "$w" "$h" 2>/dev/null || true
+}

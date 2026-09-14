@@ -107,14 +107,17 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
 | `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
 | `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
+| `scripts/second-screen-windows.py` | List gamescope windows; show one on `:2`; Auto dual-screen. Called by Decky **Second Screen** |
+| `scripts/ensure-second-screen-decky.sh` | Install Decky **Second Screen** (dual-screen toggle + window list). `~/homebrew/plugins` may need sudo |
+| `decky/SecondScreen/` | Second Screen plugin source |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |
 | `decky/EmuQuick/` | Emu Quick plugin source (live docked/handheld + restart-only resolution) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-11-gamemode-tender-ds`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2`; or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` onto `:2`. Exit `--quit`s immediately; leftover x11grab then `--paint` |
-| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar: standalone Flatpak, SteamLaunch, `ffplay` `x11grab` Secondary Window onto `:2`. Tender 3DS Play while streaming **runs** this (do not `exec`; wait for `azahar` then `--quit`/`--paint`). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-14-gamemode-fill-exit`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2` (`ffplay` `scale=1920:1080`); or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map. Exit `--quit`s immediately; leftover x11grab then `--paint` outside Steam |
+| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar (`checkpoint-2026-09-14-gamemode-fill-exit`): standalone Flatpak, SteamLaunch, `ffplay` `x11grab` `scale=1920:1080` Secondary Window onto `:2`. Tender 3DS Play while streaming **runs** this (do not `exec`; wait for `azahar` then `--quit`/`--paint` outside Steam). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
@@ -132,7 +135,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-11-gamemode-tender-ds`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-14-gamemode-fill-exit`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

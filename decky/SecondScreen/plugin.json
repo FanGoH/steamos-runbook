@@ -1,0 +1,10 @@
+{
+  "name": "Second Screen",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["sunshine", "gamescope", "moonlight", "dual-screen", "cemu", "azahar"],
+    "description": "Auto dual-screen for Cemu/Azahar. List gamescope windows and show one on the Moonlight bottom stream."
+  }
+}

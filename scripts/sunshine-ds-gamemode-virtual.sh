@@ -130,6 +130,13 @@ paint_pid() {
   return 1
 }
 
+# Steam's reaper waitpid()s every descendant in app-steam-app*.scope.
+# A leftover clock there is the Azahar "Exiting…" hang.
+in_steam_tile_cgroup() {
+  local proc="${1:-self}"
+  grep -q 'app-steam-app' "/proc/${proc}/cgroup" 2>/dev/null
+}
+
 # Leftover GamePad x11grab keeps the last frame on :2 after Cemu exits.
 # pgrep -x ffplay, then inspect argv / DISPLAY — never pgrep -f sunshine.
 kill_x11grab_ffplay() {
@@ -183,7 +190,7 @@ stop_paint() {
 # (Cemu/Azahar ffplay does this for real GamePad content). Title stays
 # sunshine-ds-kms-virtual so existing windowkill paths still work.
 start_paint() {
-  local gs_pid x11 saver
+  local gs_pid x11 saver pid
   gs_pid="$(virtual_pid || true)"
   if [ -z "${gs_pid:-}" ]; then
     echo "No headless gamescope; not starting screensaver."
@@ -195,9 +202,15 @@ start_paint() {
     return 1
   fi
   if paint_pid >/dev/null; then
-    echo "Bottom screensaver already pid $(paint_pid)."
-    present_idle_screensaver "$x11" || true
-    return 0
+    pid="$(paint_pid)"
+    if in_steam_tile_cgroup "$pid"; then
+      echo "Bottom screensaver pid $pid is in a Steam tile cgroup; restarting."
+      stop_paint
+    else
+      echo "Bottom screensaver already pid $pid."
+      present_idle_screensaver "$x11" || true
+      return 0
+    fi
   fi
   # Live Cemu/Azahar ffplay already damages :2. A mapped Tk covers the GamePad.
   # --paint kills leftover x11grab first so this skip does not freeze the clock.
@@ -438,12 +451,25 @@ fi
 # started from rom-launcher / --quit / inhibit-in-tile leaves Steam on
 # "Exiting…". Hop the whole --paint oneshot onto the user bus; KillMode=
 # process so the Tk child survives after this script exits.
+#
+# --collect leaves the transient fragment loaded after the oneshot dies.
+# Reusing --unit=sunshine-ds-bottom-paint then fails ("already loaded or
+# has a fragment file") and the old fallback started the clock in-process
+# inside the tile. Drop that leftover before systemd-run. --no-block so a
+# timeout --paint cannot SIGTERM the hop and fall through in-tile.
+drop_paint_unit() {
+  systemctl --user stop sunshine-ds-bottom-paint.service 2>/dev/null || true
+  systemctl --user reset-failed sunshine-ds-bottom-paint.service 2>/dev/null || true
+  rm -f "${XDG_RUNTIME_DIR}/systemd/transient/sunshine-ds-bottom-paint.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+}
+
 paint_outside_steam_scope() {
   if ! command -v systemd-run >/dev/null 2>&1; then
     return 1
   fi
-  systemctl --user reset-failed sunshine-ds-bottom-paint.service 2>/dev/null || true
-  systemd-run --user --collect --quiet \
+  drop_paint_unit
+  systemd-run --user --collect --quiet --no-block \
     --unit=sunshine-ds-bottom-paint \
     --property=Type=oneshot \
     --property=KillMode=process \
@@ -458,10 +484,13 @@ if [ "$DO_PAINT" -eq 1 ]; then
   if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
     if paint_outside_steam_scope; then
       echo "Bottom screensaver armed outside Steam scope."
-      print_status
       exit 0
     fi
     echo "systemd-run --paint unavailable; starting in-process."
+    if in_steam_tile_cgroup self; then
+      echo "Refusing in-process --paint inside a Steam tile (reaper would hang on Exiting)."
+      exit 1
+    fi
   fi
   # Frozen GamePad after Cemu exit is leftover x11grab on :2. Kill it
   # before start_paint's "ffplay already here" skip.

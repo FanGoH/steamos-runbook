@@ -45,6 +45,8 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 
 from pad_profile import load_profile
@@ -345,9 +347,31 @@ def tile_cemu_p1(*, streaming: bool | None = None, ds_env: str | None = None) ->
     return "pro"
 
 
+def normalize_dual_screen(value: object) -> str:
+    raw = str(value or "auto").strip().lower().replace(" ", "_")
+    if raw in ("on", "1", "true", "yes", "force", "dual", "always"):
+        return "on"
+    if raw in ("off", "0", "false", "no", "hdmi", "single", "never"):
+        return "off"
+    return "auto"
+
+
+def dual_screen_label(mode: str) -> str:
+    if mode == "on":
+        return "Dual-screen"
+    if mode == "off":
+        return "HDMI only"
+    return "Auto"
+
+
 def load_mux_config() -> dict:
     path = mux_config_path()
-    empty = {"mode": "shared", "sources": [], "cemu_p1": "gamepad"}
+    empty = {
+        "mode": "shared",
+        "sources": [],
+        "cemu_p1": "gamepad",
+        "dual_screen": "auto",
+    }
     if not path.is_file():
         return dict(empty)
     try:
@@ -366,10 +390,16 @@ def load_mux_config() -> dict:
         "mode": mode,
         "sources": sources,
         "cemu_p1": normalize_cemu_p1(data.get("cemu_p1")),
+        "dual_screen": normalize_dual_screen(data.get("dual_screen")),
     }
 
 
-def write_mux_routing(mode: str, sources: list, cemu_p1: str | None = None) -> None:
+def write_mux_routing(
+    mode: str,
+    sources: list,
+    cemu_p1: str | None = None,
+    dual_screen: str | None = None,
+) -> None:
     if mode not in ("shared", "multi"):
         raise SystemExit(f"unknown mux mode {mode!r} (shared|multi)")
     path = mux_config_path()
@@ -379,6 +409,9 @@ def write_mux_routing(mode: str, sources: list, cemu_p1: str | None = None) -> N
         "mode": mode,
         "sources": sources,
         "cemu_p1": normalize_cemu_p1(cemu_p1 if cemu_p1 is not None else prev.get("cemu_p1")),
+        "dual_screen": normalize_dual_screen(
+            dual_screen if dual_screen is not None else prev.get("dual_screen")
+        ),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if mux_running():
@@ -387,6 +420,132 @@ def write_mux_routing(mode: str, sources: list, cemu_p1: str | None = None) -> N
             os.kill(pid, signal.SIGHUP)
         except (OSError, ValueError):
             pass
+
+
+def _playbook_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def kms_serverinfo_xml(url: str | None = None) -> str:
+    target = url or os.environ.get("SUNSHINE_DS_KMS_URL") or "http://127.0.0.1:48200"
+    try:
+        with urllib.request.urlopen(f"{target.rstrip('/')}/serverinfo", timeout=3) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError):
+        return ""
+
+
+def kms_sidecar_path() -> Path:
+    env = os.environ.get("SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE")
+    if env:
+        return Path(env)
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime and Path(runtime).name != "0":
+        return Path(runtime) / "sunshine-ds-gamemode-virtual"
+    return Path("/run/user/1000/sunshine-ds-gamemode-virtual")
+
+
+def kms_log_path() -> Path:
+    env = os.environ.get("SUNSHINE_DS_KMS_LOG")
+    if env:
+        return Path(env)
+    return _playbook_root() / "logs" / "sunshine-ds-gamemode.log"
+
+
+def _sidecar_ready(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if "serial=" not in text:
+        return False
+    return "pw_node=" in text or "x11=" in text
+
+
+def _session_watch_kind(window: str) -> str:
+    if "Second display requested" in window:
+        return "video1"
+    if "Primary stream will capture the GamePad display" in window:
+        return "gamepad"
+    return "top"
+
+
+def client_watching_second_display(log_text: str) -> tuple[bool, str]:
+    """Connected Moonlight sessions: video/1 or GamePad-as-primary vs HDMI-only.
+
+    Disconnects are LIFO (last client to join is the one that left). Auto is
+    true when *any* remaining session is watching the host second display, so
+    a top-only phone does not cancel Thor dual-panel.
+    """
+    lines = log_text.splitlines()
+    sessions: list[str] = []
+    for i, line in enumerate(lines):
+        if "CLIENT CONNECTED" in line:
+            window = "\n".join(lines[max(0, i - 20) : i + 1])
+            sessions.append(_session_watch_kind(window))
+        elif "CLIENT DISCONNECTED" in line and sessions:
+            sessions.pop()
+    if not sessions:
+        return False, "no CLIENT CONNECTED in kms log"
+    if any(kind == "video1" for kind in sessions):
+        return True, "Moonlight is streaming the bottom screen (video/1)"
+    if any(kind == "gamepad" for kind in sessions):
+        return True, "Moonlight is GamePad-only (watching :2 as video/0)"
+    return False, "Moonlight is streaming the top screen only"
+
+
+def second_screen_streaming_state(
+    *,
+    xml: str | None = None,
+    sidecar: Path | None = None,
+    log_text: str | None = None,
+    dual_screen: str | None = None,
+) -> dict:
+    """Whether Tender Cemu/Azahar tiles should launch dual-screen."""
+    mode = normalize_dual_screen(
+        dual_screen if dual_screen is not None else load_mux_config().get("dual_screen")
+    )
+    info = xml if xml is not None else kms_serverinfo_xml()
+    busy = "SUNSHINE_SERVER_BUSY" in info
+    side = sidecar if sidecar is not None else kms_sidecar_path()
+    side_ok = _sidecar_ready(side)
+    if log_text is None:
+        log_path = kms_log_path()
+        try:
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")[-120000:]
+        except OSError:
+            log_text = ""
+    watching, watch_reason = client_watching_second_display(log_text)
+    wanted = False
+    reason = dual_screen_label(mode)
+    if mode == "off":
+        wanted = False
+        reason = "HDMI only (Emu Pads toggle)"
+    elif not busy:
+        wanted = False
+        reason = "sunshine-ds-kms is not streaming"
+    elif not side_ok:
+        wanted = False
+        reason = ":48200 is BUSY but gamescope-virtual sidecar is missing"
+    elif mode == "on":
+        wanted = True
+        reason = "Dual-screen forced (Emu Pads toggle)"
+    elif watching:
+        wanted = True
+        reason = watch_reason
+    else:
+        wanted = False
+        reason = watch_reason or "top-only Moonlight — HDMI-only launch"
+    return {
+        "wanted": wanted,
+        "mode": mode,
+        "busy": busy,
+        "sidecar": side_ok,
+        "watching": watching,
+        "reason": reason,
+    }
 
 
 def mux_source_specs(pads: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -1523,10 +1682,13 @@ def status_payload(
             "mode": mux_cfg.get("mode") or "shared",
             "sources": mux_cfg.get("sources") or [],
             "cemu_p1": mux_cfg.get("cemu_p1") or "gamepad",
+            "dual_screen": mux_cfg.get("dual_screen") or "auto",
             "sinks": [_pad_summary(s) for s in sinks],
             "service": MUX_SERVICE,
         },
         "cemu_p1": mux_cfg.get("cemu_p1") or "gamepad",
+        "dual_screen": mux_cfg.get("dual_screen") or "auto",
+        "dual_screen_live": second_screen_streaming_state(dual_screen=mux_cfg.get("dual_screen")),
         "emus": {
             "cemu": {
                 "running": cemu_running(),
@@ -1722,18 +1884,49 @@ def cmd_set_mode(args: argparse.Namespace) -> int:
         "ok": True,
         "mode": saved.get("mode") or mode,
         "cemu_p1": saved.get("cemu_p1") or "gamepad",
+        "dual_screen": saved.get("dual_screen") or "auto",
         "mux": {
             "running": mux_running(),
             "muted": mux_muted(),
             "mode": saved.get("mode") or mode,
             "sources": saved.get("sources") or [],
             "cemu_p1": saved.get("cemu_p1") or "gamepad",
+            "dual_screen": saved.get("dual_screen") or "auto",
         },
         "messages": [f"Mux mode {saved.get('mode') or mode}"],
     }
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
+
+
+def cmd_set_dual_screen(args: argparse.Namespace) -> int:
+    mode = normalize_dual_screen(getattr(args, "dual_screen", None) or getattr(args, "mode", None))
+    cfg = load_mux_config()
+    write_mux_routing(
+        cfg.get("mode") or "shared",
+        cfg.get("sources") or [],
+        cemu_p1=cfg.get("cemu_p1"),
+        dual_screen=mode,
+    )
+    saved = load_mux_config()
+    live = second_screen_streaming_state(dual_screen=saved.get("dual_screen"))
+    payload = {
+        "ok": True,
+        "dual_screen": saved.get("dual_screen") or mode,
+        "dual_screen_live": live,
+        "messages": [f"Emulator dual-screen {dual_screen_label(saved.get('dual_screen') or mode)}"],
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_second_screen_streaming(args: argparse.Namespace) -> int:
+    live = second_screen_streaming_state()
+    json.dump({"ok": True, **live}, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if live.get("wanted") else 1
 
 
 def _emit_apply(
@@ -2397,6 +2590,56 @@ def _self_test() -> int:
         steam_listed = list_joysticks(steam_only)
         assert [p["product"] for p in steam_listed] == ["11ff"], steam_listed
         assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
+        write_mux_routing("shared", [], dual_screen="off")
+        assert json.loads(mux_cfg.read_text())["dual_screen"] == "off"
+        assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
+        write_mux_routing("shared", [], dual_screen="auto")
+        both_log = (
+            "Second display requested: 1920x1080@60 at 5600 Kbps\n"
+            "CLIENT CONNECTED\n"
+        )
+        top_log = "CLIENT CONNECTED\n"
+        gp_log = (
+            "Primary stream will capture the GamePad display\n"
+            "CLIENT CONNECTED\n"
+        )
+        side = Path(tmp) / "sidecar"
+        side.write_text("serial=92\npw_node=89\nx11=:2\n")
+        busy = "SUNSHINE_SERVER_BUSY"
+        auto_both = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=both_log, dual_screen="auto"
+        )
+        assert auto_both["wanted"] is True, auto_both
+        auto_top = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=top_log, dual_screen="auto"
+        )
+        assert auto_top["wanted"] is False, auto_top
+        auto_gp = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=gp_log, dual_screen="auto"
+        )
+        assert auto_gp["wanted"] is True, auto_gp
+        mixed = (
+            "Second display requested: 1920x1080@60 at 5600 Kbps\n"
+            "CLIENT CONNECTED\n"
+            "CLIENT CONNECTED\n"
+        )
+        auto_mixed = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=mixed, dual_screen="auto"
+        )
+        assert auto_mixed["wanted"] is True, auto_mixed
+        phone_left = mixed + "CLIENT DISCONNECTED\n"
+        auto_phone_left = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=phone_left, dual_screen="auto"
+        )
+        assert auto_phone_left["wanted"] is True, auto_phone_left
+        forced = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=top_log, dual_screen="on"
+        )
+        assert forced["wanted"] is True, forced
+        hdmi = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=both_log, dual_screen="off"
+        )
+        assert hdmi["wanted"] is False, hdmi
         os.environ.pop("EMUPADS_MUX_CONFIG", None)
         assert tile_cemu_p1(streaming=True) == "gamepad"
         assert tile_cemu_p1(streaming=False) == "pro"
@@ -2476,6 +2719,19 @@ def main(argv: list[str] | None = None) -> int:
     p_mode = sub.add_parser("set-mode", help="Write mux shared/multi without rebinding emulators")
     p_mode.add_argument("--mode", required=True, help="shared or multi")
     p_mode.set_defaults(func=cmd_set_mode)
+
+    p_ds = sub.add_parser(
+        "set-dual-screen",
+        help="Auto / on / off: Tender Cemu/Azahar dual-screen vs HDMI-only",
+    )
+    p_ds.add_argument("--mode", dest="dual_screen", required=True, help="auto, on, or off")
+    p_ds.set_defaults(func=cmd_set_dual_screen)
+
+    p_stream = sub.add_parser(
+        "second-screen-streaming",
+        help="Exit 0 when emulator tiles should launch dual-screen",
+    )
+    p_stream.set_defaults(func=cmd_second_screen_streaming)
 
     p_wait = sub.add_parser("wait", help="Print the pad that receives the next button")
     p_wait.add_argument("--timeout", type=float, default=20.0)

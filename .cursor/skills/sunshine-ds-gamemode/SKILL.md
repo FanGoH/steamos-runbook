@@ -22,7 +22,7 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - `--paint` must `systemd-run --user` the idle clock (`Type=oneshot`, `KillMode=process`). `setsid`/`disown` stay in `app-steam-app*.scope`; Steam's reaper waitpid on that clock is the Azahar “Exiting…” hang. Cemu usually avoids it because the tile `exec`s Cemu and the watcher paints after that process is already gone.
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
 - Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`) or Steam wraps (`28de:11ff`) when Thor/Odin are present. Shared / Multiplayer must persist; a status poll must not flip the toggle back to Shared P1.
-- **4K HDMI + 1080p `:2`:** Top fills HDMI native (`gamescope_hdmi_tv_size`, 4K TV → 3840×2160). Bottom / GamePad / `:2` stay 1920×1080; Moonlight **stretches** that onto Thor’s bottom (no letterbox bars). Flicker was the focus loop resizing every tick — `x11_resize_if_needed` only. Do not shrink the TV to Steam `:0` 1080p (that was the padding). Do not resize `:2` to 4K.
+- **4K HDMI + 1080p `:2`:** Top fills HDMI native (`gamescope_hdmi_tv_size`, 4K TV → 3840×2160). Bottom / GamePad / `:2` stay 1920×1080 (ffplay scales the grab to fill that frame — no baked letterbox). Moonlight **GamePad fill** Stretch vs Fit decides how that 1080p lands on Thor’s bottom. Do not request Thor native 1080×1240 or the TV 4K size for video/1 (Sunshine letterboxes, white bars). Do not shrink the TV to Steam `:0` 1080p. Do not resize `:2` to 4K.
 
 ## What must be true
 

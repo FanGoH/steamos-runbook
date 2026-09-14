@@ -409,6 +409,7 @@ start_mirror() {
     -fs -noborder -alwaysontop -sn -an \
     -fflags nobuffer -flags low_delay \
     -f x11grab -window_id "$wid" -framerate 30 -draw_mouse 0 -i "${TV_DISPLAY}.0" \
+    -vf "scale=1920:1080:flags=fast_bilinear" \
     >>"$LOG" 2>&1 &
   printf '%s\n' "$!" >"$MIRROR_PIDFILE"
   echo "bottom-screen mirror pid $!"

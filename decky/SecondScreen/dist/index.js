@@ -29,10 +29,98 @@ function asWindows(raw) {
   return [];
 }
 
+function asClients(status) {
+  const list = status?.clients || status?.dual_screen_live?.clients;
+  return Array.isArray(list) ? list : [];
+}
+
+function clientsSignature(clients) {
+  return clients
+    .map(
+      (client) =>
+        `${client?.device || client?.name || ""}|${client?.watch || ""}|${client?.config || ""}`
+    )
+    .sort()
+    .join(";");
+}
+
+function clientNames(clients) {
+  const names = clients
+    .map((client) => client?.name || client?.device || "")
+    .filter(Boolean);
+  return names.length ? names.join(" · ") : "";
+}
+
+function modeToast(status, clients) {
+  const live = status?.dual_screen_live || {};
+  const names = clientNames(clients) || "Moonlight";
+  const reason = live.reason || "";
+  if (!clients.length) {
+    return {
+      title: "HDMI only",
+      body: reason ? `No Moonlight clients — ${reason}` : "No Moonlight clients",
+    };
+  }
+  if (live.wanted) {
+    return {
+      title: "Dual-screen",
+      body: reason ? `${names} · ${reason}` : names,
+    };
+  }
+  return {
+    title: "HDMI only",
+    body: reason ? `${names} · ${reason}` : `${names} · top screen only`,
+  };
+}
+
 function windowLabel(win) {
   const name = win?.name || "(unnamed)";
   const size = `${win?.width || "?"}×${win?.height || "?"}`;
   return `${name} · ${win?.display || "?"} · ${size}`;
+}
+
+function clientField(client, key) {
+  const name = client?.name || client?.device || "Moonlight";
+  const detail = client?.config
+    ? client.device && client.device !== name
+      ? `${client.config} · ${client.device}`
+      : client.config
+    : client?.device || "connected";
+  return SP_JSX.jsx(
+    DFL.PanelSectionRow,
+    {
+      children: SP_JSX.jsx(DFL.Field, {
+        label: name,
+        children: detail,
+      }),
+    },
+    key
+  );
+}
+
+function PluginTitle() {
+  const [names, setNames] = SP_REACT.useState("");
+  SP_REACT.useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const next = await getStatus();
+        if (!cancelled) setNames(clientNames(asClients(next)));
+      } catch (_err) {
+        if (!cancelled) setNames("");
+      }
+    };
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+  return SP_JSX.jsx("div", {
+    className: DFL.staticClasses.Title,
+    children: names ? `Second Screen · ${names}` : "Second Screen",
+  });
 }
 
 function Content() {
@@ -40,6 +128,7 @@ function Content() {
   const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const lastModeSig = SP_REACT.useRef(null);
 
   const refresh = SP_REACT.useCallback(async () => {
     try {
@@ -49,6 +138,19 @@ function Content() {
       const ds = next?.dual_screen || next?.dual_screen_live?.mode;
       if (ds === "auto" || ds === "on" || ds === "off") {
         setDualScreenMode(ds);
+      }
+      const nextClients = asClients(next);
+      const sig = `${next?.dual_screen_live?.wanted ? "1" : "0"}|${clientsSignature(nextClients)}`;
+      if (lastModeSig.current === null) {
+        lastModeSig.current = sig;
+      } else if (lastModeSig.current !== sig) {
+        lastModeSig.current = sig;
+        const toast = modeToast(next, nextClients);
+        toaster.toast({
+          title: toast.title,
+          body: toast.body.slice(0, 220),
+          duration: 4000,
+        });
       }
     } catch (err) {
       setError(String(err));
@@ -109,19 +211,53 @@ function Content() {
   };
 
   const windows = asWindows(status?.windows);
+  const clients = asClients(status);
 
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
       SP_JSX.jsxs(DFL.PanelSection, {
+        title: clients.length
+          ? `Moonlight clients (${clients.length})`
+          : "Moonlight clients",
+        children: [
+          ...(clients.length
+            ? clients.map((client, idx) =>
+                clientField(
+                  client,
+                  `${client?.device || client?.name || "client"}-${idx}`
+                )
+              )
+            : [
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx(DFL.Field, {
+                      label: "None",
+                      children: "No Moonlight clients on :48200.",
+                    }),
+                  },
+                  "no-clients"
+                ),
+              ]),
+        ],
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
         title: "Emulator dual-screen",
         children: [
           SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsx("div", {
-              style: { opacity: 0.75, fontSize: "0.88em" },
+            children: SP_JSX.jsx(DFL.Field, {
+              label: status?.dual_screen_live?.wanted ? "Dual-screen" : "HDMI only",
               children:
                 status?.dual_screen_live?.reason ||
                 error ||
-                "Auto: Cemu/Azahar GamePad layout only when Moonlight is watching the bottom.",
+                "Auto: Cemu/Azahar GamePad layout only when a client is watching the bottom.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.7, fontSize: "0.82em" },
+              children:
+                "Tender Cemu/Azahar Play reads this Auto signal at launch (rom-launcher). Steam LaunchOptions stay the RetroDECK line.",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -229,10 +365,7 @@ function Content() {
 
 var index = definePlugin(() => ({
   name: "Second Screen",
-  titleView: SP_JSX.jsx("div", {
-    className: DFL.staticClasses.Title,
-    children: "Second Screen",
-  }),
+  titleView: SP_JSX.jsx(PluginTitle, {}),
   content: SP_JSX.jsx(Content, {}),
   icon: SP_JSX.jsx("span", { children: "2" }),
 }));

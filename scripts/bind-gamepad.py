@@ -472,6 +472,171 @@ def _session_watch_kind(window: str) -> str:
     return "top"
 
 
+def _session_log_window(lines: list[str], index: int, *, before: int = 20) -> str:
+    """Lines belonging to this CLIENT CONNECTED, not the previous session."""
+    start = max(0, index - before)
+    for j in range(index - 1, start - 1, -1):
+        if "CLIENT CONNECTED" in lines[j] or "CLIENT DISCONNECTED" in lines[j]:
+            start = j + 1
+            break
+    return "\n".join(lines[start : index + 1])
+
+
+def _session_log_ahead(lines: list[str], index: int, *, after: int = 40) -> str:
+    end = min(len(lines), index + after)
+    for j in range(index + 1, end):
+        if "CLIENT CONNECTED" in lines[j] or "CLIENT DISCONNECTED" in lines[j]:
+            end = j
+            break
+    return "\n".join(lines[index:end])
+
+
+_PAD_DEVICE_RE = re.compile(
+    r"Gamepad \d+ will be Sunshine \(libvirtualhid\) (.+?)(?: \(manual selection\))?\s*$"
+)
+_ALLOCATED_DEVICE_RE = re.compile(
+    r"ControllerNumber already allocated \[\d+\] for (.+?);"
+)
+_CLIENT_EVENT_RE = re.compile(r"CLIENT (CONNECTED|DISCONNECTED)(?: \[([^\]]*)\])?")
+_SECOND_DISPLAY_RE = re.compile(
+    r"Second display requested:\s+(\d+)x(\d+)@(\d+)\s+at\s+(\d+)\s+Kbps"
+)
+_STREAM_BITRATE_RE = re.compile(r"Streaming bitrate is (\d+)")
+_CLIENT_NAME_ALIASES = {
+    "AYN_Thor": "Thor",
+    "AYN20Thor": "Thor",
+    "Odin2_Portal": "Odin",
+}
+
+
+def friendly_moonlight_name(raw: str) -> str:
+    text = (raw or "").strip()
+    prefix = "Sunshine (libvirtualhid) "
+    if text.startswith(prefix):
+        text = text[len(prefix) :].strip()
+    if not text:
+        return "Moonlight"
+    return _CLIENT_NAME_ALIASES.get(text, text.replace("_", " "))
+
+
+def _client_event(line: str) -> tuple[str, str] | None:
+    match = _CLIENT_EVENT_RE.search(line)
+    if not match:
+        return None
+    return match.group(1), (match.group(2) or "").strip()
+
+
+def _pop_disconnected(sessions: list[dict], raw_name: str) -> None:
+    if not sessions:
+        return
+    if raw_name:
+        friendly = friendly_moonlight_name(raw_name)
+        for i in range(len(sessions) - 1, -1, -1):
+            sess = sessions[i]
+            if sess.get("device") == raw_name or sess.get("name") == friendly:
+                sessions.pop(i)
+                return
+    sessions.pop()
+
+
+def _pad_device_from_line(line: str) -> str:
+    match = _PAD_DEVICE_RE.search(line)
+    if match:
+        return match.group(1).strip()
+    match = _ALLOCATED_DEVICE_RE.search(line)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def _client_config_label(kind: str, *, second: str = "", bitrate: str = "") -> str:
+    if kind == "video1":
+        extra = second or "bottom stream"
+        return f"Dual-screen · {extra}"
+    if kind == "gamepad":
+        return "GamePad-only (video/0 is :2)"
+    if bitrate:
+        return f"Top screen only · {bitrate}"
+    return "Top screen only"
+
+
+def _names_for_watch(clients: list[dict], kind: str) -> str:
+    names = [str(c.get("name") or "Moonlight") for c in clients if c.get("watch") == kind]
+    return ", ".join(names) if names else "Moonlight"
+
+
+def connected_moonlight_clients(log_text: str) -> list[dict]:
+    """Remaining Moonlight sessions from the kms log (LIFO disconnects).
+
+    Device names come from ``CLIENT CONNECTED [AYN_Thor]`` when kms logs them,
+    else from the later ``Gamepad N will be Sunshine (libvirtualhid) <name>``
+    line. Pads can show up after a later connect, so unnamed sessions still get
+    FIFO assignment. Named disconnects match that client instead of LIFO, so
+    closing Thor does not drop Odin from the QAM list. Watch kind still comes
+    from the lines *before* CONNECTED (video/1 / GamePad-only / top).
+    ``Last Moonlight client gone`` drops leftovers so a truncated kms log tail
+    cannot keep a stale Thor session.
+    """
+    marker = "Last Moonlight client gone"
+    cut = log_text.rfind(marker)
+    if cut >= 0:
+        log_text = log_text[cut:]
+    lines = log_text.splitlines()
+    sessions: list[dict] = []
+    for i, line in enumerate(lines):
+        if "Last Moonlight client gone" in line:
+            sessions.clear()
+            continue
+        event = _client_event(line)
+        if event and event[0] == "CONNECTED":
+            window = _session_log_window(lines, i)
+            kind = _session_watch_kind(window)
+            second = ""
+            match = _SECOND_DISPLAY_RE.search(window)
+            if match:
+                second = f"{match.group(1)}×{match.group(2)}@{match.group(3)} · {match.group(4)} Kbps"
+            bitrate = ""
+            ahead = _session_log_ahead(lines, i)
+            bmatch = _STREAM_BITRATE_RE.search(ahead)
+            if bmatch:
+                try:
+                    kbps = max(int(bmatch.group(1)) // 1000, 1)
+                    bitrate = f"{kbps} kbps"
+                except ValueError:
+                    bitrate = ""
+            raw = event[1]
+            sessions.append(
+                {
+                    "watch": kind,
+                    "device": raw,
+                    "name": friendly_moonlight_name(raw) if raw else "Moonlight",
+                    "config": _client_config_label(kind, second=second, bitrate=bitrate),
+                    "_i": i,
+                }
+            )
+        elif event and event[0] == "DISCONNECTED":
+            _pop_disconnected(sessions, event[1])
+    claimed: set[int] = set()
+    out: list[dict] = []
+    for sess in sessions:
+        start = int(sess.pop("_i"))
+        if sess.get("device"):
+            out.append(sess)
+            continue
+        for j in range(start + 1, len(lines)):
+            if j in claimed:
+                continue
+            raw = _pad_device_from_line(lines[j])
+            if not raw:
+                continue
+            claimed.add(j)
+            sess["device"] = raw
+            sess["name"] = friendly_moonlight_name(raw)
+            break
+        out.append(sess)
+    return out
+
+
 def client_watching_second_display(log_text: str) -> tuple[bool, str]:
     """Connected Moonlight sessions: video/1 or GamePad-as-primary vs HDMI-only.
 
@@ -479,21 +644,18 @@ def client_watching_second_display(log_text: str) -> tuple[bool, str]:
     true when *any* remaining session is watching the host second display, so
     a top-only phone does not cancel Thor dual-panel.
     """
-    lines = log_text.splitlines()
-    sessions: list[str] = []
-    for i, line in enumerate(lines):
-        if "CLIENT CONNECTED" in line:
-            window = "\n".join(lines[max(0, i - 20) : i + 1])
-            sessions.append(_session_watch_kind(window))
-        elif "CLIENT DISCONNECTED" in line and sessions:
-            sessions.pop()
-    if not sessions:
+    clients = connected_moonlight_clients(log_text)
+    if not clients:
         return False, "no CLIENT CONNECTED in kms log"
-    if any(kind == "video1" for kind in sessions):
-        return True, "Moonlight is streaming the bottom screen (video/1)"
-    if any(kind == "gamepad" for kind in sessions):
-        return True, "Moonlight is GamePad-only (watching :2 as video/0)"
-    return False, "Moonlight is streaming the top screen only"
+    if any(c.get("watch") == "video1" for c in clients):
+        return True, (
+            f"{_names_for_watch(clients, 'video1')} watching the bottom screen (video/1)"
+        )
+    if any(c.get("watch") == "gamepad" for c in clients):
+        return True, (
+            f"{_names_for_watch(clients, 'gamepad')} is GamePad-only (watching :2 as video/0)"
+        )
+    return False, f"{_names_for_watch(clients, 'top')} streaming the top screen only"
 
 
 def second_screen_streaming_state(
@@ -514,10 +676,11 @@ def second_screen_streaming_state(
     if log_text is None:
         log_path = kms_log_path()
         try:
-            log_text = log_path.read_text(encoding="utf-8", errors="replace")[-120000:]
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")[-800000:]
         except OSError:
             log_text = ""
     watching, watch_reason = client_watching_second_display(log_text)
+    clients = connected_moonlight_clients(log_text)
     wanted = False
     reason = dual_screen_label(mode)
     if mode == "off":
@@ -545,6 +708,7 @@ def second_screen_streaming_state(
         "sidecar": side_ok,
         "watching": watching,
         "reason": reason,
+        "clients": clients,
     }
 
 
@@ -2632,6 +2796,82 @@ def _self_test() -> int:
             xml=busy, sidecar=side, log_text=phone_left, dual_screen="auto"
         )
         assert auto_phone_left["wanted"] is True, auto_phone_left
+        named = (
+            "Second display requested: 1920x1080@120 at 5600 Kbps\n"
+            "CLIENT CONNECTED\n"
+            "Gamepad 0 will be Sunshine (libvirtualhid) AYN_Thor (manual selection)\n"
+            "CLIENT CONNECTED\n"
+            "Streaming bitrate is 21388000\n"
+            "Gamepad 1 will be Sunshine (libvirtualhid) Odin2_Portal (manual selection)\n"
+        )
+        named_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=named, dual_screen="auto"
+        )
+        assert named_state["wanted"] is True, named_state
+        assert [c["name"] for c in named_state["clients"]] == ["Thor", "Odin"], named_state
+        assert named_state["clients"][0]["watch"] == "video1"
+        assert "1920×1080@120" in named_state["clients"][0]["config"]
+        assert named_state["clients"][1]["watch"] == "top"
+        assert "kbps" in named_state["clients"][1]["config"]
+        assert "Thor watching the bottom screen" in named_state["reason"]
+        named_left = named + "CLIENT DISCONNECTED\n"
+        named_left_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=named_left, dual_screen="auto"
+        )
+        assert [c["name"] for c in named_left_state["clients"]] == ["Thor"], named_left_state
+        odin_only = (
+            "CLIENT CONNECTED\n"
+            "Streaming bitrate is 21388000\n"
+            "Gamepad 0 will be Sunshine (libvirtualhid) Odin2_Portal (manual selection)\n"
+        )
+        odin_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=odin_only, dual_screen="auto"
+        )
+        assert odin_state["wanted"] is False, odin_state
+        assert odin_state["clients"][0]["name"] == "Odin"
+        assert "Odin streaming the top screen only" in odin_state["reason"]
+        delayed_pads = (
+            "Second display requested: 1920x1080@120 at 5600 Kbps\n"
+            "CLIENT CONNECTED\n"
+            "CLIENT CONNECTED\n"
+            "Gamepad 0 will be Sunshine (libvirtualhid) AYN_Thor (manual selection)\n"
+            "Gamepad 1 will be Sunshine (libvirtualhid) Odin2_Portal (manual selection)\n"
+        )
+        delayed = connected_moonlight_clients(delayed_pads)
+        assert [c["name"] for c in delayed] == ["Thor", "Odin"], delayed
+        assert delayed[0]["watch"] == "video1"
+        assert delayed[1]["watch"] == "top"
+        bracket = (
+            "Second display requested: 1920x1080@120 at 5600 Kbps\n"
+            "CLIENT CONNECTED [AYN_Thor]\n"
+            "CLIENT CONNECTED [Odin2_Portal]\n"
+            "Streaming bitrate is 21388000\n"
+        )
+        bracket_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=bracket, dual_screen="auto"
+        )
+        assert [c["name"] for c in bracket_state["clients"]] == ["Thor", "Odin"], bracket_state
+        assert bracket_state["clients"][0]["device"] == "AYN_Thor"
+        assert bracket_state["wanted"] is True
+        thor_left = bracket + "CLIENT DISCONNECTED [AYN_Thor]\n"
+        thor_left_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=thor_left, dual_screen="auto"
+        )
+        assert [c["name"] for c in thor_left_state["clients"]] == ["Odin"], thor_left_state
+        assert thor_left_state["wanted"] is False
+        assert "Odin streaming the top screen only" in thor_left_state["reason"]
+        stale = (
+            "Second display requested: 1920x1080@120 at 5600 Kbps\n"
+            "CLIENT CONNECTED\n"
+            "Gamepad 0 will be Sunshine (libvirtualhid) AYN_Thor (manual selection)\n"
+            "Last Moonlight client gone; closing Desktop so the next connect can /launch\n"
+            "CLIENT CONNECTED\n"
+            "Streaming bitrate is 21388000\n"
+            "Gamepad 0 will be Sunshine (libvirtualhid) Odin2_Portal (manual selection)\n"
+        )
+        after_gone = connected_moonlight_clients(stale)
+        assert [c["name"] for c in after_gone] == ["Odin"], after_gone
+        assert after_gone[0]["watch"] == "top"
         forced = second_screen_streaming_state(
             xml=busy, sidecar=side, log_text=top_log, dual_screen="on"
         )

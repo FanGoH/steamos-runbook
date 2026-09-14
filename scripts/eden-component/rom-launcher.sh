@@ -175,14 +175,110 @@ for arg in "$@"; do
       ;;
   esac
 done
-# Live :48200 dual-stream (BUSY + gamescope-virtual sidecar): windowed
-# GamePad instead of HDMI-only -f. Cemu-wrapper starts --attach.
+
+pick_3ds_rom() {
+  local hint="$1"
+  local lo_py="$PLAYBOOK/scripts/eden-component/set-steam-launch-options.py"
+  if [ ! -f "$lo_py" ]; then
+    return 0
+  fi
+  python3 "$lo_py" --resolve-azahar-rom "$hint" 2>/dev/null || true
+}
+
+is_azahar=0
+azahar_hint=""
+azahar_rom=""
+for arg in "$@"; do
+  case "$arg" in
+    *EMULATOR_AZAHAR*|*azahar-launcher*|*org.azahar_emu.Azahar*)
+      is_azahar=1
+      ;;
+    *.3ds|*.3DS|*.cci|*.CCI|*.cxi|*.CXI|*.cia|*.CIA)
+      is_azahar=1
+      azahar_hint="$arg"
+      azahar_rom="$(pick_3ds_rom "$arg")"
+      ;;
+    */3ds/*|*/3DS/*|*/n3ds/*|*/n3DS/*)
+      is_azahar=1
+      if [ -z "$azahar_hint" ]; then
+        azahar_hint="$arg"
+        azahar_rom="$(pick_3ds_rom "$arg")"
+      fi
+      ;;
+  esac
+done
+
+if [ "$is_azahar" -eq 1 ] && [ -n "$azahar_hint" ]; then
+  if [ -z "$azahar_rom" ] || [ ! -f "$azahar_rom" ]; then
+    echo "rom-launcher: no bootable .3ds matching ${azahar_hint} (CIA installers are not launched; will not pick another cart from n3ds)" >&2
+    exit 1
+  fi
+  if [ -n "$azahar_hint" ] && [ "$azahar_rom" != "$azahar_hint" ]; then
+    echo "rom-launcher: ${azahar_hint} -> $azahar_rom" >&2
+    AZAHAR_NEW_ARGS=()
+    replaced=0
+    for arg in "$@"; do
+      if [ "$replaced" -eq 0 ] && [ "$arg" = "$azahar_hint" ]; then
+        AZAHAR_NEW_ARGS+=("$azahar_rom")
+        replaced=1
+      else
+        AZAHAR_NEW_ARGS+=("$arg")
+      fi
+    done
+    set -- "${AZAHAR_NEW_ARGS[@]}"
+  fi
+fi
+
+# Live Auto / Dual-screen / HDMI-only from mux.json + :48200 BUSY + sidecar +
+# who is watching the bottom. Capture JSON once so Play logs why Auto chose
+# Dual-screen or HDMI-only. Not a Steam LaunchOptions flag.
+stream_reason="not streaming"
+stream_clients=""
+stream_wanted=0
+resolve_second_screen_mode() {
+  local bind="$PLAYBOOK/scripts/bind-gamepad.py"
+  [ -x "$bind" ] || return 1
+  local json rc=0 parsed
+  json="$(python3 "$bind" second-screen-streaming 2>/dev/null)" || rc=$?
+  parsed="$(python3 -c 'import json,sys
+d={}
+try:
+    d=json.loads(sys.argv[1])
+except Exception:
+    print("parse failed")
+    print("")
+    raise SystemExit
+print(d.get("reason") or "unknown")
+names=[]
+for c in d.get("clients") or []:
+    n=(c.get("name") or c.get("device") or "").strip()
+    if n:
+        names.append(n)
+print(", ".join(names))
+' "$json" 2>/dev/null || true)"
+  stream_reason="$(printf '%s\n' "$parsed" | sed -n '1p')"
+  stream_clients="$(printf '%s\n' "$parsed" | sed -n '2p')"
+  [ -n "$stream_reason" ] || stream_reason="unknown"
+  echo "rom-launcher: second-screen rc=$rc wanted=$([ "$rc" -eq 0 ] && echo 1 || echo 0) reason=$stream_reason clients=${stream_clients:-none}" >&2
+  if [ "$rc" -eq 0 ]; then
+    stream_wanted=1
+    return 0
+  fi
+  stream_wanted=0
+  return 1
+}
+
+if [ "$is_cemu" -eq 1 ] || [ "$is_azahar" -eq 1 ]; then
+  resolve_second_screen_mode || true
+fi
+
 if [ "$is_cemu" -eq 1 ] && [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
-  stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
-  if [ -x "$stream_chk" ] && "$stream_chk"; then
-    echo "rom-launcher: :48200 second screen BUSY — CEMU_GAMEMODE_DS=1" >&2
+  if [ "$stream_wanted" -eq 1 ]; then
+    echo "rom-launcher: Dual-screen — CEMU_GAMEMODE_DS=1 (no -f) clients=${stream_clients:-none}" >&2
     enable_cemu_gamemode_ds "$@"
     set -- "${CEMU_DS_NEW_ARGS[@]}"
+  else
+    echo "rom-launcher: HDMI-only Cemu (reason=$stream_reason) clients=${stream_clients:-none}" >&2
   fi
 fi
 
@@ -192,42 +288,9 @@ if [ "$is_cemu" -eq 1 ] && [ -x "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" ]; t
     "$PLAYBOOK/scripts/cemu-gamescope-focus.sh" >/dev/null 2>&1 &
 fi
 
-pick_3ds_rom() {
-  local dir="$1"
-  local match
-  match="$(find "$dir" -type f \( -iname '*.3ds' -o -iname '*.cci' -o -iname '*.cxi' \
-    -o -iname '*.cia' \) -printf '%s %p\n' 2>/dev/null \
-    | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
-  printf '%s' "${match:-}"
-}
-
-is_azahar=0
-azahar_rom=""
-for arg in "$@"; do
-  case "$arg" in
-    *EMULATOR_AZAHAR*|*azahar-launcher*|*org.azahar_emu.Azahar*)
-      is_azahar=1
-      ;;
-    *.3ds|*.3DS|*.cci|*.CCI|*.cxi|*.CXI|*.cia|*.CIA)
-      is_azahar=1
-      if [ -f "$arg" ]; then
-        azahar_rom="$arg"
-      elif [ -d "$(dirname "$arg")" ]; then
-        azahar_rom="$(pick_3ds_rom "$(dirname "$arg")")"
-      fi
-      ;;
-    */3ds/*|*/3DS/*)
-      is_azahar=1
-      if [ -z "$azahar_rom" ] && [ -d "$arg" ]; then
-        azahar_rom="$(pick_3ds_rom "$arg")"
-      fi
-      ;;
-  esac
-done
-
 # RetroDECK Azahar is fullscreen stacked. Game Mode dual-stream is standalone
-# Flatpak Separate Windows + ffplay onto :2. Replace the tile when :48200
-# is streaming the second screen. Local Play (kms FREE) stays RetroDECK.
+# Flatpak Separate Windows + ffplay onto :2. Replace the tile when Auto/DS
+# resolves Dual-screen. Local Play (kms FREE / top-only) stays RetroDECK.
 if [ "$is_azahar" -eq 1 ]; then
   unset SDL_GAMECONTROLLER_IGNORE_DEVICES
   export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
@@ -235,13 +298,12 @@ if [ "$is_azahar" -eq 1 ]; then
   if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
     python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu azahar --force >/dev/null 2>&1 || true
   fi
-  stream_chk="$PLAYBOOK/scripts/gamemode-second-screen-streaming.sh"
   azahar_ds="$PLAYBOOK/scripts/ensure-azahar-gamemode-dual-screen.sh"
-  if [ -x "$stream_chk" ] && [ -x "$azahar_ds" ] && "$stream_chk"; then
+  if [ "$stream_wanted" -eq 1 ] && [ -x "$azahar_ds" ]; then
     if [ -z "$azahar_rom" ] || [ ! -f "$azahar_rom" ]; then
-      echo "rom-launcher: :48200 second screen BUSY but no 3DS dump in argv" >&2
+      echo "rom-launcher: Dual-screen wanted but no 3DS dump in argv (reason=$stream_reason)" >&2
     else
-      echo "rom-launcher: :48200 second screen BUSY — standalone Azahar dual-screen $azahar_rom" >&2
+      echo "rom-launcher: Dual-screen — standalone Azahar $azahar_rom clients=${stream_clients:-none}" >&2
       if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
         "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
       fi
@@ -267,6 +329,8 @@ if [ "$is_azahar" -eq 1 ]; then
       fi
       exit 0
     fi
+  else
+    echo "rom-launcher: HDMI-only Azahar (reason=$stream_reason) clients=${stream_clients:-none}" >&2
   fi
 fi
 

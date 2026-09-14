@@ -366,9 +366,11 @@ start_virtual() {
   : >"$LOG"
   # Isolated from the session compositor. Do not inherit WAYLAND_DISPLAY=gamescope-0
   # (that nests a window on the TV) or wayland-0 (missing in Game Mode).
+  # Pin :2 to 60. Uncapped headless gamescope presents as fast as the GPU
+  # allows; mangoapp on HDMI then reads ~66fps while the TV stays 60Hz.
   nohup env -u WAYLAND_DISPLAY -u DISPLAY \
-    gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" --xwayland-count 1 \
-    -- sleep infinity >>"$LOG" 2>&1 &
+    gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -r 60 -o 60 \
+    --xwayland-count 1 -- sleep infinity >>"$LOG" 2>&1 &
   pid=$!
   printf '%s\n' "$pid" >"$PIDFILE"
   local waited=0

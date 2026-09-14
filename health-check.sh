@@ -105,6 +105,12 @@ if [ -n "$TS" ] && [ -x "$TS" ]; then
     else
       warn "Tailscale up but no IPv4 tailnet address"
     fi
+    ts_host="$("$TS" debug prefs 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('Hostname') or '')" 2>/dev/null || true)"
+    if [ -n "${TAILSCALE_HOSTNAME:-}" ] && [ "$ts_host" = "$TAILSCALE_HOSTNAME" ]; then
+      ok "Tailscale hostname $ts_host"
+    elif [ -n "$ts_host" ]; then
+      warn "Tailscale hostname is $ts_host (expected $TAILSCALE_HOSTNAME)"
+    fi
   else
     fail "Tailscale not connected"
     record_manual "Re-login Tailscale to Headscale (do not use --ssh yet)" <<EOF
@@ -600,6 +606,18 @@ else
   record_manual "Install Emu Pads Decky plugin" <<EOF
 ./scripts/ensure-emu-pads-decky.sh
 EOF
+fi
+if [ -f "$HOMEBREW_DIR/plugins/tailscale-control/main.py" ]; then
+  if grep -Fq 'cmd_list.append("--reset")' "$HOMEBREW_DIR/plugins/tailscale-control/main.py"; then
+    warn "Tailscale Control still runs up --reset (overrides hostname / Headscale)"
+    record_manual "Patch Tailscale Control Advanced Settings" <<EOF
+./scripts/ensure-tailscale-control.sh
+EOF
+  else
+    ok "Tailscale Control does not --reset hostname"
+  fi
+else
+  warn "Decky Tailscale Control plugin not installed"
 fi
 if systemctl --user is-enabled emupads-mux.service >/dev/null 2>&1; then
   ok "emupads-mux.service enabled"

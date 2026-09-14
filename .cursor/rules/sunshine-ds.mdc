@@ -5,7 +5,7 @@ alwaysApply: true
 
 # sunshine-ds (desktop GameStream)
 
-This host is the **Steam Machine** (`steammachine` / `gpc`), not the handheld `steamdeck`.
+This host is the **Steam Machine** (`steammachine` / `gpc`), not the handheld `steamdeck`. Decky Tailscale Control must not `--reset` / `--hostname` on `up`.
 
 Two servers: Decky Flatpak `:47989` (KMS) and Distrobox sunshine-ds `:48100` (`capture = kwin`). Pin Thor/Odin Moonlight to `:48100` on Plasma. Dual-stream is Plasma/KWin only.
 

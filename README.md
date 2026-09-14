@@ -90,6 +90,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `health-check.sh` | Status report with ✅/❌ + manual actions |
 | `enable-wol.sh` | Apply Wake-on-LAN (used by `wol.service`) |
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
+| `scripts/ensure-tailscale-control.sh` | Patch Decky **Tailscale Control** Advanced Settings: no `--hostname` / `--reset` / `--ssh`; Headscale login server from `.env` |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
 | `scripts/build-sunshine-ds.sh` | Build FanGoH Sunshine DS in Distrobox (does not replace Decky Sunshine) |

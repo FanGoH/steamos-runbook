@@ -58,3 +58,8 @@ Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows hav
 - Hand-edit `qt-config.ini` GUIDs
 - Resize/kill the virtual-output helper
 - Do **not** run `ensure-azahar-dual-screen.sh` in Game Mode (KWin). Use `ensure-azahar-gamemode-dual-screen.sh`.
+- `sudo systemctl --user`, `kwin_wayland --replace`, `POST /api/restart`
+
+## Saves
+
+Dual-screen and Game Mode share `~/retrodeck/saves/n3ds/azahar/sdmc` (Syncthing mesh). Standalone Azahar is `host:ro`; `ensure-syncthing.sh` adds a filesystem override so it can write that tree. Do **not** symlink RetroDECK sdmc into `~/.var/app/org.azahar_emu.Azahar`. Skill `.cursor/skills/emu-save-mesh/SKILL.md`.

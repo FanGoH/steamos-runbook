@@ -55,6 +55,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
 - Gear Lever, Cursor Agent worker, Switch 2 BLE bridge
 - Eden/Tender wrap, Cemu/RPCS3 input wrappers, PS2 BIOS pin
+- Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 
 Manual follow-ups (printed when needed):
 
@@ -99,6 +100,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
+| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden NAND + RetroDECK Azahar sdmc on the mesh |
+| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share `eden-saves` / `azahar-saves`) |
+| `.cursor/skills/emu-save-mesh/` | Eden/Azahar Syncthing mesh; Azahar Game Mode writes the same RetroDECK sdmc (never symlink into another Flatpak) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
 | `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
@@ -154,6 +158,9 @@ Copy `.env.example` to `.env`. Important variables:
 | `CEMU_ROM` | Optional standalone Cemu ROM for dual-screen launch |
 | `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`). Game Mode script defaults to `Odin`. |
 | `AZAHAR_ROM` | Optional standalone Azahar ROM |
+| `SYNCTHING_BIN` | Official Syncthing binary (default `~/.local/bin/syncthing`) |
+| `SYNCTHING_VERSION` | Release tag to install (default `v2.1.5`) |
+| `SYNCTHING_PEER_IDS` | Space-separated peer device IDs (lab / Odin / Thor) if `config.xml` is regenerated |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 

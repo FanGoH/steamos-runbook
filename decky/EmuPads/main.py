@@ -41,16 +41,38 @@ def _session_uid() -> int:
         return 1000 if os.getuid() == 0 else os.getuid()
 
 
+def _bind_has_apply(script: str) -> bool:
+    try:
+        text = open(script, encoding="utf-8", errors="replace").read(8000)
+    except OSError:
+        return False
+    return 'add_parser("apply"' in text or "add_parser('apply'" in text
+
+
 def _playbook() -> str:
     home = _user_home()
     env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
     bind = os.path.join("scripts", "bind-gamepad.py")
-    if env and os.path.isfile(os.path.join(env, bind)):
-        return env
-    cand = os.path.join(home, "steamos-playbook")
-    if os.path.isfile(os.path.join(cand, bind)):
-        return cand
-    return cand
+    candidates: list[str] = []
+    if env:
+        candidates.append(env)
+    candidates.append(os.path.join(home, "steamos-playbook"))
+    wt = os.path.join(home, "worktrees")
+    if os.path.isdir(wt):
+        try:
+            names = sorted(os.listdir(wt))
+        except OSError:
+            names = []
+        for name in names:
+            candidates.append(os.path.join(wt, name))
+    fallback = candidates[0] if candidates else os.path.join(home, "steamos-playbook")
+    for cand in candidates:
+        script = os.path.join(cand, bind)
+        if os.path.isfile(script) and _bind_has_apply(script):
+            return cand
+        if os.path.isfile(script):
+            fallback = cand
+    return fallback
 
 
 def _bind_py() -> str:
@@ -188,6 +210,7 @@ class Plugin:
         pads: str = "",
         mode: str = "shared",
         cemu_p1: str = "",
+        restart: object = False,
         **kwargs: object,
     ) -> dict:
         if kwargs:
@@ -195,6 +218,7 @@ class Plugin:
             pads = str(kwargs.get("pads", pads) or pads)
             mode = str(kwargs.get("mode", mode) or mode)
             cemu_p1 = str(kwargs.get("cemu_p1", cemu_p1) or cemu_p1)
+            restart = kwargs.get("restart", restart)
         script = _bind_py()
         if not os.path.isfile(script):
             return {"ok": False, "message": f"Missing {script}"}
@@ -202,6 +226,7 @@ class Plugin:
         pads = (pads or "").strip()
         mode = (mode or "shared").strip().lower()
         cemu_p1 = (cemu_p1 or "").strip().lower().replace(" ", "_")
+        do_restart = restart is True or str(restart).strip().lower() in ("1", "true", "yes")
         if cemu_p1 in ("pro_controller", "wii_u_pro", "wii_u_pro_controller"):
             cemu_p1 = "pro"
         if mode not in ("shared", "multi"):
@@ -217,8 +242,11 @@ class Plugin:
             cmd.extend(["--pads", pads])
         else:
             cmd.append("--all-sources")
+        if do_restart:
+            cmd.append("--restart")
+        timeout = 55 if do_restart else 25
         try:
-            proc = _run_as_deck(cmd, timeout=25)
+            proc = _run_as_deck(cmd, timeout=timeout)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "bind-gamepad apply timed out"}
         data = _json_from(proc)

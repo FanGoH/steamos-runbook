@@ -23,7 +23,7 @@ python3 scripts/bind-gamepad.py cemu --wait
 
 ## Decky: Emu Pads
 
-Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPads P1** / **P2**. Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Emulators bind the sinks once; Apply only changes routing. Independent of dual-screen — works with vanilla Decky Sunshine.
+Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPads P1** / **P2**. Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Emulators bind the sinks once; Apply only changes routing. **Apply and restart** SIGTERMs the running emulator and relaunches it (Steam tile when `SteamAppId` is set). Do not restart the mux. Independent of dual-screen — works with vanilla Decky Sunshine.
 
 - **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too. Steam virtual `28de:11ff` is skipped when a Sunshine / physical pad is present (Steam’s curve stacked on SDL made Cemu sticks feel short/wonky). The plugin list hides those wraps and the EmuPads sinks so only real host pads show. After Moonlight drops the list is empty until Odin/Thor returns; Apply still binds EmuPads P1 while the mux is up. Shared / Multiplayer persists to `mux.json` on click. Axes are rescaled to the sink ±32767 range. Event loop copies first; `xprop` / rescan run on idle or every 250ms.
 - **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).

@@ -24,7 +24,8 @@ load_env() {
   STEAMOS_DISTROBOX_NAME="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
   STEAMOS_DISTROBOX_IMAGE="${STEAMOS_DISTROBOX_IMAGE:-registry.fedoraproject.org/fedora:42}"
   TAILSCALE_LOGIN_SERVER="${TAILSCALE_LOGIN_SERVER:-}"
-  TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME:-steamdeck}"
+  # This host is the Steam Machine (lab: steammachine / gpc). steamdeck is the handheld.
+  TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME:-steammachine}"
   TAILSCALE_OPERATOR="${TAILSCALE_OPERATOR:-deck}"
   TAILSCALE_BIN="${TAILSCALE_BIN:-/opt/tailscale/tailscale}"
   OPENRGB_FLATPAK_ID="${OPENRGB_FLATPAK_ID:-org.openrgb.OpenRGB}"

@@ -144,7 +144,7 @@ Copy `.env.example` to `.env`. Important variables:
 |----------|---------|
 | `STEAMOS_NIC_INTERFACE` | Ethernet NIC for WOL |
 | `TAILSCALE_LOGIN_SERVER` | Headscale (or Tailscale) login server URL |
-| `TAILSCALE_HOSTNAME` | Hostname on the tailnet |
+| `TAILSCALE_HOSTNAME` | Tailnet name for this Steam Machine (`steammachine`). Do not use `steamdeck` (handheld) |
 | `TAILSCALE_OPERATOR` | Operator user (usually `deck`) |
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
 | `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |

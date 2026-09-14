@@ -3,6 +3,8 @@
 Guidance for coding agents working in this repo. Personal machine details belong in
 gitignored `rules_of_the_land.md`, not here.
 
+This playbook runs on the **Steam Machine** (lab/Headscale name `steammachine`, alias `gpc`), not the handheld Steam Deck. `TAILSCALE_HOSTNAME` in `.env` must be `steammachine`. Do not reuse `steamdeck` on Tailscale re-login — that node is the handheld.
+
 ## Architecture
 
 - Independent, idempotent task scripts under `scripts/`

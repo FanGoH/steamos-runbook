@@ -179,7 +179,9 @@ eden_profile_dir() {
   [ -n "$best" ] && printf '%s\n' "$best"
 }
 
-AZAHAR_PATH="${SYNCTHING_AZAHAR_PATH:-/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc/Nintendo 3DS/00000000000000000000000000000000/00000000000000000000000000000000}"
+RD_SDMC="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar/sdmc"
+OLD_STANDALONE_SDMC="/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc"
+AZAHAR_PATH="${SYNCTHING_AZAHAR_PATH:-${RD_SDMC}/Nintendo 3DS/00000000000000000000000000000000/00000000000000000000000000000000}"
 EDEN_PATH="${SYNCTHING_EDEN_PATH:-$(eden_profile_dir || true)}"
 
 if [ -z "$EDEN_PATH" ]; then
@@ -188,47 +190,12 @@ else
   mkdir -p "$EDEN_PATH"
   echo "Eden saves: $EDEN_PATH"
 fi
-mkdir -p "$AZAHAR_PATH"
-echo "Azahar saves: $AZAHAR_PATH"
 
-export SYNCTHING_GUI="$GUI"
-export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
-export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
-python3 "$ROOT/scripts/syncthing_folders.py"
-
-# Game Mode / Tender Azahar cannot see another Flatpak's ~/.var/app tree.
-# Copy the meshed standalone sdmc; never symlink into org.azahar_emu.Azahar.
-sync_azahar_into_retrodeck() {
-  local src="/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc"
-  local dest="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar/sdmc"
-  local fallback="/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
-  local cfg="/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/config/azahar-emu/qt-config.ini"
-
-  if [ ! -d "$src/Nintendo 3DS" ]; then
-    echo "Standalone Azahar sdmc not present; skip RetroDECK copy."
-    return 0
-  fi
-
-  if [ -L "$dest" ]; then
-    echo "Replacing symlink $dest with a real copy (RetroDECK cannot use another Flatpak data dir)."
-    rm -f "$dest"
-  fi
-
-  mkdir -p "$dest" "$fallback"
-  if ! command -v rsync >/dev/null 2>&1; then
-    record_manual "Install rsync to copy Azahar sdmc into RetroDECK Game Mode" <<EOF
-# Need rsync, then:
-export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-./scripts/ensure-syncthing.sh
-EOF
-    return 0
-  fi
-  rsync -a "$src/" "$dest/"
-  rsync -a "$src/" "$fallback/"
-  echo "Copied standalone Azahar sdmc -> $dest and $fallback"
-
-  if [ -f "$cfg" ]; then
-    python3 - "$cfg" "$dest" <<'PY'
+pin_sdmc_directory() {
+  local cfg="$1"
+  local sdmc="$2"
+  [ -f "$cfg" ] || return 0
+  python3 - "$cfg" "$sdmc" <<'PY'
 from pathlib import Path
 import sys
 cfg_path = Path(sys.argv[1])
@@ -249,13 +216,52 @@ if not found:
 new = "".join(out)
 if new != text:
     cfg_path.write_text(new, encoding="utf-8")
-    print(f"Set RetroDECK sdmc_directory={sdmc}")
+    print(f"Set {cfg_path} sdmc_directory={sdmc}")
 else:
-    print(f"RetroDECK sdmc_directory already {sdmc}")
+    print(f"{cfg_path.name} sdmc_directory already {sdmc}")
 PY
-  fi
 }
 
-sync_azahar_into_retrodeck
+# Game Mode, dual-screen, and Syncthing all use ~/retrodeck/.../azahar/sdmc.
+# Never symlink that path into another Flatpak's ~/.var/app tree.
+unify_azahar_onto_retrodeck() {
+  if [ -L "$RD_SDMC" ]; then
+    echo "Replacing symlink $RD_SDMC with a real directory (RetroDECK cannot use another Flatpak data dir)."
+    rm -f "$RD_SDMC"
+  fi
+  mkdir -p "$RD_SDMC" "$AZAHAR_PATH"
+
+  if [ -d "$OLD_STANDALONE_SDMC/Nintendo 3DS" ] && [ "$OLD_STANDALONE_SDMC" != "$RD_SDMC" ]; then
+    if command -v rsync >/dev/null 2>&1; then
+      # Fill Game Mode with any handheld-only files; do not clobber newer Game Mode saves.
+      rsync -a --update "$OLD_STANDALONE_SDMC/" "$RD_SDMC/"
+      echo "Merged leftover standalone Azahar sdmc into $RD_SDMC (update-only)."
+    fi
+  fi
+
+  if command -v flatpak >/dev/null 2>&1; then
+    local azahar_fs="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar"
+    if flatpak override --user --filesystem="$azahar_fs" org.azahar_emu.Azahar; then
+      echo "Standalone Azahar may write $azahar_fs (Flatpak host:ro needs this)."
+    else
+      record_manual "Allow standalone Azahar to write RetroDECK sdmc" <<EOF
+flatpak override --user --filesystem=$azahar_fs org.azahar_emu.Azahar
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  fi
+
+  pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" "$RD_SDMC"
+  pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini" "$RD_SDMC"
+  pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/config/azahar-emu/qt-config.ini" "$RD_SDMC"
+}
+
+unify_azahar_onto_retrodeck
+
+export SYNCTHING_GUI="$GUI"
+export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
+export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
+python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

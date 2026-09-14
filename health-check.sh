@@ -469,10 +469,10 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
   fi
-  if [[ "$st_azahar_path" == *"/azahar-emu/sdmc/Nintendo 3DS/"* ]]; then
+  if [[ "$st_azahar_path" == *"/retrodeck/saves/n3ds/azahar/sdmc/Nintendo 3DS/"* ]]; then
     ok "azahar-saves -> $st_azahar_path"
   else
-    warn "azahar-saves folder missing or not standalone Azahar sdmc"
+    warn "azahar-saves folder missing or not RetroDECK Azahar sdmc"
     record_manual "Share Azahar sdmc saves over Syncthing" <<'EOF'
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
@@ -483,6 +483,7 @@ else
 fi
 if flatpak ps 2>/dev/null | grep -qi 'syncthingtk\|syncthing-gtk'; then
   warn "Syncthing GTK Flatpak is running — stop it so it does not fight $ST_BIN"
+fi
 RD_SDMC="/home/$STEAMOS_USER/retrodeck/saves/n3ds/azahar/sdmc"
 if [ -L "$RD_SDMC" ]; then
   fail "RetroDECK Azahar sdmc is a symlink — Game Mode cannot use another Flatpak data dir"
@@ -491,11 +492,9 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
 elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
-  ok "RetroDECK Azahar sdmc is a real directory"
+  ok "RetroDECK Azahar sdmc is the Syncthing mesh (real directory)"
 else
-  warn "RetroDECK Azahar sdmc missing — Game Mode will not see Syncthing saves until ensure-syncthing.sh copies it"
-fi
-
+  warn "RetroDECK Azahar sdmc missing — Game Mode will not share saves until ensure-syncthing.sh creates it"
 fi
 DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
 if [ -f "$DECKY_ST_SETTINGS" ]; then

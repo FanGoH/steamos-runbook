@@ -57,5 +57,5 @@ Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows hav
 
 ## Saves
 
-Dual-screen uses the **standalone** Flatpak sdmc (Syncthing mesh). Game Mode / Tender uses `~/retrodeck/saves/n3ds/azahar/sdmc`. Do **not** symlink those together — RetroDECK cannot use another Flatpak data dir and will reset to an empty fallback sdmc. Skill `.cursor/skills/emu-save-mesh/SKILL.md`.
+Dual-screen and Game Mode share `~/retrodeck/saves/n3ds/azahar/sdmc` (Syncthing mesh). Standalone Azahar is `host:ro`; `ensure-syncthing.sh` adds a filesystem override so it can write that tree. Do **not** symlink RetroDECK sdmc into `~/.var/app/org.azahar_emu.Azahar`. Skill `.cursor/skills/emu-save-mesh/SKILL.md`.
 

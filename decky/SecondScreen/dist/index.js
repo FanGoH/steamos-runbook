@@ -40,6 +40,45 @@ function clientLabel(client) {
   return cfg ? `${name} · ${cfg}` : name;
 }
 
+function clientsSignature(clients) {
+  return clients
+    .map(
+      (client) =>
+        `${client?.device || client?.name || ""}|${client?.watch || ""}|${client?.config || ""}`
+    )
+    .sort()
+    .join(";");
+}
+
+function clientNames(clients) {
+  const names = clients
+    .map((client) => client?.name || client?.device || "")
+    .filter(Boolean);
+  return names.length ? names.join(" · ") : "";
+}
+
+function modeToast(status, clients) {
+  const live = status?.dual_screen_live || {};
+  const names = clientNames(clients) || "Moonlight";
+  const reason = live.reason || "";
+  if (!clients.length) {
+    return {
+      title: "HDMI only",
+      body: reason ? `No Moonlight clients — ${reason}` : "No Moonlight clients",
+    };
+  }
+  if (live.wanted) {
+    return {
+      title: "Dual-screen",
+      body: reason ? `${names} · ${reason}` : names,
+    };
+  }
+  return {
+    title: "HDMI only",
+    body: reason ? `${names} · ${reason}` : `${names} · top screen only`,
+  };
+}
+
 function windowLabel(win) {
   const name = win?.name || "(unnamed)";
   const size = `${win?.width || "?"}×${win?.height || "?"}`;
@@ -51,6 +90,7 @@ function Content() {
   const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const lastModeSig = SP_REACT.useRef(null);
 
   const refresh = SP_REACT.useCallback(async () => {
     try {
@@ -60,6 +100,19 @@ function Content() {
       const ds = next?.dual_screen || next?.dual_screen_live?.mode;
       if (ds === "auto" || ds === "on" || ds === "off") {
         setDualScreenMode(ds);
+      }
+      const nextClients = asClients(next);
+      const sig = `${next?.dual_screen_live?.wanted ? "1" : "0"}|${clientsSignature(nextClients)}`;
+      if (lastModeSig.current === null) {
+        lastModeSig.current = sig;
+      } else if (lastModeSig.current !== sig) {
+        lastModeSig.current = sig;
+        const toast = modeToast(next, nextClients);
+        toaster.toast({
+          title: toast.title,
+          body: toast.body.slice(0, 220),
+          duration: 4000,
+        });
       }
     } catch (err) {
       setError(String(err));
@@ -121,12 +174,38 @@ function Content() {
 
   const windows = asWindows(status?.windows);
   const clients = asClients(status);
+  const dualTitle = clientNames(clients) || "Emulator dual-screen";
 
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
       SP_JSX.jsxs(DFL.PanelSection, {
-        title: "Emulator dual-screen",
+        title: dualTitle,
         children: [
+          ...(clients.length
+            ? clients.map((client, idx) =>
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx("div", {
+                      style: { fontSize: "0.92em" },
+                      children: clientLabel(client),
+                    }),
+                  },
+                  `ds-${client?.device || client?.name || "client"}-${idx}`
+                )
+              )
+            : [
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx("div", {
+                      style: { opacity: 0.75, fontSize: "0.88em" },
+                      children: "No Moonlight clients on :48200.",
+                    }),
+                  },
+                  "ds-no-clients"
+                ),
+              ]),
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.75, fontSize: "0.88em" },
@@ -176,7 +255,7 @@ function Content() {
                   DFL.PanelSectionRow,
                   {
                     children: SP_JSX.jsx("div", {
-                      style: { opacity: 0.9, fontSize: "0.9em" },
+                      style: { fontSize: "0.9em" },
                       children: clientLabel(client),
                     }),
                   },

@@ -497,6 +497,7 @@ _PAD_DEVICE_RE = re.compile(
 _ALLOCATED_DEVICE_RE = re.compile(
     r"ControllerNumber already allocated \[\d+\] for (.+?);"
 )
+_CLIENT_EVENT_RE = re.compile(r"CLIENT (CONNECTED|DISCONNECTED)(?: \[([^\]]*)\])?")
 _SECOND_DISPLAY_RE = re.compile(
     r"Second display requested:\s+(\d+)x(\d+)@(\d+)\s+at\s+(\d+)\s+Kbps"
 )
@@ -516,6 +517,26 @@ def friendly_moonlight_name(raw: str) -> str:
     if not text:
         return "Moonlight"
     return _CLIENT_NAME_ALIASES.get(text, text.replace("_", " "))
+
+
+def _client_event(line: str) -> tuple[str, str] | None:
+    match = _CLIENT_EVENT_RE.search(line)
+    if not match:
+        return None
+    return match.group(1), (match.group(2) or "").strip()
+
+
+def _pop_disconnected(sessions: list[dict], raw_name: str) -> None:
+    if not sessions:
+        return
+    if raw_name:
+        friendly = friendly_moonlight_name(raw_name)
+        for i in range(len(sessions) - 1, -1, -1):
+            sess = sessions[i]
+            if sess.get("device") == raw_name or sess.get("name") == friendly:
+                sessions.pop(i)
+                return
+    sessions.pop()
 
 
 def _pad_device_from_line(line: str) -> str:
@@ -547,12 +568,14 @@ def _names_for_watch(clients: list[dict], kind: str) -> str:
 def connected_moonlight_clients(log_text: str) -> list[dict]:
     """Remaining Moonlight sessions from the kms log (LIFO disconnects).
 
-    Device names arrive after CLIENT CONNECTED (``Gamepad N will be Sunshine
-    (libvirtualhid) <devicename>``). Pads can show up after a later connect, so
-    names are assigned FIFO to remaining sessions. Watch kind still comes from
-    the lines *before* CONNECTED (video/1 / GamePad-only / top), not the
-    previous client's window. ``Last Moonlight client gone`` drops leftovers so
-    a truncated kms log tail cannot keep a stale Thor session.
+    Device names come from ``CLIENT CONNECTED [AYN_Thor]`` when kms logs them,
+    else from the later ``Gamepad N will be Sunshine (libvirtualhid) <name>``
+    line. Pads can show up after a later connect, so unnamed sessions still get
+    FIFO assignment. Named disconnects match that client instead of LIFO, so
+    closing Thor does not drop Odin from the QAM list. Watch kind still comes
+    from the lines *before* CONNECTED (video/1 / GamePad-only / top).
+    ``Last Moonlight client gone`` drops leftovers so a truncated kms log tail
+    cannot keep a stale Thor session.
     """
     marker = "Last Moonlight client gone"
     cut = log_text.rfind(marker)
@@ -564,7 +587,8 @@ def connected_moonlight_clients(log_text: str) -> list[dict]:
         if "Last Moonlight client gone" in line:
             sessions.clear()
             continue
-        if "CLIENT CONNECTED" in line:
+        event = _client_event(line)
+        if event and event[0] == "CONNECTED":
             window = _session_log_window(lines, i)
             kind = _session_watch_kind(window)
             second = ""
@@ -580,21 +604,25 @@ def connected_moonlight_clients(log_text: str) -> list[dict]:
                     bitrate = f"{kbps} kbps"
                 except ValueError:
                     bitrate = ""
+            raw = event[1]
             sessions.append(
                 {
                     "watch": kind,
-                    "device": "",
-                    "name": "Moonlight",
+                    "device": raw,
+                    "name": friendly_moonlight_name(raw) if raw else "Moonlight",
                     "config": _client_config_label(kind, second=second, bitrate=bitrate),
                     "_i": i,
                 }
             )
-        elif "CLIENT DISCONNECTED" in line and sessions:
-            sessions.pop()
+        elif event and event[0] == "DISCONNECTED":
+            _pop_disconnected(sessions, event[1])
     claimed: set[int] = set()
     out: list[dict] = []
     for sess in sessions:
         start = int(sess.pop("_i"))
+        if sess.get("device"):
+            out.append(sess)
+            continue
         for j in range(start + 1, len(lines)):
             if j in claimed:
                 continue
@@ -2813,6 +2841,25 @@ def _self_test() -> int:
         assert [c["name"] for c in delayed] == ["Thor", "Odin"], delayed
         assert delayed[0]["watch"] == "video1"
         assert delayed[1]["watch"] == "top"
+        bracket = (
+            "Second display requested: 1920x1080@120 at 5600 Kbps\n"
+            "CLIENT CONNECTED [AYN_Thor]\n"
+            "CLIENT CONNECTED [Odin2_Portal]\n"
+            "Streaming bitrate is 21388000\n"
+        )
+        bracket_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=bracket, dual_screen="auto"
+        )
+        assert [c["name"] for c in bracket_state["clients"]] == ["Thor", "Odin"], bracket_state
+        assert bracket_state["clients"][0]["device"] == "AYN_Thor"
+        assert bracket_state["wanted"] is True
+        thor_left = bracket + "CLIENT DISCONNECTED [AYN_Thor]\n"
+        thor_left_state = second_screen_streaming_state(
+            xml=busy, sidecar=side, log_text=thor_left, dual_screen="auto"
+        )
+        assert [c["name"] for c in thor_left_state["clients"]] == ["Odin"], thor_left_state
+        assert thor_left_state["wanted"] is False
+        assert "Odin streaming the top screen only" in thor_left_state["reason"]
         stale = (
             "Second display requested: 1920x1080@120 at 5600 Kbps\n"
             "CLIENT CONNECTED\n"

@@ -11,6 +11,10 @@ to P1 (no analog mix). Multi: first selected source → P1, second → P2.
 Overlay/QAM: ``$XDG_RUNTIME_DIR/emupads-mute`` present → sinks emit zeros.
 Steam still sees the real Sunshine pads. Do not EVIOCGRAB those.
 
+Native games (Dusklight, Steam titles) also see P1/P2 as extra pads, so
+Thor + the mux copy fire twice. Hide sinks unless Cemu / Azahar / Eden
+is running. Do not match Sunshine / Steam / gamescope.
+
 Never pgrep -f sunshine.
 """
 from __future__ import annotations
@@ -287,11 +291,16 @@ def forward_event(ui: UInput, ev, src=None) -> None:
 
 
 _STEAM_UI_CACHE = (0.0, False)
+_EMU_CACHE = (0.0, False)
 _STEAM_UI_ATOMS = (
     "GAMESCOPE_FOCUSED_APP",
     "STEAM_OVERLAY",
     "GAMESCOPE_BLUR_MODE",
 )
+# Linux comm is 15 chars (Flatpak Cemu → Cemu_relwithdeb). Do not match
+# Sunshine / Steam / gamescope. Native AppImages (dusklight) are not emus.
+_EMU_COMM_EXACT = {"azahar"}
+_EMU_COMM_PREFIXES = ("cemu", "eden")
 
 
 def parse_xprop_atoms(text: str) -> dict[str, str]:
@@ -335,6 +344,42 @@ def steam_ui_active(now: float | None = None) -> bool:
     active = steam_ui_from_props(xprop_root_atoms(":0", _STEAM_UI_ATOMS))
     _STEAM_UI_CACHE = (ts, active)
     return active
+
+
+def is_emulator_comm(comm: str) -> bool:
+    name = comm.strip().lower()
+    if not name or name.startswith("sunshine"):
+        return False
+    if name in _EMU_COMM_EXACT:
+        return True
+    return any(name.startswith(prefix) for prefix in _EMU_COMM_PREFIXES)
+
+
+def emulator_comms(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if is_emulator_comm(line)]
+
+
+def emulator_wants_sinks(now: float | None = None) -> bool:
+    """Cemu / Azahar / Eden read P1/P2. Dusklight and other native games must not."""
+    global _EMU_CACHE
+    ts = time.monotonic() if now is None else now
+    cached_at, cached = _EMU_CACHE
+    if ts - cached_at < 0.25:
+        return cached
+    try:
+        out = subprocess.check_output(["ps", "-eo", "comm="], timeout=0.2, text=True)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        out = ""
+    wanted = bool(emulator_comms(out))
+    _EMU_CACHE = (ts, wanted)
+    return wanted
+
+
+def hide_sinks_from_host(now: float | None = None) -> bool:
+    """Grab + mute P1/P2 unless an emulator needs them."""
+    if steam_ui_active(now):
+        return True
+    return not emulator_wants_sinks(now)
 
 
 def sink_event_reader(ui: UInput):
@@ -489,14 +534,14 @@ def loop() -> int:
                 devices = rescan_devices(devices, skip)
             selected = selected_sources(cfg, devices)
             fds = {dev.fd: dev for dev in selected}
-        steam_ui = steam_ui_active(now)
-        grab_sinks(sink_readers, steam_ui, sink_grabbed)
-        want_mute = mute_path().is_file() or steam_ui
+        hide = hide_sinks_from_host(now)
+        grab_sinks(sink_readers, hide, sink_grabbed)
+        want_mute = mute_path().is_file() or hide
         if want_mute and not muted:
             for ui in sinks:
                 zero_sink(ui)
             muted = True
-            log("muted (Steam UI / overlay)")
+            log("muted (no emulator / Steam UI)")
         elif not want_mute and muted:
             muted = False
             log("unmuted")
@@ -634,7 +679,7 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
-    global _STEAM_UI_CACHE
+    global _STEAM_UI_CACHE, _EMU_CACHE
     parsed = parse_xprop_atoms(
         "GAMESCOPE_FOCUSED_APP(CARDINAL) = 769\n"
         "STEAM_OVERLAY:  not found.\n"
@@ -645,6 +690,25 @@ def self_test() -> int:
     assert steam_ui_from_props({"GAMESCOPE_FOCUSED_APP": "2896033129"}) is False
     _STEAM_UI_CACHE = (time.monotonic(), True)
     assert steam_ui_active() is True
+    assert is_emulator_comm("Cemu_relwithdeb")
+    assert is_emulator_comm("Cemu_relwithdebinfo")
+    assert is_emulator_comm("azahar")
+    assert is_emulator_comm("eden")
+    assert is_emulator_comm("eden.appimage")
+    assert not is_emulator_comm("dusklight")
+    assert not is_emulator_comm("steam")
+    assert not is_emulator_comm("sunshine-ds")
+    assert not is_emulator_comm("sunshine-ds-kms")
+    assert emulator_comms("steam\ndusklight\ngamescope\n") == []
+    assert emulator_comms("steam\nazahar\ndusklight\n") == ["azahar"]
+    _STEAM_UI_CACHE = (time.monotonic(), False)
+    _EMU_CACHE = (time.monotonic(), False)
+    assert hide_sinks_from_host() is True
+    _EMU_CACHE = (time.monotonic(), True)
+    assert hide_sinks_from_host() is False
+    _STEAM_UI_CACHE = (time.monotonic(), True)
+    _EMU_CACHE = (time.monotonic(), True)
+    assert hide_sinks_from_host() is True
 
     class Alive:
         def __init__(self, path):

@@ -29,6 +29,17 @@ function asWindows(raw) {
   return [];
 }
 
+function asClients(status) {
+  const list = status?.clients || status?.dual_screen_live?.clients;
+  return Array.isArray(list) ? list : [];
+}
+
+function clientLabel(client) {
+  const name = client?.name || client?.device || "Moonlight";
+  const cfg = client?.config || "";
+  return cfg ? `${name} · ${cfg}` : name;
+}
+
 function windowLabel(win) {
   const name = win?.name || "(unnamed)";
   const size = `${win?.width || "?"}×${win?.height || "?"}`;
@@ -109,6 +120,7 @@ function Content() {
   };
 
   const windows = asWindows(status?.windows);
+  const clients = asClients(status);
 
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
@@ -121,7 +133,14 @@ function Content() {
               children:
                 status?.dual_screen_live?.reason ||
                 error ||
-                "Auto: Cemu/Azahar GamePad layout only when Moonlight is watching the bottom.",
+                "Auto: Cemu/Azahar GamePad layout only when a client is watching the bottom.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.7, fontSize: "0.82em" },
+              children:
+                "Tender Cemu/Azahar Play reads this Auto signal at launch (rom-launcher). Steam LaunchOptions stay the RetroDECK line.",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -146,6 +165,36 @@ function Content() {
               ],
             }),
           }),
+        ],
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
+        title: "Connected clients",
+        children: [
+          ...(clients.length
+            ? clients.map((client, idx) =>
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx("div", {
+                      style: { opacity: 0.9, fontSize: "0.9em" },
+                      children: clientLabel(client),
+                    }),
+                  },
+                  `${client?.device || client?.name || "client"}-${idx}`
+                )
+              )
+            : [
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx("div", {
+                      style: { opacity: 0.75, fontSize: "0.88em" },
+                      children: "No Moonlight clients on :48200.",
+                    }),
+                  },
+                  "no-clients"
+                ),
+              ]),
         ],
       }),
       SP_JSX.jsxs(DFL.PanelSection, {

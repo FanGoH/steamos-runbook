@@ -8,7 +8,7 @@ Install: `scripts/ensure-second-screen-decky.sh`. PluginLoader is root — `main
 
 Same `mux.json` `dual_screen` key as the bind path (`auto` / `on` / `off`):
 
-- **Auto** (default): Tender Cemu/Azahar GamePad layout only when Moonlight is watching the host second display (`video/1` or GamePad-only). Top-only Moonlight stays HDMI `-f`.
+- **Auto** (default): Tender Cemu/Azahar GamePad layout only when a connected Moonlight client is watching the host second display (`video/1` or GamePad-only). Top-only clients stay HDMI `-f`. QAM lists each client’s device name (`AYN_Thor` → Thor, `Odin2_Portal` → Odin) and config (dual-screen size/bitrate vs top-only). Tiles read that live at Play (`rom-launcher` / `gamemode-second-screen-streaming.sh`); Steam LaunchOptions stay the RetroDECK line.
 - **Dual-screen**: force that path while `:48200` is BUSY.
 - **HDMI only**: never dual-screen.
 

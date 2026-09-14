@@ -528,12 +528,14 @@ def status_payload() -> dict:
     pad = pad_display()
     live = bind_json(["second-screen-streaming"])
     windows = list_windows(pad)
+    clients = live.get("clients") if isinstance(live.get("clients"), list) else []
     return {
         "ok": True,
         "pad_display": pad,
         "sidecar": sidecar_path().is_file(),
         "dual_screen": live.get("mode") or "auto",
         "dual_screen_live": live,
+        "clients": clients,
         "mirror": current_mirror(pad),
         "windows": windows,
     }

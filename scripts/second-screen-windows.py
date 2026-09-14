@@ -137,6 +137,72 @@ def write_virtual_output_pref(mode: str, path: Path | None = None) -> None:
     pref.write_text(("off" if mode == "off" else "on") + "\n", encoding="utf-8")
 
 
+def session_root_size(display: str = ":0") -> tuple[int, int]:
+    try:
+        proc = _run(["xdpyinfo"], timeout=2, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0, 0
+    for line in (proc.stdout or "").splitlines():
+        if "dimensions:" in line:
+            token = line.split()[1] if len(line.split()) > 1 else ""
+            if "x" in token:
+                w_s, h_s = token.split("x", 1)
+                try:
+                    return int(w_s), int(h_s)
+                except ValueError:
+                    return 0, 0
+    return 0, 0
+
+
+def fix_4k_scanout(display: str = ":0") -> list[str]:
+    """Let native 4K HDMI scan out. Steam CEF often maps 3840×2161.
+
+    That 1px overflow plus GAMESCOPE_COMPOSITE_FORCE flickers on a 2160
+    panel. Do not touch :1 (games stay 1080p) or :2.
+    """
+    messages: list[str] = []
+    width, height = session_root_size(display)
+    if width < 2560 or height < 1440:
+        return messages
+    try:
+        _run(
+            [
+                "xprop",
+                "-root",
+                "-f",
+                "GAMESCOPE_COMPOSITE_FORCE",
+                "32c",
+                "-set",
+                "GAMESCOPE_COMPOSITE_FORCE",
+                "0",
+            ],
+            timeout=2,
+            display=display,
+        )
+        messages.append("Cleared GAMESCOPE_COMPOSITE_FORCE for 4K scanout")
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        proc = _run(["xwininfo", "-root", "-tree"], timeout=3, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return messages
+    for win in parse_xwininfo_tree(proc.stdout or "", display):
+        if int(win["width"]) != width or int(win["height"]) != height + 1:
+            continue
+        try:
+            _run(
+                ["xdotool", "windowsize", win["id"], str(width), str(height)],
+                timeout=2,
+                display=display,
+            )
+            messages.append(
+                f"Clipped {win['id']} {win['width']}×{win['height']} to {width}×{height}"
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return messages
+
+
 def sidecar_path() -> Path:
     env = os.environ.get("SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE")
     if env:
@@ -646,7 +712,9 @@ def cmd_set_virtual_output(args: argparse.Namespace) -> int:
     payload = status_payload()
     err = (proc.stderr or "").strip()
     if mode == "off":
+        extra = fix_4k_scanout(":0")
         payload["messages"] = ["Paused the virtual second display. HDMI is unchanged."]
+        payload["messages"].extend(extra)
     else:
         payload["messages"] = ["Virtual second display on (:2 / Moonlight bottom)."]
     if proc.returncode not in (0, None) and err:
@@ -789,6 +857,11 @@ def self_test() -> int:
         "sunshine-ds-kms-virtual",
         "GamePad View",
     ]
+    tall = parse_xwininfo_tree(
+        '     0x1800016 (has no name): ()  3840x2161+0+0  +0+0\n',
+        ":0",
+    )
+    assert tall and tall[0]["width"] == 3840 and tall[0]["height"] == 2161
     assert pad_display("serial=92\npw_node=89\nx11=:2\n") == ":2"
     assert session_displays(":2") == [":0", ":1", ":2"]
     with tempfile.TemporaryDirectory() as td:
@@ -839,6 +912,13 @@ def main() -> int:
     p_show.add_argument("--id", dest="window_id", required=True)
     p_show.set_defaults(func=cmd_show)
     sub.add_parser("idle").set_defaults(func=cmd_idle)
+    sub.add_parser("fix-4k-scanout").set_defaults(
+        func=lambda _a: (
+            json.dump({"ok": True, "messages": fix_4k_scanout(":0")}, sys.stdout, indent=2)
+            or sys.stdout.write("\n")
+            or 0
+        )
+    )
     sub.add_parser("self-test").set_defaults(func=lambda _a: self_test())
     args = parser.parse_args()
     return int(args.func(args))

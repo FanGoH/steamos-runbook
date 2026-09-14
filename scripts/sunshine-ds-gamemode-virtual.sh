@@ -455,6 +455,10 @@ fi
 
 if [ "$DO_STOP" -eq 1 ]; then
   stop_virtual
+  # Native 4K HDMI: Steam CEF 3840x2161 + COMPOSITE_FORCE flickers.
+  if [ -f "$ROOT/scripts/second-screen-windows.py" ]; then
+    python3 "$ROOT/scripts/second-screen-windows.py" fix-4k-scanout >/dev/null 2>&1 || true
+  fi
   print_status
   exit 0
 fi

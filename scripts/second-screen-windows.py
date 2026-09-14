@@ -652,6 +652,8 @@ def current_mirror(pad: str) -> dict:
 def status_payload() -> dict:
     pad = pad_display()
     live = bind_json(["second-screen-streaming"])
+    if live.get("busy"):
+        fix_4k_scanout(":0")
     windows = list_windows(pad)
     clients = live.get("clients") if isinstance(live.get("clients"), list) else []
     sidecar = sidecar_path()

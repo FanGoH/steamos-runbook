@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Idempotently share Eden/Azahar/Dusklight/Cemu save folders on the local Syncthing daemon."""
+"""Idempotently share emulator save folders on the local Syncthing daemon."""
 
 from __future__ import annotations
 
@@ -31,6 +31,9 @@ DUSKLIGHT_PATH = os.environ.get("SYNCTHING_DUSKLIGHT_PATH", "").strip()
 CEMU_ID = os.environ.get("SYNCTHING_CEMU_FOLDER_ID", "cemu-saves")
 CEMU_LABEL = os.environ.get("SYNCTHING_CEMU_FOLDER_LABEL", "CemuSaves")
 CEMU_PATH = os.environ.get("SYNCTHING_CEMU_PATH", "").strip()
+PCSX2_ID = os.environ.get("SYNCTHING_PCSX2_FOLDER_ID", "pcsx2-saves")
+PCSX2_LABEL = os.environ.get("SYNCTHING_PCSX2_FOLDER_LABEL", "Pcsx2Saves")
+PCSX2_PATH = os.environ.get("SYNCTHING_PCSX2_PATH", "").strip()
 PEER_IDS = [
     p.strip()
     for p in os.environ.get("SYNCTHING_PEER_IDS", "").split()
@@ -182,7 +185,7 @@ def ensure_gui_listen(key: str, wanted: str) -> None:
 
 
 def main() -> int:
-    if not AZAHAR_PATH and not EDEN_PATH and not DUSKLIGHT_PATH and not CEMU_PATH:
+    if not AZAHAR_PATH and not EDEN_PATH and not DUSKLIGHT_PATH and not CEMU_PATH and not PCSX2_PATH:
         print("No save-folder paths given; nothing to share")
         return 0
     key = api_key()
@@ -220,6 +223,11 @@ def main() -> int:
         Path(CEMU_PATH).mkdir(parents=True, exist_ok=True)
         devices = merge_devices(by_id.get(CEMU_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, CEMU_ID, CEMU_LABEL, CEMU_PATH, devices)
+
+    if PCSX2_PATH:
+        Path(PCSX2_PATH).mkdir(parents=True, exist_ok=True)
+        devices = merge_devices(by_id.get(PCSX2_ID, {}).get("devices") or [], extra, local_id)
+        ensure_folder(key, PCSX2_ID, PCSX2_LABEL, PCSX2_PATH, devices)
 
     return 0
 

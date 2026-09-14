@@ -328,6 +328,15 @@ export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
 export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
 export SYNCTHING_DUSKLIGHT_PATH="$DUSKLIGHT_PATH"
 export SYNCTHING_CEMU_PATH="$CEMU_PATH"
+
+PCSX2_PATH="${SYNCTHING_PCSX2_PATH:-/home/${STEAMOS_USER}/retrodeck/saves/ps2/pcsx2/memcards}"
+if [ -L "$PCSX2_PATH" ]; then
+  echo "ERROR: $PCSX2_PATH is a symlink. Do not point RetroDECK PCSX2 memcards at another tree." >&2
+else
+  mkdir -p "$PCSX2_PATH"
+fi
+echo "PCSX2 memcards: $PCSX2_PATH"
+export SYNCTHING_PCSX2_PATH="$PCSX2_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

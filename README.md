@@ -79,9 +79,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
-| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden + Azahar + Dusklight + Cemu 00050000 |
-| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share Eden/Azahar/Dusklight/Cemu folders) |
-| `.cursor/skills/emu-save-mesh/` | Eden/Azahar/Dusklight/Cemu Syncthing mesh |
+| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden + Azahar + Dusklight + Cemu + PCSX2 memcards |
+| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share Eden/Azahar/Dusklight/Cemu/PCSX2 folders) |
+| `.cursor/skills/emu-save-mesh/` | Eden/Azahar/Dusklight/Cemu/PCSX2 Syncthing mesh |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |

@@ -440,9 +440,9 @@ EOF
 fi
 ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
 if [ -f "$ST_CFG" ]; then
-  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" <<'PY'
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" "${SYNCTHING_PCSX2_FOLDER_ID:-pcsx2-saves}" <<'PY'
 import sys, xml.etree.ElementTree as ET, shlex
-cfg, eden_id, azahar_id, dusk_id, cemu_id = sys.argv[1:6]
+cfg, eden_id, azahar_id, dusk_id, cemu_id, pcsx2_id = sys.argv[1:7]
 root = ET.parse(cfg).getroot()
 folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
 gui_el = root.find("gui")
@@ -455,6 +455,7 @@ print(f"st_eden_path={shlex.quote(folders.get(eden_id, ''))}")
 print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
 print(f"st_dusk_path={shlex.quote(folders.get(dusk_id, ''))}")
 print(f"st_cemu_path={shlex.quote(folders.get(cemu_id, ''))}")
+print(f"st_pcsx2_path={shlex.quote(folders.get(pcsx2_id, ''))}")
 PY
 )"
   if [ "$st_gui_addr" = "$ST_GUI" ]; then
@@ -498,6 +499,15 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
   fi
+  if [[ "$st_pcsx2_path" == *"/saves/ps2/pcsx2/memcards"* ]]; then
+    ok "pcsx2-saves -> $st_pcsx2_path"
+  else
+    warn "pcsx2-saves folder missing or not RetroDECK PCSX2 memcards"
+    record_manual "Share PCSX2 memcards over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
 else
   warn "Syncthing config.xml not found yet"
 fi
@@ -523,6 +533,14 @@ elif [ -d "$RD_CEMU/00050000" ]; then
   ok "RetroDECK Cemu 00050000 is a real directory"
 else
   warn "RetroDECK Cemu 00050000 missing"
+fi
+RD_PCSX2="/home/$STEAMOS_USER/retrodeck/saves/ps2/pcsx2/memcards"
+if [ -L "$RD_PCSX2" ]; then
+  fail "RetroDECK PCSX2 memcards is a symlink — Game Mode cannot use another tree"
+elif [ -f "$RD_PCSX2/Mcd001.ps2" ]; then
+  ok "RetroDECK PCSX2 Mcd001.ps2 is a real file"
+else
+  warn "RetroDECK PCSX2 Mcd001.ps2 missing"
 fi
 DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
 if [ -f "$DECKY_ST_SETTINGS" ]; then

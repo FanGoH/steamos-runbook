@@ -56,4 +56,4 @@ Do **not** symlink `~/retrodeck/saves/wiiu/cemu` into `~/.var/app/info.cemu.Cemu
 3. Empty title dir after a “fix” → cross-Flatpak symlink. Recover from lab `/mnt/storage/syncthing/azahar-saves`.
 4. If Game Mode saves still miss handhelds: Azahar rewrote `sdmc_directory` to the RetroDECK fallback — re-run `ensure-syncthing.sh`.
 5. Dusklight on Android: `Android/data/dev.twilitrealm.dusk/files` is empty (scoped storage). Point **Settings → Data Folder** at `/storage/emulated/0/Sync/Dusklight` so Card A is the mesh. RetroArch Dolphin `*.gci` under `RetroArch/saves/` is a **different** save — do not mix it into Dusklight.
-6. Cemu on Android: copy mlc to `/storage/emulated/0/Sync/CemuMLC`, set `mlc_path` there, share only `usr/save/00050000`. If the XML is ignored, set MLC in the Cemu app UI. Do **not** share `00050010` or `system/`.
+6. Cemu on Android cannot open `Sync/CemuMLC` (no all-files access). Syncthing watches Cemu’s default `Android/data/info.cemu.cemu/files/mlc01/usr/save/00050000`. Leave `mlc_path` empty. Do **not** share `00050010` or `system/`.

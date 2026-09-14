@@ -23,9 +23,26 @@ const getStatus = callable("get_status");
 const applyBinds = callable("apply");
 const setMuxMode = callable("set_mode");
 
+function asPads(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function isSteamPad(pad) {
+  return pad?.steam === true || pad?.steam === "true";
+}
+
 function padKind(pad) {
-  if (pad?.sunshine === "true" || /sunshine/i.test(pad?.name || "")) return "Sunshine";
-  if (pad?.steam === "true") return "Steam virtual";
+  if (pad?.sunshine === "true" || pad?.sunshine === true || /sunshine/i.test(pad?.name || "")) return "Sunshine";
+  if (isSteamPad(pad)) return "Steam virtual";
   const vid = (pad?.vendor || "").toLowerCase();
   if (vid === "045e") return "Xbox";
   if (vid === "057e") return "Switch";
@@ -64,8 +81,8 @@ function Content() {
       const next = await getStatus();
       setStatus(next);
       setError(next?.ok === false ? next.message || "status failed" : "");
-      const rawPads = next?.pads || [];
-      const realPads = rawPads.filter((p) => p.steam !== "true");
+      const rawPads = asPads(next?.pads);
+      const realPads = rawPads.filter((p) => !isSteamPad(p));
       const pads = realPads.length ? realPads : rawPads;
       setOrder((prev) => mergeOrder(prev, pads));
       if (
@@ -98,7 +115,7 @@ function Content() {
   }, [refresh]);
 
   const padsByJs = {};
-  for (const pad of status?.pads || []) padsByJs[pad.js] = pad;
+  for (const pad of asPads(status?.pads)) padsByJs[pad.js] = pad;
   const orderedPads = order.map((js) => padsByJs[js]).filter(Boolean);
   const selected = orderedPads.filter((p) => included[p.js] !== false);
 
@@ -132,11 +149,14 @@ function Content() {
 
   const apply = async (emu) => {
     if (busy) return;
-    if (!selected.length) {
+    const muxUp = Boolean(status?.mux?.running);
+    if (!selected.length && !muxUp) {
       toaster.toast({
         title: "Emu Pads",
-        body: "Turn on at least one pad, then Apply.",
-        duration: 4000,
+        body:
+          status?.pad_hint ||
+          "No host pad yet. Reconnect Moonlight Odin/Thor, then Refresh pads.",
+        duration: 5000,
       });
       return;
     }
@@ -233,7 +253,10 @@ function Content() {
               style: { opacity: 0.75, fontSize: "0.88em" },
               children: [
                 error ||
-                  (mode === "multi"
+                  (orderedPads.length === 0
+                    ? status?.pad_hint ||
+                      "No Moonlight Odin/Thor pad yet. Reconnect, then Refresh. Mux can still bind EmuPads P1."
+                    : mode === "multi"
                     ? `Multi: first selected is P1, second is P2 (${selected.length} selected).`
                     : `Shared P1: last pad used wins. Every host pad is a source (${selected.length} selected).`),
               ],
@@ -266,7 +289,8 @@ function Content() {
               ],
             }),
           }),
-          ...orderedPads.map((pad, index) =>
+          ...(orderedPads.length
+            ? orderedPads.map((pad, index) =>
             SP_JSX.jsx(
               DFL.PanelSectionRow,
               {
@@ -309,7 +333,8 @@ function Content() {
               },
               pad.js
             )
-          ),
+          )
+          : []),
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx(DFL.ButtonItem, {
               layout: "below",

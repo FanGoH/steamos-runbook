@@ -99,10 +99,62 @@ def _json_from(proc: subprocess.CompletedProcess) -> dict:
         err = (proc.stderr or text)[:400]
         return {"ok": False, "message": err, "rc": proc.returncode}
     if isinstance(data, dict) and "ok" not in data:
-        data["ok"] = proc.returncode != 1
+        # rc 2 is "empty / warn" from list/status, not a hard failure.
+        data["ok"] = proc.returncode not in (1,)
     if isinstance(data, dict):
         data["rc"] = proc.returncode
     return data if isinstance(data, dict) else {"ok": False, "message": "bad json"}
+
+
+def _looks_like_argparse_error(data: dict) -> bool:
+    msg = str(data.get("message") or "").lower()
+    return any(
+        needle in msg
+        for needle in ("invalid choice", "unrecognized arguments", "usage:", "the following arguments")
+    )
+
+
+def _status_or_list(script: str) -> dict:
+    """Prefer ``status``. Fall back to ``list`` if that subcommand is missing.
+
+    Checking out another playbook branch used to delete ``status`` from
+    bind-gamepad.py. QAM then showed an empty pad list even with Odin up.
+    """
+    try:
+        proc = _run_as_deck(["python3", script, "status"], timeout=15)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "bind-gamepad status timed out", "pads": []}
+    data = _json_from(proc)
+    pads_ok = isinstance(data.get("pads"), list)
+    failed = (not pads_ok) or data.get("ok") is False or _looks_like_argparse_error(data)
+    if not failed:
+        data.setdefault("pads", [])
+        return data
+    try:
+        listed = _run_as_deck(["python3", script, "list"], timeout=10)
+    except subprocess.TimeoutExpired:
+        if not isinstance(data, dict):
+            data = {"ok": False, "message": "bind-gamepad list timed out", "pads": []}
+        data.setdefault("pads", [])
+        return data
+    listed_data = _json_from(listed)
+    pads = listed_data.get("pads") if isinstance(listed_data.get("pads"), list) else []
+    if not isinstance(data, dict):
+        data = {}
+    data["pads"] = pads
+    data["ok"] = True
+    if _looks_like_argparse_error(data):
+        data.pop("message", None)
+    data.setdefault("mux", {})
+    data.setdefault("emus", {})
+    if pads:
+        data["pad_hint"] = ""
+    else:
+        data.setdefault(
+            "pad_hint",
+            "Moonlight Odin/Thor not connected. Reconnect, then Refresh pads.",
+        )
+    return data
 
 
 class Plugin:
@@ -113,14 +165,7 @@ class Plugin:
         script = _bind_py()
         if not os.path.isfile(script):
             return {"ok": False, "message": f"Missing {script}", "pads": []}
-        try:
-            proc = _run_as_deck(["python3", script, "status"], timeout=15)
-        except subprocess.TimeoutExpired:
-            return {"ok": False, "message": "bind-gamepad status timed out", "pads": []}
-        data = _json_from(proc)
-        if "pads" not in data:
-            data["pads"] = []
-        return data
+        return _status_or_list(script)
 
     async def set_mode(self, mode: str = "shared", **kwargs: object) -> dict:
         if kwargs:

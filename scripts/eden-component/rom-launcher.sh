@@ -105,11 +105,17 @@ if [ "$is_retrodeck" -eq 1 ] \
     cfg="$(python3 "$PLAYBOOK/scripts/bind-gamepad.py" sdl-mapping --match EmuPads 2>/dev/null || true)"
     if [ -n "$cfg" ]; then
       export SDL_GAMECONTROLLERCONFIG="$cfg"
+      map_file="${XDG_RUNTIME_DIR:-/tmp}/eden-emupads-gamecontrollerdb.txt"
+      printf '%s\n' "$cfg" >"$map_file" || true
+      if [ -s "$map_file" ]; then
+        export SDL_GAMECONTROLLERCONFIG_FILE="$map_file"
+      fi
     fi
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
     if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
       python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu eden --force >/dev/null 2>&1 || true
-    elif [ -f "$ini" ] && [ -f "$PATCHER" ]; then
+    fi
+    if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
     echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2

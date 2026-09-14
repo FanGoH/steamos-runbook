@@ -291,6 +291,21 @@ def azahar_running() -> bool:
     return any(is_azahar_comm(line) for line in out.splitlines())
 
 
+def is_eden_comm(comm: str) -> bool:
+    name = comm.strip().lower()
+    return name in {"eden", "eden.desktop"} or name.startswith("eden")
+
+
+def eden_running() -> bool:
+    try:
+        import subprocess
+
+        out = subprocess.check_output(["ps", "-eo", "comm="], text=True)
+    except OSError:
+        return False
+    return any(is_eden_comm(line) for line in out.splitlines())
+
+
 def azahar_guids(text: str) -> list[str]:
     return re.findall(r"guid:([0-9a-f]{32})", text)
 

@@ -381,6 +381,123 @@ else
 fi
 echo
 
+echo "[Syncthing]"
+ST_BIN="${SYNCTHING_BIN:-/home/$STEAMOS_USER/.local/bin/syncthing}"
+ST_SERVICE="${SYNCTHING_SERVICE:-syncthing.service}"
+ST_GUI="${SYNCTHING_GUI:-127.0.0.1:8384}"
+if [ -x "$ST_BIN" ]; then
+  st_ver="$("$ST_BIN" --version 2>/dev/null | awk '{print $2; exit}')"
+  case "$st_ver" in
+    v2.*|2.*) ok "official Syncthing $st_ver at $ST_BIN" ;;
+    *)
+      fail "Syncthing at $ST_BIN is $st_ver (need v2.x official binary)"
+      record_manual "Install official Syncthing into ~/.local/bin" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+      ;;
+  esac
+else
+  fail "official Syncthing binary missing ($ST_BIN)"
+  record_manual "Install official Syncthing into ~/.local/bin" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+fi
+if command -v syncthing >/dev/null 2>&1; then
+  other="$(command -v syncthing)"
+  if [ "$other" != "$ST_BIN" ]; then
+    warn "another syncthing is on PATH ($other) — mesh daemon must be $ST_BIN"
+  fi
+fi
+if systemctl --user is-enabled "$ST_SERVICE" >/dev/null 2>&1; then
+  ok "$ST_SERVICE enabled"
+else
+  fail "$ST_SERVICE not enabled"
+  record_manual "Enable Syncthing user service + linger" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+fi
+if systemctl --user is-active "$ST_SERVICE" >/dev/null 2>&1; then
+  ok "$ST_SERVICE active"
+else
+  fail "$ST_SERVICE not active"
+  record_manual "Start Syncthing user service" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+fi
+if [ "$(loginctl show-user "$STEAMOS_USER" -p Linger --value 2>/dev/null || true)" = "yes" ]; then
+  ok "linger enabled for $STEAMOS_USER (Syncthing starts without login)"
+else
+  fail "linger disabled — Syncthing will not start until someone logs in"
+  record_manual "Enable linger for Syncthing" <<EOF
+loginctl enable-linger $STEAMOS_USER
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+fi
+ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
+if [ -f "$ST_CFG" ]; then
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" <<'PY'
+import sys, xml.etree.ElementTree as ET, shlex
+cfg, eden_id, azahar_id = sys.argv[1:4]
+root = ET.parse(cfg).getroot()
+folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
+gui_el = root.find("gui")
+address = ""
+if gui_el is not None:
+    addr = gui_el.find("address")
+    address = (addr.text if addr is not None else gui_el.findtext("address")) or ""
+print(f"st_gui_addr={shlex.quote(address)}")
+print(f"st_eden_path={shlex.quote(folders.get(eden_id, ''))}")
+print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
+PY
+)"
+  if [ "$st_gui_addr" = "$ST_GUI" ]; then
+    ok "GUI bound to $ST_GUI"
+  else
+    warn "GUI is ${st_gui_addr:-unset}, expected $ST_GUI"
+  fi
+  if [[ "$st_eden_path" == *"/eden/nand/user/save/"* ]]; then
+    ok "eden-saves -> $st_eden_path"
+  else
+    warn "eden-saves folder missing or not the NAND profile"
+    record_manual "Share Eden NAND saves over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_azahar_path" == *"/azahar-emu/sdmc/Nintendo 3DS/"* ]]; then
+    ok "azahar-saves -> $st_azahar_path"
+  else
+    warn "azahar-saves folder missing or not standalone Azahar sdmc"
+    record_manual "Share Azahar sdmc saves over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+else
+  warn "Syncthing config.xml not found yet"
+fi
+if flatpak ps 2>/dev/null | grep -qi 'syncthingtk\|syncthing-gtk'; then
+  warn "Syncthing GTK Flatpak is running — stop it so it does not fight $ST_BIN"
+fi
+DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
+if [ -f "$DECKY_ST_SETTINGS" ]; then
+  st_auto="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("autostart","no"))' "$DECKY_ST_SETTINGS" 2>/dev/null || echo unknown)"
+  if [ "$st_auto" != "no" ]; then
+    warn "decky-syncthing autostart=$st_auto — playbook systemd unit should be the only starter"
+    record_manual "Leave Decky Syncthing autostart off" <<EOF
+# The mesh daemon is $ST_SERVICE ($ST_BIN).
+# In Decky Syncthing set Autostart to No (or re-run ./scripts/ensure-syncthing.sh).
+EOF
+  else
+    ok "decky-syncthing autostart is off"
+  fi
+fi
+echo
 echo "[Gear Lever]"
 if flatpak info --user "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1 \
   || flatpak info "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1; then

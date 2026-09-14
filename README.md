@@ -35,6 +35,7 @@ git pull
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
 - Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
 - Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
+- Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman)
 - RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
 
 Manual follow-ups (printed when needed):
@@ -78,6 +79,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
+| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden/Azahar save folders |
+| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share `eden-saves` / `azahar-saves`) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
@@ -123,6 +126,9 @@ Copy `.env.example` to `.env`. Important variables:
 | `CEMU_ROM` | Optional standalone Cemu ROM for dual-screen launch |
 | `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`) |
 | `AZAHAR_ROM` | Optional standalone Azahar ROM |
+| `SYNCTHING_BIN` | Official Syncthing binary (default `~/.local/bin/syncthing`) |
+| `SYNCTHING_VERSION` | Release tag to install (default `v2.1.5`) |
+| `SYNCTHING_PEER_IDS` | Space-separated peer device IDs (lab / Odin / Thor) if `config.xml` is regenerated |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 

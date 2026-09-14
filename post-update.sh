@@ -80,6 +80,8 @@ run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
 run_step "ensure-sunshine-ds-apps" "$ROOT/scripts/ensure-sunshine-ds-apps.sh" warn
 run_step "ensure-sunshine-ds" "$ROOT/scripts/ensure-sunshine-ds.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
+run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
+run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "ensure-emu-quick-decky" "$ROOT/scripts/ensure-emu-quick-decky.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn

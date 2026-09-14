@@ -26,23 +26,33 @@ export MALLOC_ARENA_MAX=2
 # Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
 # injects an Xbox-like pad on those IDs after it tears down Steam's
 # virtual controller — inheriting the list leaves Eden with nothing.
-# Do not keep Steam's list. Allow Steam virtual + Xbox + Sunshine x360;
-# that also drops the ASRock LED on js0.
+# Do not keep Steam's list. With the mux up, only EmuPads P1/P2.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-# Allow the pads this box actually uses. Player 0's GUID is chosen at
-# launch from whichever of these is currently present.
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
+cfg="$(python3 "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py" sdl-mapping --match EmuPads 2>/dev/null || true)"
+if [ -n "$cfg" ]; then
+  export SDL_GAMECONTROLLERCONFIG="$cfg"
+fi
 
-# Bind player 0 to the pad that is plugged in right now (physical Xbox
-# / Steam virtual over Sunshine). If none yet, keep the last GUID.
+# Bind player 0 to EmuPads P1 (mux sink). If the mux is down, start it
+# — do not fall back to physical Xbox / Steam virtual / Sunshine.
 # Also force borderless + async shaders — Exclusive + gamescope is the
 # Steam "Launching…" hang that ends in earlyoom SIGTERM on big titles.
 ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
 patcher="$component_path/patch-eden-input.py"
-if [ -f "$ini" ] && [ -f "$patcher" ]; then
+bind_py="${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py"
+if [ -f "$bind_py" ]; then
+  if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null; then
+    flatpak-spawn --host python3 "$bind_py" apply --emu eden --force >/dev/null 2>&1 || true
+  else
+    python3 "$bind_py" apply --emu eden --force >/dev/null 2>&1 || true
+  fi
+elif [ -f "$ini" ] && [ -f "$patcher" ]; then
   python3 "$patcher" "$ini" || true
 fi
 
@@ -129,6 +139,8 @@ host_exec_eden() {
     DISABLE_AUTO_UPDATES MALLOC_ARENA_MAX \
     SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD SDL_JOYSTICK_HIDAPI \
     SDL_HIDAPI_JOYSTICK SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT \
+    SDL_JOYSTICK_BLACKLIST_DEVICES SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT \
+    SDL_GAMECONTROLLERCONFIG \
     SteamAppId SteamGameId STEAM_OVERLAY GAMESCOPE_WAYLAND_DISPLAY
   do
     if [ -n "${!e:-}" ]; then

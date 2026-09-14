@@ -28,8 +28,11 @@ if [ "${1:-}" = "--place-only" ]; then
 fi
 
 SDL_EXCEPT=""
+SDL_BLACKLIST_EXCEPT=""
+SDL_BLACKLIST="0x1209/0x0003"
 if [ "$PLACE_ONLY" -eq 0 ]; then
-  SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except)"
+  SDL_EXCEPT="$(python3 "$ROOT/scripts/pad_profile.py" sdl-except-sinks)"
+  SDL_BLACKLIST_EXCEPT="$SDL_EXCEPT"
 fi
 
 azahar_running() {
@@ -44,6 +47,8 @@ export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0 SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT='$SDL_EXCEPT'
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT='$SDL_BLACKLIST_EXCEPT'
+export SDL_JOYSTICK_BLACKLIST_DEVICES='$SDL_BLACKLIST'
 flatpak run --env=QT_QPA_PLATFORM=xcb $AZAHAR_FLATPAK "<3ds>"
 Then re-run: $ROOT/scripts/ensure-azahar-dual-screen.sh
 EOF
@@ -91,14 +96,8 @@ fi
 
 if [ "$PLACE_ONLY" -eq 0 ] && [ -f "$AZAHAR_INI" ]; then
   bind_rc=0
-  if ! python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match "$PAD_MATCH" --force; then
-    if [ "$PAD_MATCH" != Sunshine ]; then
-      echo "No pad matched ${PAD_MATCH}; trying Sunshine."
-      python3 "$ROOT/scripts/bind-gamepad.py" azahar --ini "$AZAHAR_INI" --match Sunshine --force || bind_rc=$?
-    else
-      bind_rc=1
-    fi
-  fi
+  python3 "$ROOT/scripts/bind-gamepad.py" apply --emu azahar --ini "$AZAHAR_INI" --force \
+    || bind_rc=$?
   if [ "$bind_rc" -ne 0 ]; then
     echo "Could not bind Azahar. Connected pads:"
     python3 "$ROOT/scripts/bind-gamepad.py" list || true
@@ -222,6 +221,8 @@ if ! azahar_running; then
     --env=SDL_JOYSTICK_HIDAPI=0 \
     --env=SDL_HIDAPI_JOYSTICK=0 \
     --env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$SDL_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$SDL_BLACKLIST_EXCEPT" \
+    --env=SDL_JOYSTICK_BLACKLIST_DEVICES="$SDL_BLACKLIST" \
     "$AZAHAR_FLATPAK" "${azahar_args[@]}" \
     >>"$ROOT/logs/azahar-dual-screen.log" 2>&1 &
   waited=0

@@ -34,6 +34,14 @@ _ALWAYS_EXCEPT = (
     ("054c", "09cc"),  # DS4 CUH-ZCT2
 )
 
+# Cemu / Azahar / Eden bind EmuPads P1/P2 only. Mux copies every real pad
+# (Sunshine, phone, tablet, local Xbox, Steam virtual) onto those sinks.
+_SINK_EXCEPT = (
+    ("1209", "e301"),
+    ("1209", "e302"),
+)
+_MOUSE_BLACKLIST = "0x1209/0x0003"
+
 
 def _btn(n: int) -> str:
     return f"button:{n},engine:sdl,guid:{{guid}},port:0"
@@ -218,13 +226,47 @@ def load_profile(name: str | None = None) -> PadProfile:
 
 
 def sdl_except(profile: PadProfile | None = None) -> str:
-    """Whitelist Steam + every GameStream pad we might switch to."""
+    """Whitelist Steam + every GameStream pad we might switch to.
+
+    RPCS3 still uses this. Cemu / Azahar / Eden use ``sdl_except_sinks``.
+    """
     pairs = list(_ALWAYS_EXCEPT)
     if profile is not None:
         extra = (profile.vendor, profile.product)
         if extra not in pairs:
             pairs.append(extra)
     return ",".join(f"0x{v}/0x{p}" for v, p in pairs)
+
+
+def sdl_except_sinks() -> str:
+    """Whitelist only EmuPads P1/P2 (mux sinks)."""
+    return ",".join(f"0x{v}/0x{p}" for v, p in _SINK_EXCEPT)
+
+
+def emu_sink_env() -> dict[str, str]:
+    """SDL env so Cemu / Azahar / Eden see sinks, not Sunshine pads."""
+    except_ids = sdl_except_sinks()
+    return {
+        "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD": "1",
+        "SDL_JOYSTICK_HIDAPI": "0",
+        "SDL_HIDAPI_JOYSTICK": "0",
+        "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT": except_ids,
+        "SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT": except_ids,
+        "SDL_JOYSTICK_BLACKLIST_DEVICES": _MOUSE_BLACKLIST,
+    }
+
+
+def emu_sink_env_bash() -> str:
+    lines = [
+        "export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1",
+        "export SDL_JOYSTICK_HIDAPI=0",
+        "export SDL_HIDAPI_JOYSTICK=0",
+        "unset SDL_GAMECONTROLLER_IGNORE_DEVICES",
+        f"export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT={sdl_except_sinks()}",
+        f"export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT={sdl_except_sinks()}",
+        f"export SDL_JOYSTICK_BLACKLIST_DEVICES={_MOUSE_BLACKLIST}",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def apply_sunshine_conf(path: Path | None = None) -> bool:
@@ -265,6 +307,7 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
         "supports_motion": profile.supports_motion,
         "steam_guide": profile.steam_guide,
         "sdl_except": sdl_except(profile),
+        "sdl_except_sinks": sdl_except_sinks(),
         "notes": profile.notes,
     }
 
@@ -282,6 +325,12 @@ def _self_test() -> int:
     except_s = sdl_except(x360)
     assert "0x045e/0x028e" in except_s
     assert "0x054c/0x0ce6" in except_s
+    sinks = sdl_except_sinks()
+    assert "0x1209/0xe301" in sinks
+    assert "0x1209/0xe302" in sinks
+    env = emu_sink_env()
+    assert env["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] == sinks
+    assert env["SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT"] == sinks
     tmp = Path("/tmp/pad-profile-conf-test.conf")
     tmp.write_text("gamepad = auto\n")
     prev = os.environ.get("GAMESTREAM_PAD_PROFILE")
@@ -318,6 +367,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if cmd in ("sdl-except", "except"):
         print(sdl_except(profile))
+        return 0
+    if cmd in ("sdl-except-sinks", "except-sinks"):
+        print(sdl_except_sinks())
+        return 0
+    if cmd == "emu-sink-env":
+        sys.stdout.write(emu_sink_env_bash())
         return 0
     if cmd == "sunshine":
         print(profile.sunshine_gamepad)

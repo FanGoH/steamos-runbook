@@ -27,6 +27,9 @@ mkdir -p "$COMPONENT_DIR" "$BIN_DIR" "$CUSTOM_SYSTEMS"
 install -m 0755 "$LAUNCHER_SRC" "$COMPONENT_DIR/component_launcher.sh"
 install -m 0644 "$PATCHER_SRC" "$COMPONENT_DIR/patch-cemu-input.py"
 install -m 0755 "$WRAPPER_SRC" "$BIN_DIR/Cemu-wrapper"
+if [ -f "$ROOT/scripts/cemu-component/fonts.conf" ]; then
+  install -m 0644 "$ROOT/scripts/cemu-component/fonts.conf" "$COMPONENT_DIR/fonts.conf"
+fi
 
 if [ -f "$FIND_SRC" ]; then
   install -m 0644 "$FIND_SRC" "$CUSTOM_SYSTEMS/es_find_rules.xml"
@@ -36,6 +39,7 @@ if ! python3 "$PATCHER_SRC" --self-test; then
   echo "Cemu input patcher self-test failed."
   exit 1
 fi
+# Bind Cemu player 0 to EmuPads P1 (mux sink). Dual-stream uses the same sink.
 if [ -f "$CONTROLLER_XML" ]; then
   python3 "$PATCHER_SRC" "$CONTROLLER_XML"
 fi
@@ -58,5 +62,5 @@ if ! flatpak run --command=sh net.retrodeck.retrodeck -c \
   exit 1
 fi
 
-echo "Cemu player 0 is rebound to the current pad on each launch."
+echo "Cemu player 0 is rebound on each launch (GamePad if second screen streamed, else Pro)."
 exit 0

@@ -1,0 +1,10 @@
+{
+  "name": "Emu Pads",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["controller", "gamepad", "cemu", "azahar", "eden", "sunshine"],
+    "description": "Always-on EmuPads mux: every host pad routes to P1/P2. Shared or multi. Cemu P1 is GamePad or Pro."
+  }
+}

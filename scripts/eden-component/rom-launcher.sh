@@ -99,9 +99,17 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_JOYSTICK_HIDAPI=0
     export SDL_HIDAPI_JOYSTICK=0
     unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x28de/0x11ff,0x045e/0x02ea,0x045e/0x028e,0x045e/0x02fd,0x057e/0x2009"
+    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
+    cfg="$(python3 "$PLAYBOOK/scripts/bind-gamepad.py" sdl-mapping --match EmuPads 2>/dev/null || true)"
+    if [ -n "$cfg" ]; then
+      export SDL_GAMECONTROLLERCONFIG="$cfg"
+    fi
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
-    if [ -f "$ini" ] && [ -f "$PATCHER" ]; then
+    if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+      python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu eden --force >/dev/null 2>&1 || true
+    elif [ -f "$ini" ] && [ -f "$PATCHER" ]; then
       python3 "$PATCHER" "$ini" || true
     fi
     echo "rom-launcher: ${bytes} byte Switch dump, host Eden -f -g (no RetroDECK)" >&2

@@ -305,15 +305,29 @@ function Content() {
                       style: { opacity: 0.65, fontSize: "0.85em" },
                       children: `${pad.js} · ${padKind(pad)} · ${pad.vendor}:${pad.product}`,
                     }),
+                    DFL.ToggleField
+                      ? SP_JSX.jsx(DFL.ToggleField, {
+                          label: "Use this pad",
+                          description:
+                            included[pad.js] === false
+                              ? "Off — skipped on Apply"
+                              : "On — included on Apply",
+                          checked: included[pad.js] !== false,
+                          onChange: (on) =>
+                            setIncluded((prev) => ({ ...prev, [pad.js]: Boolean(on) })),
+                        })
+                      : SP_JSX.jsx(DFL.ButtonItem, {
+                          layout: "below",
+                          onClick: () =>
+                            setIncluded((prev) => ({
+                              ...prev,
+                              [pad.js]: prev[pad.js] === false,
+                            })),
+                          children: included[pad.js] === false ? "Use this pad: off" : "Use this pad: on",
+                        }),
                     SP_JSX.jsxs("div", {
                       style: { display: "flex", gap: 8, flexWrap: "wrap" },
                       children: [
-                        SP_JSX.jsx(DFL.ButtonItem, {
-                          layout: "below",
-                          onClick: () =>
-                            setIncluded((prev) => ({ ...prev, [pad.js]: prev[pad.js] === false })),
-                          children: included[pad.js] === false ? "Skipped" : "Using",
-                        }),
                         SP_JSX.jsx(DFL.ButtonItem, {
                           layout: "below",
                           disabled: index === 0,

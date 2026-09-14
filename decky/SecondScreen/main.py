@@ -155,6 +155,26 @@ class Plugin:
             return {"ok": False, "message": "set-dual-screen timed out"}
         return _json_from(proc)
 
+    async def set_virtual_output(self, mode: str = "on", **kwargs: object) -> dict:
+        if kwargs:
+            mode = str(kwargs.get("mode", mode) or mode)
+        script = _script()
+        if not os.path.isfile(script):
+            return _missing_backend()
+        mode = (mode or "on").strip().lower()
+        if mode in ("pause", "false", "0", "no"):
+            mode = "off"
+        if mode not in ("on", "off"):
+            return {"ok": False, "message": f"Unknown virtual-output mode {mode}"}
+        try:
+            proc = _run_as_deck(
+                ["python3", script, "set-virtual-output", "--mode", mode],
+                timeout=35,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "set-virtual-output timed out"}
+        return _json_from(proc)
+
     async def show_window(
         self,
         display: str = "",

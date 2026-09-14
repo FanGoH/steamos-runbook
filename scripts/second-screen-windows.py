@@ -6,6 +6,8 @@ Showing a :0/:1 window on the bottom stream is the same Cemu/Azahar path:
 keep the source mapped, ``ffplay`` ``x11grab`` onto :2 at 1920×1080, then
 ``GAMESCOPECTRL_BASELAYER_WINDOW``. A window already on :2 is maximized
 in place. Dual-screen Auto/On/Off is ``bind-gamepad.py set-dual-screen``.
+Virtual second display On/Pause is ``~/.config/sunshine-ds-gamemode/virtual-output``
+plus ``sunshine-ds-gamemode-virtual.sh --start`` / ``--stop`` (HDMI stays put).
 
 Never ``pgrep -f`` / ``pkill -f`` sunshine. Never ``sudo systemctl --user``.
 """
@@ -52,6 +54,10 @@ MIRROR_PIDFILE = Path(
 MIRROR_LOG = ROOT / "logs" / "second-screen-mirror.log"
 PAD_W = 1920
 PAD_H = 1080
+VIRTUAL_OUTPUT_PREF = Path(
+    os.environ.get("SUNSHINE_DS_VIRTUAL_OUTPUT_PREF")
+    or (Path.home() / ".config" / "sunshine-ds-gamemode" / "virtual-output")
+)
 
 TREE_LINE = re.compile(
     r"^\s*(0x[0-9a-fA-F]+)\s+"
@@ -112,6 +118,23 @@ def clear_touch_sidecar() -> None:
         touch_sidecar_path().unlink()
     except OSError:
         pass
+
+
+def virtual_output_pref(path: Path | None = None) -> str:
+    pref = path or VIRTUAL_OUTPUT_PREF
+    try:
+        raw = pref.read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return "on"
+    if raw in ("off", "0", "false", "no", "pause"):
+        return "off"
+    return "on"
+
+
+def write_virtual_output_pref(mode: str, path: Path | None = None) -> None:
+    pref = path or VIRTUAL_OUTPUT_PREF
+    pref.parent.mkdir(parents=True, exist_ok=True)
+    pref.write_text(("off" if mode == "off" else "on") + "\n", encoding="utf-8")
 
 
 def sidecar_path() -> Path:
@@ -565,10 +588,13 @@ def status_payload() -> dict:
     live = bind_json(["second-screen-streaming"])
     windows = list_windows(pad)
     clients = live.get("clients") if isinstance(live.get("clients"), list) else []
+    sidecar = sidecar_path()
     return {
         "ok": True,
         "pad_display": pad,
-        "sidecar": sidecar_path().is_file(),
+        "sidecar": sidecar.is_file(),
+        "virtual_output": virtual_output_pref(),
+        "virtual_output_live": sidecar.is_file(),
         "dual_screen": live.get("mode") or "auto",
         "dual_screen_live": live,
         "clients": clients,
@@ -595,6 +621,43 @@ def cmd_set_dual_screen(args: argparse.Namespace) -> int:
     json.dump(data, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0 if data.get("ok") is not False else 1
+
+
+def cmd_set_virtual_output(args: argparse.Namespace) -> int:
+    mode = "off" if args.mode == "off" else "on"
+    write_virtual_output_pref(mode)
+    if not PAINT_SH.is_file():
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = f"Missing {PAINT_SH}"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    flag = "--stop" if mode == "off" else "--start"
+    try:
+        proc = _run(["bash", str(PAINT_SH), flag], timeout=30)
+    except subprocess.TimeoutExpired:
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = f"virtual output {flag} timed out"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    payload = status_payload()
+    err = (proc.stderr or "").strip()
+    if mode == "off":
+        payload["messages"] = ["Paused the virtual second display. HDMI is unchanged."]
+    else:
+        payload["messages"] = ["Virtual second display on (:2 / Moonlight bottom)."]
+    if proc.returncode not in (0, None) and err:
+        payload["ok"] = False
+        payload["message"] = err[:400]
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
 
 
 def cmd_show(args: argparse.Namespace) -> int:
@@ -729,6 +792,13 @@ def self_test() -> int:
     assert pad_display("serial=92\npw_node=89\nx11=:2\n") == ":2"
     assert session_displays(":2") == [":0", ":1", ":2"]
     with tempfile.TemporaryDirectory() as td:
+        pref = Path(td) / "virtual-output"
+        assert virtual_output_pref(pref) == "on"
+        write_virtual_output_pref("off", pref)
+        assert virtual_output_pref(pref) == "off"
+        write_virtual_output_pref("on", pref)
+        assert virtual_output_pref(pref) == "on"
+    with tempfile.TemporaryDirectory() as td:
         os.environ["SECOND_SCREEN_TOUCH_FILE"] = str(Path(td) / "second-screen-touch")
         os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"] = str(Path(td) / "virtual")
         Path(os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"]).write_text(
@@ -761,6 +831,9 @@ def main() -> int:
     p_ds = sub.add_parser("set-dual-screen")
     p_ds.add_argument("--mode", required=True, choices=("auto", "on", "off"))
     p_ds.set_defaults(func=cmd_set_dual_screen)
+    p_vo = sub.add_parser("set-virtual-output")
+    p_vo.add_argument("--mode", required=True, choices=("on", "off"))
+    p_vo.set_defaults(func=cmd_set_virtual_output)
     p_show = sub.add_parser("show")
     p_show.add_argument("--display", default="")
     p_show.add_argument("--id", dest="window_id", required=True)

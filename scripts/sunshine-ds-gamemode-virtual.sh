@@ -15,6 +15,9 @@
 # Does not touch :48100, sunshine-ds-dev, or the KWin helper.
 # Does not restart gamescope-session.
 #
+# Pref: ~/.config/sunshine-ds-gamemode/virtual-output (on|off). --start is a
+# no-op when off so a kms restart does not revive :2. HDMI / :0 stay put.
+#
 #   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + idle screensaver
 #   scripts/sunshine-ds-gamemode-virtual.sh --paint   # restart screensaver only (:2 stays)
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
@@ -37,6 +40,18 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-$HOME/.config/sunshine-ds-gamemode/virtual-output}"
+
+virtual_output_pref() {
+  local raw="on"
+  if [ -f "$PREF" ]; then
+    raw="$(tr -d '[:space:]' <"$PREF" | tr '[:upper:]' '[:lower:]')"
+  fi
+  case "$raw" in
+    off|0|false|no|pause) printf 'off\n' ;;
+    *) printf 'on\n' ;;
+  esac
+}
 
 DO_STATUS=0
 DO_STOP=0
@@ -287,6 +302,7 @@ print_status() {
   local pid wl x11 node
   pid="$(virtual_pid || true)"
   echo "headless gamescope pid: ${pid:-none}"
+  echo "virtual_output pref: $(virtual_output_pref)"
   echo "pidfile: $PIDFILE"
   echo "log: $LOG"
   echo "sidecar: $NODEFILE"
@@ -481,6 +497,10 @@ paint_outside_steam_scope() {
 }
 
 if [ "$DO_PAINT" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Virtual second display pref=off; not painting."
+    exit 0
+  fi
   if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
     if paint_outside_steam_scope; then
       echo "Bottom screensaver armed outside Steam scope."
@@ -506,6 +526,11 @@ if [ "$DO_PAINT" -eq 1 ]; then
 fi
 
 if [ "$DO_START" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Virtual second display pref=off; leaving HDMI alone."
+    stop_virtual || true
+    exit 0
+  fi
   start_virtual || exit $?
   exit 0
 fi

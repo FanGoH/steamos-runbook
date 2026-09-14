@@ -983,12 +983,19 @@ gamescope_session_size() {
   printf '1920 1080\n'
 }
 
-# HDMI / top-stream size. 4K TV → 3840x2160 so Cemu/Azahar fill the panel
-# (no letterbox bars). Steam :0 can stay 1080p; do not shrink the TV window
-# to match it. Never use :2 — GamePad virtual stays 1920x1080.
-# Flicker was the focus loop resizing every tick, not 4K vs 1080p itself.
+# HDMI / top-stream size. Prefer the live Xwayland (:0 / :1), not EDID
+# preferred 4K. Requesting 3840x2160 on a 1080p session flickers and leaves
+# a brighter 1080p tile in the top-left of a 4K panel. When Steam output
+# is actually 4K, :0/:1 grow and this follows. Never use :2 — GamePad
+# virtual stays 1920x1080.
 gamescope_hdmi_tv_size() {
-  local w="" h="" mode card
+  local sw sh tw th ew="" eh="" mode card
+  read -r sw sh <<<"$(gamescope_session_size :0)"
+  read -r tw th <<<"$(gamescope_session_size :1)"
+  if [ $((tw * th)) -gt $((sw * sh)) ]; then
+    sw="$tw"
+    sh="$th"
+  fi
   for card in /sys/class/drm/card*-HDMI-A-*/modes; do
     [ -r "$card" ] || continue
     enabled="$(dirname "$card")/enabled"
@@ -998,25 +1005,19 @@ gamescope_hdmi_tv_size() {
     mode="$(head -1 "$card" 2>/dev/null || true)"
     case "$mode" in
       [0-9]*x[0-9]*)
-        w="${mode%x*}"
-        h="${mode#*x}"
-        h="${h%%[^0-9]*}"
+        ew="${mode%x*}"
+        eh="${mode#*x}"
+        eh="${eh%%[^0-9]*}"
         break
         ;;
     esac
   done
-  if [ -n "$w" ] && [ -n "$h" ] && [ "$w" -ge 64 ] && [ "$h" -ge 64 ] 2>/dev/null; then
-    printf '%s %s\n' "$w" "$h"
+  if [ -n "$ew" ] && [ -n "$eh" ] && [ "$ew" -ge 64 ] && [ "$eh" -ge 64 ] 2>/dev/null \
+    && [ "$ew" -le "$sw" ] && [ "$eh" -le "$sh" ]; then
+    printf '%s %s\n' "$ew" "$eh"
     return 0
   fi
-  local aw ah bw bh
-  read -r aw ah <<<"$(gamescope_session_size :0)"
-  read -r bw bh <<<"$(gamescope_session_size :1)"
-  if [ $((bw * bh)) -gt $((aw * ah)) ]; then
-    printf '%s %s\n' "$bw" "$bh"
-  else
-    printf '%s %s\n' "$aw" "$ah"
-  fi
+  printf '%s %s\n' "$sw" "$sh"
 }
 
 # Back-compat name used by older callers.

@@ -10,7 +10,7 @@ Install: `scripts/ensure-emu-quick-decky.sh`. PluginLoader is root — `main.py`
 - **Azahar:** internal resolution, VSync, frame limit, texture filter, renderer, async shaders, accurate mul, New 3DS. Per-game `custom/<titleid>.ini`. Does **not** touch `layout_option` (dual-screen Separate Windows).
 - **Cemu:** VSync, upscale filter, FPS overlay, async compile in standalone + RetroDECK `settings.xml`. Does **not** touch `fullscreen` / GamePad geometry.
 
-Sliders and toggles stay **unsaved** until **Save this game**. A toast appears only on Save (or Reset).
+Sliders and toggles stay **unsaved** until **Save**. A toast appears only on Save (or Reset). **This game** needs a title id: the running dump, Eden’s `Booting game` log, a unique library name match, or Prev/Next. A folder dump with no id in the path used to show the name while Save still asked to pick a game.
 
 ## Live apply (Eden)
 

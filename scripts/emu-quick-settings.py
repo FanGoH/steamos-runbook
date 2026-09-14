@@ -84,6 +84,23 @@ def eden_log(home: Path) -> Path:
     return home / ".local/share/eden/log/eden_log.txt"
 
 
+def eden_log_paths(home: Path) -> list[Path]:
+    paths = [
+        eden_log(home),
+        home / ".config/eden/log/eden_log.txt",
+        home / ".local/share/yuzu/log/yuzu_log.txt",
+        home / ".config/yuzu/log/yuzu_log.txt",
+    ]
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
 def azahar_inis(home: Path) -> list[Path]:
     return [
         home / ".var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini",
@@ -640,6 +657,55 @@ def title_id_from_text(text: str, emu: str) -> str | None:
     return match.group(1).upper() if match else None
 
 
+def _norm_title(text: str) -> str:
+    raw = re.sub(
+        r"\.(xci|nsp|nca|wux|wud|rpx|cia|3ds|cxi|app)$",
+        "",
+        (text or "").strip(),
+        flags=re.I,
+    )
+    raw = raw.replace("_", " ").replace("-", " ")
+    return " ".join(raw.lower().split())
+
+
+def title_id_from_name(names: dict[str, str], title: str, emu: str) -> str:
+    needle = _norm_title(title)
+    if not needle:
+        return ""
+    hits: list[str] = []
+    for tid, name in names.items():
+        upper = tid.upper()
+        if emu == "eden" and not upper.startswith("0100"):
+            continue
+        if emu == "azahar" and not upper.startswith("00040000"):
+            continue
+        if emu == "cemu" and not upper.startswith("00050000"):
+            continue
+        if _norm_title(name) == needle:
+            hits.append(upper)
+    uniq = list(dict.fromkeys(hits))
+    return uniq[0] if len(uniq) == 1 else ""
+
+
+def last_eden_boot(home: Path) -> dict[str, str] | None:
+    logs = [path for path in eden_log_paths(home) if path.is_file()]
+    logs.sort(key=lambda path: path.stat().st_mtime)
+    last: dict[str, str] | None = None
+    for log in logs:
+        try:
+            blob = log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        matches = list(BOOT_RE.finditer(blob))
+        if matches:
+            match = matches[-1]
+            last = {
+                "title_id": match.group(1).upper(),
+                "title": match.group(2).strip(),
+            }
+    return last
+
+
 def _add_title_name(names: dict[str, str], filename: str) -> None:
     match = TITLE_RE.search(filename)
     if not match:
@@ -681,12 +747,13 @@ def scan_title_names(home: Path) -> dict[str, str]:
                 _add_title_name(names, entry.name)
                 if entry.is_dir() and depth < 2 and not entry.name.startswith("."):
                     stack.append((entry, depth + 1))
-    log = eden_log(home)
-    if log.is_file():
+    for log in eden_log_paths(home):
+        if not log.is_file():
+            continue
         try:
             blob = log.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            blob = ""
+            continue
         for match in BOOT_RE.finditer(blob):
             names.setdefault(match.group(1).upper(), match.group(2).strip())
     return names
@@ -694,34 +761,39 @@ def scan_title_names(home: Path) -> dict[str, str]:
 
 def detect_title(emu: str, home: Path, proc_root: Path | None = None) -> dict[str, str]:
     names = scan_title_names(home)
+    empty = {"title_id": "", "title": "", "rom": ""}
+    candidate = dict(empty)
+
+    def from_rom(rom: str) -> dict[str, str]:
+        tid = title_id_from_text(rom, emu) or ""
+        stem = Path(rom).stem
+        if not tid:
+            tid = title_id_from_name(names, stem, emu)
+        return {
+            "title_id": tid,
+            "title": names.get(tid) or stem,
+            "rom": rom,
+        }
+
     for args in running_cmdlines(emu, proc_root):
         rom = rom_from_args(args)
         if not rom:
             continue
-        tid = title_id_from_text(rom, emu)
-        if tid:
+        hit = from_rom(rom)
+        if hit["title_id"]:
+            return hit
+        candidate = hit
+    if emu == "eden" and emu_running(emu, proc_root):
+        boot = last_eden_boot(home)
+        if boot:
             return {
-                "title_id": tid,
-                "title": names.get(tid) or Path(rom).stem,
-                "rom": rom,
+                "title_id": boot["title_id"],
+                "title": boot["title"]
+                or names.get(boot["title_id"])
+                or candidate.get("title")
+                or "",
+                "rom": candidate.get("rom") or "",
             }
-        stem = Path(rom).stem
-        return {"title_id": "", "title": stem, "rom": rom}
-    if emu == "eden":
-        log = eden_log(home)
-        if log.is_file() and emu_running(emu, proc_root):
-            try:
-                blob = log.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                blob = ""
-            matches = list(BOOT_RE.finditer(blob))
-            if matches:
-                tid = matches[-1].group(1).upper()
-                return {
-                    "title_id": tid,
-                    "title": matches[-1].group(2).strip(),
-                    "rom": "",
-                }
     if emu == "cemu":
         for path in existing(cemu_settings(home)):
             try:
@@ -731,13 +803,15 @@ def detect_title(emu: str, home: Path, proc_root: Path | None = None) -> dict[st
             recent = re.search(r"<RecentLaunchFiles>\s*<Entry>([^<]+)</Entry>", text)
             if recent:
                 rom = recent.group(1)
-                tid = title_id_from_text(rom, "cemu") or ""
-                return {
-                    "title_id": tid,
-                    "title": names.get(tid) or Path(rom).stem,
-                    "rom": rom,
-                }
-    return {"title_id": "", "title": "", "rom": ""}
+                hit = from_rom(rom)
+                if hit["title_id"] or not candidate["rom"]:
+                    return hit
+    if candidate["title"] and not candidate["title_id"]:
+        tid = title_id_from_name(names, candidate["title"], emu)
+        if tid:
+            candidate["title_id"] = tid
+            candidate["title"] = names.get(tid) or candidate["title"]
+    return candidate if candidate["rom"] or candidate["title"] else empty
 
 
 def known_games(emu: str, home: Path) -> list[dict[str, str]]:
@@ -1488,6 +1562,18 @@ def emu_payload(
     }
 
 
+def fill_title_id(
+    emu: str,
+    home: Path,
+    title_id: str,
+    proc_root: Path | None = None,
+) -> str:
+    tid = (title_id or "").strip().upper()
+    if tid:
+        return tid
+    return (detect_title(emu, home, proc_root).get("title_id") or "").upper()
+
+
 def status_payload(
     home: Path,
     proc_root: Path | None = None,
@@ -1529,6 +1615,8 @@ def do_set(
     scope = (scope or "global").lower()
     if scope not in {"global", "game"}:
         raise ValueError(f"Unknown scope {scope}")
+    if scope == "game":
+        title_id = fill_title_id(emu, home, title_id, proc_root)
     if live_only:
         write = False
     hotswap: dict = {"hotswap": "none", "hotswap_keys": [], "hotswap_reason": "not_eden"}
@@ -1587,11 +1675,14 @@ def do_save(
     title_id: str,
     values: dict[str, str],
     home: Path,
+    proc_root: Path | None = None,
 ) -> dict:
     emu = emu.lower()
     scope = (scope or "global").lower()
     if scope not in {"global", "game"}:
         raise ValueError(f"Unknown scope {scope}")
+    if scope == "game":
+        title_id = fill_title_id(emu, home, title_id, proc_root)
     if not values:
         return {"ok": True, "messages": ["Nothing to save"], "message": "Nothing to save", "wrote": False}
     messages: list[str] = []
@@ -1621,9 +1712,17 @@ def do_save(
     }
 
 
-def do_reset(emu: str, scope: str, title_id: str, home: Path) -> dict:
+def do_reset(
+    emu: str,
+    scope: str,
+    title_id: str,
+    home: Path,
+    proc_root: Path | None = None,
+) -> dict:
     emu = emu.lower()
     scope = (scope or "global").lower()
+    if scope == "game":
+        title_id = fill_title_id(emu, home, title_id, proc_root)
     if emu == "cemu":
         messages = reset_cemu(home)
     elif emu == "eden":
@@ -1709,12 +1808,14 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(raw_values, dict):
                 raise ValueError("--values must be a JSON object")
             values = {str(k): str(v) for k, v in raw_values.items()}
-            data = do_save(args.emu, args.scope, args.title, values, home)
+            data = do_save(
+                args.emu, args.scope, args.title, values, home, proc_root=proc
+            )
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True
             return _print(data)
         if args.cmd == "reset":
-            data = do_reset(args.emu, args.scope, args.title, home)
+            data = do_reset(args.emu, args.scope, args.title, home, proc_root=proc)
             clear_eden_live_state(home, proc)
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True

@@ -44,6 +44,26 @@ function optionIndex(setting, value) {
   return idx < 0 ? 0 : idx;
 }
 
+function normTitle(text) {
+  return String(text || "")
+    .replace(/\.(xci|nsp|nca|wux|wud|rpx|cia|3ds|cxi|app)$/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function resolveTitleId(titleId, block, games) {
+  if (titleId) return String(titleId);
+  if (block?.title_id) return String(block.title_id);
+  const needle = normTitle(block?.title || "");
+  if (needle && games.length) {
+    const hits = games.filter((g) => normTitle(g.name) === needle);
+    if (hits.length === 1) return hits[0].id;
+  }
+  return "";
+}
+
 function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [emu, setEmu] = SP_REACT.useState("eden");
@@ -89,12 +109,12 @@ function Content() {
   const games = block.games || [];
   const diskSettings = block.settings || [];
   const canPerGame = block.per_game !== false && emu !== "cemu";
-  const effectiveTitle = titleId || block.title_id || "";
-  const gameName =
-    (games.find((g) => g.id === effectiveTitle) || {}).name ||
-    block.title ||
-    effectiveTitle ||
-    "No game selected";
+  const effectiveTitle = resolveTitleId(titleId, block, games);
+  const gameName = effectiveTitle
+    ? (games.find((g) => g.id === effectiveTitle) || {}).name ||
+      block.title ||
+      effectiveTitle
+    : "No game selected";
 
   const settings = diskSettings.map((setting) => {
     if (draft[setting.key] === undefined) return setting;
@@ -146,6 +166,25 @@ function Content() {
     setScope("game");
     setDraft({});
     refresh({ emu, title: next });
+  };
+
+  const pickThisGame = () => {
+    const resolved = resolveTitleId(titleId, block, games);
+    if (!resolved) {
+      toaster.toast({
+        title: "Pick a game",
+        body: games.length
+          ? "Use Prev/Next to choose a title, then save."
+          : "Start a game before saving per-game settings.",
+        duration: 5000,
+      });
+      return;
+    }
+    titleTouched.current = true;
+    setTitleId(resolved);
+    setScope("game");
+    setDraft({});
+    refresh({ emu, title: resolved });
   };
 
   const queueLive = (setting, value) => {
@@ -378,11 +417,8 @@ function Content() {
                     }),
                     SP_JSX.jsx(DFL.ButtonItem, {
                       layout: "below",
-                      onClick: () => {
-                        setScope("game");
-                        setDraft({});
-                      },
-                      children: scope === "game" ? "This game ✓" : "This game",
+                      onClick: pickThisGame,
+                      children: scope === "game" && effectiveTitle ? "This game ✓" : "This game",
                     }),
                   ],
                 }),
@@ -407,13 +443,13 @@ function Content() {
                       children: [
                         SP_JSX.jsx(DFL.ButtonItem, {
                           layout: "below",
-                          disabled: games.length < 2,
+                          disabled: games.length < 1,
                           onClick: () => cycleGame(-1),
                           children: "Prev game",
                         }),
                         SP_JSX.jsx(DFL.ButtonItem, {
                           layout: "below",
-                          disabled: games.length < 2,
+                          disabled: games.length < 1,
                           onClick: () => cycleGame(1),
                           children: "Next game",
                         }),
@@ -446,7 +482,11 @@ function Content() {
               layout: "below",
               disabled: busy || !dirty,
               onClick: save,
-              children: dirty ? "Save this game" : "Saved",
+              children: dirty
+                ? canPerGame && scope === "game"
+                  ? "Save this game"
+                  : "Save global"
+                : "Saved",
             }),
           }),
           canPerGame

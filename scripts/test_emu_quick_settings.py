@@ -203,6 +203,71 @@ def test_detect_eden_title_from_proc() -> None:
         assert mod.emu_running("eden", proc)
 
 
+def test_detect_eden_title_from_log_when_rom_has_no_hex() -> None:
+    with _home() as td:
+        home = Path(td)
+        proc = home / "proc"
+        rom = home / "retrodeck/roms/switch/dump.xci/dump.xci"
+        _write(rom, "x")
+        _write(
+            mod.eden_log(home),
+            "Booting game: 010093801237C000 | Metroid Dread | 1.0.0\n",
+        )
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", str(rom)])
+        detected = mod.detect_title("eden", home, proc)
+        assert detected["title_id"] == "010093801237C000"
+        assert detected["title"] == "Metroid Dread"
+        assert detected["rom"] == str(rom)
+
+
+def test_save_fills_running_title_when_omitted() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        proc = home / "proc"
+        rom = str(home / "games/Fire Emblem Engage[0100A6301214E000].xci")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", rom])
+        result = mod.do_save(
+            "eden",
+            "game",
+            "",
+            {"resolution_setup": "4"},
+            home,
+            proc_root=proc,
+        )
+        assert result["ok"] is True
+        custom = home / ".config/eden/custom/0100A6301214E000.ini"
+        assert custom.is_file()
+        assert "resolution_setup=4" in custom.read_text()
+
+
+def test_detect_eden_title_from_library_name() -> None:
+    with _home() as td:
+        home = Path(td)
+        proc = home / "proc"
+        _write(
+            home / "retrodeck/roms/switch/Metroid Dread [010093801237C000].xci",
+            "x",
+        )
+        rom = home / "retrodeck/roms/switch/Metroid Dread.xci/Metroid Dread.xci"
+        _write(rom, "x")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", str(rom)])
+        detected = mod.detect_title("eden", home, proc)
+        assert detected["title_id"] == "010093801237C000"
+        assert detected["title"] == "Metroid Dread"
+
+
+def test_title_id_from_name_requires_unique_match() -> None:
+    names = {
+        "010093801237C000": "Metroid Dread",
+        "0100AAAA12345678": "Metroid Dread",
+        "0100A6301214E000": "Fire Emblem Engage",
+    }
+    assert mod.title_id_from_name(names, "Fire Emblem Engage", "eden") == "0100A6301214E000"
+    assert mod.title_id_from_name(names, "Metroid Dread", "eden") == ""
+    assert mod.title_id_from_name(names, "missing", "eden") == ""
+
+
 def test_cli_status_json() -> None:
     with _home() as td:
         home = Path(td)
@@ -428,6 +493,10 @@ if __name__ == "__main__":
         test_azahar_per_game_resolution,
         test_cemu_xml_and_protected_fullscreen,
         test_detect_eden_title_from_proc,
+        test_detect_eden_title_from_log_when_rom_has_no_hex,
+        test_detect_eden_title_from_library_name,
+        test_title_id_from_name_requires_unique_match,
+        test_save_fills_running_title_when_omitted,
         test_cli_status_json,
         test_docked_label_aliases,
         test_status_title_override,

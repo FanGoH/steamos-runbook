@@ -12,6 +12,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 - **Multi**: first selected → P1, second → P2.
 - Skip Steam wrap `28de:11ff` when a Sunshine or physical pad is present (Steam’s curve stacked on SDL made Cemu sticks short). The plugin pad list hides those wraps and the EmuPads sinks — only real host pads (Thor, Odin, physical Xbox, phone) are shown. After Moonlight drops, the list is empty until Odin/Thor injects again; Apply still binds EmuPads P1 while the mux is up. Reconnect, then Refresh pads.
 - Shared / Multiplayer writes `mux.json` immediately so the 4s status poll cannot flip the toggle back.
+- **Dual-screen** (`mux.json` `dual_screen`): **Auto** (default) launches Cemu/Azahar GamePad layout only when Moonlight is watching the host second display (`video/1` or GamePad-only). Top-only Moonlight stays HDMI `-f`. **Dual-screen** forces the GamePad path while `:48200` is BUSY. **HDMI only** never dual-screens.
 - Axes rescale to the sink ±32767 range.
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
 

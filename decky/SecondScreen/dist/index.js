@@ -289,8 +289,8 @@ function Content() {
                   : "Not running",
               children:
                 virtualOutput === "off"
-                  ? "Headless gamescope is off. HDMI / TV stay at Steam's output size."
-                  : "1080p :2 for Moonlight bottom. Does not change HDMI resolution.",
+                  ? "Headless gamescope is off. HDMI / TV stay at Steam's output size. Turn On before Odin/Thor GamePad."
+                  : "1080p :2 for Odin/Thor GamePad. HDMI can stay 4K. Does not change TV resolution.",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {

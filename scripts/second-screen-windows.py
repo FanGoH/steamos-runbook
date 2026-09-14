@@ -716,7 +716,11 @@ def cmd_set_virtual_output(args: argparse.Namespace) -> int:
         payload["messages"] = ["Paused the virtual second display. HDMI is unchanged."]
         payload["messages"].extend(extra)
     else:
-        payload["messages"] = ["Virtual second display on (:2 / Moonlight bottom)."]
+        extra = fix_4k_scanout(":0")
+        payload["messages"] = [
+            "Virtual second display on (:2 1080p / Odin GamePad). HDMI stays 4K."
+        ]
+        payload["messages"].extend(extra)
     if proc.returncode not in (0, None) and err:
         payload["ok"] = False
         payload["message"] = err[:400]

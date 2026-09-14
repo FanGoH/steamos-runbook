@@ -531,13 +531,32 @@ if [ "$DO_PAINT" -eq 1 ]; then
   exit 0
 fi
 
+kms_is_busy() {
+  python3 - <<'PY'
+import urllib.request
+try:
+    text = urllib.request.urlopen("http://127.0.0.1:48200/serverinfo", timeout=2).read().decode(
+        "utf-8", "replace"
+    )
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if "SUNSHINE_SERVER_BUSY" in text else 1)
+PY
+}
+
 if [ "$DO_START" -eq 1 ]; then
-  if [ "$(virtual_output_pref)" = off ]; then
+  if [ "$(virtual_output_pref)" = off ] && ! kms_is_busy; then
     echo "Virtual second display pref=off; leaving HDMI alone."
     stop_virtual || true
     exit 0
   fi
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Virtual second display pref=off but :48200 is BUSY; starting :2 for Moonlight bottom."
+  fi
   start_virtual || exit $?
+  if [ -f "$ROOT/scripts/second-screen-windows.py" ]; then
+    python3 "$ROOT/scripts/second-screen-windows.py" fix-4k-scanout >/dev/null 2>&1 || true
+  fi
   exit 0
 fi
 

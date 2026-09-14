@@ -10,7 +10,7 @@ Install: `scripts/ensure-emu-quick-decky.sh`. PluginLoader is root — `main.py`
 - **Azahar:** internal resolution, VSync, frame limit, texture filter, renderer, async shaders, accurate mul, New 3DS. Per-game `custom/<titleid>.ini`. Does **not** touch `layout_option` (dual-screen Separate Windows).
 - **Cemu:** VSync, upscale filter, FPS overlay, async compile in standalone + RetroDECK `settings.xml`. Does **not** touch `fullscreen` / GamePad geometry.
 
-Sliders and toggles stay **unsaved** until **Save**. A toast appears only on Save (or Reset). **This game** needs a title id: the running dump, Eden’s `Booting game` log, a unique library name match, or Prev/Next. A folder dump with no id in the path used to show the name while Save still asked to pick a game.
+Sliders and toggles stay **unsaved** until **Save**. A toast appears only on Save (or Reset). **Reset emulator** SIGTERMs the running Cemu / Azahar / Eden process, then relaunches the Steam tile (`steam://rungameid/{SteamAppId}`) or re-execs the command line. It does not match Sunshine / Steam / gamescope and does not restart the mux. **This game** needs a title id: the running dump, Eden’s `Booting game` log, a unique library name match, or Prev/Next. A folder dump with no id in the path used to show the name while Save still asked to pick a game.
 
 ## Live apply (Eden)
 
@@ -22,7 +22,7 @@ Live rows send the Eden hotkey immediately and **do not write INI**. Session sta
 | Scaling filter | yes | F8 cycles from the live session value |
 | GPU accuracy Normal ↔ High | yes | F9. **Extreme still needs an Eden restart** |
 | Limit speed | yes | Ctrl+U toggle |
-| Resolution scale | no | no hotkey; Save then **close and reopen Eden** (F6 keeps in-memory Settings) |
+| Resolution scale | no | no hotkey; Save then **Reset emulator** (F6 keeps in-memory Settings) |
 
 Hotkeys come from `qt-config.ini`. Apply tries `xdotool key --window` first so QAM can keep focus; if gamescope drops that, it focuses Eden, sends the key, then restores the previous window. Live apply only if the running title matches. Do not SIGSTOP the emulator. Needs `xdotool`.
 
@@ -33,4 +33,6 @@ python3 scripts/emu-quick-settings.py status
 python3 scripts/emu-quick-settings.py set --live --emu eden --scope game --title 0100A6301214E000 --key use_docked_mode --value false
 python3 scripts/emu-quick-settings.py save --emu eden --scope game --title 0100A6301214E000 --values '{"use_docked_mode":"false"}'
 python3 scripts/emu-quick-settings.py reset --emu eden --scope game --title 0100A6301214E000
+python3 scripts/emu-quick-settings.py restart --emu eden
+python3 scripts/emu-quick-settings.py restart --emu all
 ```

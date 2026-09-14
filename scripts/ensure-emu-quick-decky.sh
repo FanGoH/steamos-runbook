@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install / refresh the Emu Pads Decky plugin (list, reorder, apply binds).
-# ~/homebrew/plugins is often root-owned; copy needs sudo. Pairing is not involved.
+# Install / refresh the Emu Quick Decky plugin (Eden / Azahar / Cemu settings).
+# ~/homebrew/plugins is often root-owned; copy needs sudo.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,32 +8,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 
-if ! python3 "$ROOT/scripts/bind-gamepad.py" self-test >/dev/null; then
-  echo "bind-gamepad self-test failed."
+if ! python3 "$ROOT/scripts/test_emu_quick_settings.py" >/dev/null; then
+  echo "emu-quick-settings tests failed."
   exit 1
 fi
 
-"$ROOT/scripts/ensure-emupads-mux.sh" || true
-
-SRC="$ROOT/decky/EmuPads"
+SRC="$ROOT/decky/EmuQuick"
 if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/index.js" ]; then
   echo "Missing plugin files under $SRC"
   exit 1
 fi
 
-PLUGIN_DEST="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}/plugins/EmuPads"
+PLUGIN_DEST="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}/plugins/EmuQuick"
 PARENT="$(dirname "$PLUGIN_DEST")"
-PLUGIN_NAME="$(python3 -c "import json; print(json.load(open('$SRC/plugin.json'))['name'])")"
-
-finish_install() {
-  echo "$1"
-  if decky_reload_plugin "$PLUGIN_NAME"; then
-    echo "Reloaded $PLUGIN_NAME in Decky (close and reopen QAM if it is already open)."
-  else
-    echo "Copied files; reload Decky plugins (or leave Game Mode and come back) to see the new QAM UI."
-  fi
-  exit 0
-}
 
 copy_plugin() {
   mkdir -p "$PLUGIN_DEST/dist"
@@ -43,36 +30,38 @@ copy_plugin() {
 
 if [ ! -d "$PARENT" ]; then
   echo "Decky plugins dir not found ($PARENT)."
-  record_manual "Install Decky Loader, then Emu Pads" <<EOF
+  record_manual "Install Decky Loader, then Emu Quick" <<EOF
 # After Decky exists:
-$ROOT/scripts/ensure-emu-pads-decky.sh
+$ROOT/scripts/ensure-emu-quick-decky.sh
 EOF
   exit 2
 fi
 
 if [ -w "$PARENT" ]; then
   copy_plugin
-  finish_install "Installed Emu Pads to $PLUGIN_DEST"
+  echo "Installed Emu Quick to $PLUGIN_DEST"
+  exit 0
 fi
 
-# ~/homebrew/plugins is often root:root while copied files are deck:deck.
 if [ -w "$PLUGIN_DEST/main.py" ] && [ -w "$PLUGIN_DEST/dist/index.js" ]; then
   cp -a "$SRC/main.py" "$PLUGIN_DEST/main.py"
   cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
   [ -w "$PLUGIN_DEST/plugin.json" ] && cp -a "$SRC/plugin.json" "$PLUGIN_DEST/plugin.json"
   [ -w "$PLUGIN_DEST/package.json" ] && cp -a "$SRC/package.json" "$PLUGIN_DEST/package.json"
-  finish_install "Updated writable Emu Pads files in $PLUGIN_DEST"
+  echo "Updated writable Emu Quick files in $PLUGIN_DEST"
+  exit 0
 fi
 
 if sudo -n true 2>/dev/null; then
   sudo mkdir -p "$PLUGIN_DEST/dist"
   sudo cp -a "$SRC/main.py" "$SRC/plugin.json" "$SRC/package.json" "$PLUGIN_DEST/"
   sudo cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
-  finish_install "Installed Emu Pads to $PLUGIN_DEST (sudo)"
+  echo "Installed Emu Quick to $PLUGIN_DEST (sudo)"
+  exit 0
 fi
 
 echo "Decky plugins dir is not writable ($PARENT)."
-record_manual "Install Emu Pads Decky plugin" <<EOF
+record_manual "Install Emu Quick Decky plugin" <<EOF
 sudo mkdir -p $PLUGIN_DEST/dist
 sudo cp -a $SRC/main.py $SRC/plugin.json $SRC/package.json $PLUGIN_DEST/
 sudo cp -a $SRC/dist/index.js $PLUGIN_DEST/dist/index.js

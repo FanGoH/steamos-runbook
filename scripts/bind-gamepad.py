@@ -149,6 +149,27 @@ _X360_USB_VERSION_GUID = "030000005e0400008e02000014010000"
 _X360_BT_NOCRC_GUID = "050000005e0400008e02000014010000"
 _THOR_SUNSHINE_NAME = "Sunshine (libvirtualhid) AYN_Thor"
 
+# EmuPads / Sunshine libvirtualhid x360 is 15-button (BTN_C/Z/TL2/TR2).
+# Eden autoconfig still writes Steam xpad 11-button indices (L/R=4/5 =
+# Select/Start on the 15-button sink). Nintendo face: A/B and X/Y swapped.
+_EDEN_X360_15 = {
+    "button_a": "button:1",
+    "button_b": "button:0",
+    "button_x": "button:4",
+    "button_y": "button:3",
+    "button_l": "button:6",
+    "button_r": "button:7",
+    "button_plus": "button:11",
+    "button_minus": "button:10",
+    "button_home": "button:12",
+    "button_lstick": "button:13",
+    "button_rstick": "button:14",
+    "button_slleft": "button:6",
+    "button_srleft": "button:7",
+    "button_slright": "button:6",
+    "button_srright": "button:7",
+}
+
 
 def sdl_mapping_line(guid: str, name: str) -> str:
     label = name.replace(",", " ").replace("\n", " ").strip() or "Sunshine pad"
@@ -1047,6 +1068,17 @@ def eden_guid_for_player(text: str, player: int) -> str:
     return (match.group(1).lower() if match else "")
 
 
+def _rewrite_eden_x360_15(line: str, prefix: str) -> str:
+    key = line.split("=", 1)[0]
+    if not key.startswith(prefix) or "\\" in key:
+        return line
+    short = key[len(prefix) :]
+    mapped = _EDEN_X360_15.get(short)
+    if not mapped or "button:" not in line:
+        return line
+    return re.sub(r"button:\d+", mapped, line)
+
+
 def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
     """Rewrite Eden ``player_N_`` SDL bindings for the ordered pads."""
     guids = [eden_guid(pad) for pad in pads]
@@ -1072,6 +1104,11 @@ def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
                         "engine:sdl,",
                         f"engine:sdl,guid:{guid},",
                     )
+            pad = pads[index]
+            if pad.get("product") in SINK_PRODUCTS or str(pad.get("name", "")).startswith(
+                "EmuPads"
+            ):
+                stripped = _rewrite_eden_x360_15(stripped, prefix)
             line = stripped
             handled = True
             break
@@ -1230,8 +1267,20 @@ def status_payload(
     for path in azahar_paths:
         azahar_players.extend(azahar_players_from_ini(path, lookup))
     mux_cfg = load_mux_config()
+    mux_up = mux_running()
+    if pads:
+        pad_hint = ""
+    elif mux_up:
+        pad_hint = (
+            "Moonlight Odin/Thor not connected. Mux is still up — Apply binds "
+            "EmuPads P1. Reconnect, then Refresh pads."
+        )
+    else:
+        pad_hint = "EmuPads mux is down. Start it before binding."
     return {
+        "ok": True,
         "pads": pads,
+        "pad_hint": pad_hint,
         "profile": load_profile().name,
         "mux": {
             "running": mux_running(),
@@ -1420,7 +1469,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     )
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
-    return 0 if payload["pads"] else 2
+    # Empty pads is valid (Moonlight dropped). rc 2 made Decky treat status as
+    # a failed call and the QAM list went blank.
+    return 0
 
 
 def cmd_set_mode(args: argparse.Namespace) -> int:
@@ -1984,6 +2035,27 @@ def _self_test() -> int:
         assert eden_guid_for_player(eden, 0) == thor["eden_guid"]
         assert eden_guid_for_player(eden, 1) == odin["eden_guid"]
         assert "player_1_connected=true\n" in eden
+        sink_p1 = sink_template("EmuPads P1", SINK_PRODUCTS[0], 0)
+        eden_11 = (
+            'player_0_button_a="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:0"\n'
+            'player_0_button_b="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:1"\n'
+            'player_0_button_x="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:3"\n'
+            'player_0_button_y="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:4"\n'
+            'player_0_button_l="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:4"\n'
+            'player_0_button_r="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:5"\n'
+            'player_0_button_minus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:6"\n'
+            'player_0_button_plus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:7"\n'
+        )
+        eden_15 = patch_eden_ini(eden_11, [sink_p1])
+        assert eden_guid_for_player(eden_15, 0) == sink_p1["eden_guid"]
+        assert "button:1" in eden_15.split("player_0_button_a=", 1)[1].split("\n", 1)[0]
+        assert "button:0" in eden_15.split("player_0_button_b=", 1)[1].split("\n", 1)[0]
+        assert "button:4" in eden_15.split("player_0_button_x=", 1)[1].split("\n", 1)[0]
+        assert "button:3" in eden_15.split("player_0_button_y=", 1)[1].split("\n", 1)[0]
+        assert "button:6" in eden_15.split("player_0_button_l=", 1)[1].split("\n", 1)[0]
+        assert "button:7" in eden_15.split("player_0_button_r=", 1)[1].split("\n", 1)[0]
+        assert "button:10" in eden_15.split("player_0_button_minus=", 1)[1].split("\n", 1)[0]
+        assert "button:11" in eden_15.split("player_0_button_plus=", 1)[1].split("\n", 1)[0]
         cemu_dir = Path(tmp) / "cemu-apply"
         cemu_dir.mkdir()
         xml_path = cemu_dir / "controller0.xml"

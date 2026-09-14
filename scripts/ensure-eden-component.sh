@@ -135,10 +135,12 @@ if [ -d "$rd_switch" ]; then
   done
 fi
 
-# Bind player 0 to the pad that is present at launch (Sunshine/Xbox, then
-# Steam virtual). Also run from the launcher on every game start.
+# Bind player 0 to EmuPads P1. Launch wrappers also do this. Skip --force
+# while Eden is running (new maps need a restart anyway).
 eden_ini="${EDEN_QT_CONFIG:-/home/${STEAMOS_USER}/.config/eden/qt-config.ini}"
-if [ -f "$eden_ini" ]; then
+if [ -f "$ROOT/scripts/bind-gamepad.py" ]; then
+  python3 "$ROOT/scripts/bind-gamepad.py" apply --emu eden >/dev/null || true
+elif [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"
 fi
 python3 "$PATCHER_SRC" --ensure-fps-mods || true

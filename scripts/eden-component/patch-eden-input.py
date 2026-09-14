@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Bind Eden player 0 to EmuPads P1 (mux sink).
+"""Bind Eden player 0 to whichever real pad is plugged in at launch.
 
-Skip motherboard LED and the libvirtualhid mouse. Prefer the EmuPads P1
-uinput sink — do not fall back to Sunshine / Steam virtual. SDL GUID is
-USB bus + vendor/product/version with no name-CRC.
+Skip motherboard LED and gamescope mouse js nodes. Prefer a physical
+Xbox (not Sunshine), then Switch Pro, then Steam's virtual pad (the
+wrapped held controller), then Sunshine, then the first remaining
+joystick. Sunshine is a fallback — it is injected even during local
+play, and Steam hides that Xbox ID from SDL. SDL GUID is USB bus +
+vendor/product/version with no name-CRC — the form Eden's UI writes
+for Xbox One.
 
-If P1 is missing, leave the existing player-0 GUID and only keep the
-Joy-Con HID driver off.
+If nothing is present, leave the existing player-0 GUID (last session)
+and only keep the Joy-Con HID driver off.
 """
 from __future__ import annotations
 
@@ -18,7 +22,28 @@ import sys
 
 INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
-SKIP_PRODUCTS = {("1209", "0003")}
+EMUPADS_VENDOR = "1209"
+EMUPADS_P1 = "e301"
+
+# EmuPads P1 is 15-button Xbox packing (BTN_C/Z/TL2/TR2 present). Nintendo face:
+# A/B and X/Y swapped vs Xbox. L/R are 6/7, not 4/5 (those are Y/Z).
+EDEN_EMUPADS_BUTTONS = {
+    "player_0_button_a": "button:1",
+    "player_0_button_b": "button:0",
+    "player_0_button_x": "button:4",
+    "player_0_button_y": "button:3",
+    "player_0_button_l": "button:6",
+    "player_0_button_r": "button:7",
+    "player_0_button_plus": "button:11",
+    "player_0_button_minus": "button:10",
+    "player_0_button_home": "button:12",
+    "player_0_button_lstick": "button:13",
+    "player_0_button_rstick": "button:14",
+    "player_0_button_slleft": "button:6",
+    "player_0_button_srleft": "button:7",
+    "player_0_button_slright": "button:6",
+    "player_0_button_srright": "button:7",
+}
 
 
 def _read(path: Path) -> str:
@@ -37,8 +62,6 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
         name = _read(js / "name")
         if not vendor or vendor in SKIP_VENDORS:
             continue
-        if (vendor, product) in SKIP_PRODUCTS:
-            continue
         pads.append(
             {
                 "vendor": vendor,
@@ -55,12 +78,24 @@ def _is_sunshine(pad: dict[str, str]) -> bool:
 
 
 def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
+    if not pads:
+        return None
     for pad in pads:
-        if pad.get("name") == "EmuPads P1" or (
-            pad.get("vendor") == "1209" and pad.get("product") == "e301"
-        ):
+        if pad["vendor"] == EMUPADS_VENDOR and pad["product"] == EMUPADS_P1:
             return pad
-    return None
+    for pad in pads:
+        if pad["vendor"] == "045e" and not _is_sunshine(pad):
+            return pad
+    for pad in pads:
+        if pad["vendor"] == "057e" and pad["product"] == "2009":
+            return pad
+    for pad in pads:
+        if pad["vendor"] == "28de" and pad["product"] == "11ff":
+            return pad
+    for pad in pads:
+        if _is_sunshine(pad):
+            return pad
+    return pads[0]
 
 
 def sdl_guid(vendor: str, product: str, version: str = "0000") -> str:
@@ -124,6 +159,18 @@ def pin_4gb_layout(text: str) -> str:
     return new + "\n" + core + inject
 
 
+def _rewrite_emupads_buttons(line: str) -> str:
+    key = line.split("=", 1)[0]
+    mapped = EDEN_EMUPADS_BUTTONS.get(key)
+    if not mapped:
+        return line
+    return re.sub(r"button:\d+", mapped, line)
+
+
+def _is_emupads_guid(guid: str) -> bool:
+    return "0912000001e3" in (guid or "").lower()
+
+
 def patch(text: str, guid: str | None) -> str:
     out = []
     for line in text.splitlines(keepends=True):
@@ -138,6 +185,8 @@ def patch(text: str, guid: str | None) -> str:
                     "engine:sdl,port:0,",
                     f"engine:sdl,port:0,guid:{guid},",
                 )
+            if _is_emupads_guid(guid):
+                line = _rewrite_emupads_buttons(line)
         else:
             # Exclusive fullscreen on gamescope leaves Steam on Launching
             # while RSS climbs until earlyoom SIGTERMs Eden. Borderless

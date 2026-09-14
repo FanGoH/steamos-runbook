@@ -84,9 +84,42 @@ def test_sdl_guid_stable() -> None:
     )
 
 
+def test_pick_emupads_p1_first() -> None:
+    pads = [
+        {"vendor": "28de", "product": "11ff", "name": "Microsoft X-Box 360 pad 0"},
+        {"vendor": "045e", "product": "028e", "name": "Sunshine (libvirtualhid) Odin2_Portal"},
+        {"vendor": "1209", "product": "e301", "name": "EmuPads P1"},
+    ]
+    picked = mod.pick_pad(pads)
+    assert picked is not None
+    assert picked["product"] == "e301"
+
+
+def test_emupads_15_button_map() -> None:
+    guid = mod.sdl_guid("1209", "e301", "0114")
+    src = (
+        'player_0_button_l="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:4"\n'
+        'player_0_button_r="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:5"\n'
+        'player_0_button_minus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:6"\n'
+        'player_0_button_plus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:7"\n'
+        'player_0_button_y="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:2"\n'
+        'player_0_button_x="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:3"\n'
+    )
+    out = mod.patch(src, guid)
+    assert guid in out
+    assert "button:6" in out.split("player_0_button_l=", 1)[1].split("\n", 1)[0]
+    assert "button:7" in out.split("player_0_button_r=", 1)[1].split("\n", 1)[0]
+    assert "button:10" in out.split("player_0_button_minus=", 1)[1].split("\n", 1)[0]
+    assert "button:11" in out.split("player_0_button_plus=", 1)[1].split("\n", 1)[0]
+    assert "button:3" in out.split("player_0_button_y=", 1)[1].split("\n", 1)[0]
+    assert "button:4" in out.split("player_0_button_x=", 1)[1].split("\n", 1)[0]
+
+
 if __name__ == "__main__":
     test_borderless_and_async()
     test_pin_4gb_overrides_global()
     test_sdl_guid_stable()
+    test_pick_emupads_p1_first()
+    test_emupads_15_button_map()
     test_ensure_fps_mods_copies_atmosphere_ips()
     print("ok")

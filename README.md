@@ -108,6 +108,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
 | `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
+| `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
+| `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |
+| `decky/EmuQuick/` | Emu Quick plugin source (live docked/handheld + restart-only resolution) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
 | `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-11-gamemode-tender-ds`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2`; or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map, `ffplay` `x11grab` onto `:2`. Exit `--quit`s immediately; leftover x11grab then `--paint` |

@@ -59,6 +59,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - Cursor Agent worker user service (`agent worker start` on `CURSOR_WORKER_DIR` plus `CURSOR_WORKER_EXTRA_DIRS`; login is manual). Separate data dir so it does not fight an on-demand session worker.
 - Switch 2 controllers (`ensure-switch2-controllers.sh`): user-space BLE → uinput bridge from `SWITCH2_CONTROLLERS_DIR` (default `~/code/switch2-controllers-linux`). Python 3.12 venv via uv (Steam OS 3.9 is 3.14). Steam Bluetooth.Enabled stays off; BlueZ adapter is powered. Game Mode hook is `gamescope-session.service`. Pairing is manual. Do **not** install the Bazzite Eden reorder hooks (playbook owns Eden/Cemu/RPCS3 binds).
 - Emu Pads Decky plugin (`ensure-emu-pads-decky.sh` + always-on `ensure-emupads-mux.sh`): virtual **EmuPads P1/P2** (`1209:e301` / `1209:e302`). Config `~/.config/emupads/mux.json`. Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Shared P1 = last pad that sent a press/stick (exclusive, no analog mix); multi = first selected → P1, second → P2. Skip Steam wrap `28de:11ff` when a Sunshine / physical pad is present. Axes rescale to sink ±32767. Cemu tiles pick P1 type at launch: GamePad when the second screen is streamed, Pro for a local tile (`component_launcher.sh` `--cemu-p1`). Plugin GamePad/Pro toggle is **Cemu-only** and the next Cemu tile overwrites it — Azahar has no GamePad/Pro type. Azahar (standalone + RetroDECK INI) and Eden bind the same sinks on each launch. Overlay/QAM/Home mute sinks via `$XDG_RUNTIME_DIR/emupads-mute` (do not SIGSTOP). Steam Exit `--quit`s only on SIGTERM. Home/Library mute confirmed `checkpoint-2026-09-11-steam-menu-mute`. After `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`), restart Cemu/Azahar/Eden — new uinput nodes. Independent of dual-screen / vanilla Sunshine. Source `decky/EmuPads/`. Do **not** hand-edit XML/INI — the plugin calls `scripts/bind-gamepad.py`. Do **not** bind emulators to Sunshine pads if the mux is down — start the mux.
+- Emu Quick Decky plugin (`ensure-emu-quick-decky.sh`): QAM graphics for Eden / Azahar / Cemu. PluginLoader is root — `main.py` calls `scripts/emu-quick-settings.py` as user `deck`. Eden/Azahar can be global or per-game (`custom/<titleid>.ini`). Cemu is global `settings.xml` (graphic packs still own resolution). Live Eden rows (docked F10, filter F8, GPU Normal/High F9, speed Ctrl+U) apply via `xdotool` **without writing INI**; **Save this game** writes and toasts. Resolution still needs a full Eden restart after Save. Do **not** change `fullscreen_mode`, Azahar `layout_option`, Cemu `fullscreen`/`open_pad`, pad GUIDs, or Engage’s 4GB `memory_layout_mode`. Source `decky/EmuQuick/`.
 
 **Manual only** (detect + print exact commands via `record_manual`):
 
@@ -66,6 +67,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - Cursor `agent login` if the worker CLI is signed out (do **not** put API keys in the repo)
 - Switch 2 controller pairing (`python -m ngc pair` / Decky plugin; hold Sync). Decky plugin copy into `~/homebrew/plugins` needs sudo when that dir is root-owned.
 - Emu Pads Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-emu-pads-decky.sh`)
+- Emu Quick Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-emu-quick-decky.sh`)
 - Game Mode `sunshine-ds-kms` setcap sudoers (`scripts/ensure-sunshine-ds-kms-setcap.sh`): `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` must sort **after** `wheel` or NOPASSWD is ignored. SteamOS updates wipe it. Do **not** `setcap` desktop `sunshine-ds`.
 
 **Light checks** (no reinstall nag):
@@ -75,7 +77,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 ## Script conventions
 
 - Small focused scripts; orchestrators collect `MANUAL_ACTIONS_FILE` and print a summary
-- Decky plugins: `.cursor/rules/decky-plugins.mdc` — PluginLoader is root, `runuser -u deck`, never `sudo systemctl --user`, source in `decky/<Name>/`, install via `ensure-*-decky.sh`
+- Decky plugins: `.cursor/rules/decky-plugins.mdc` — PluginLoader is root, `runuser -u deck`, never `sudo systemctl --user`, source in `decky/<Name>/`, install via `ensure-*-decky.sh`. Call playbook scripts instead of duplicating emulator INI/XML edits in `main.py`.
 - Exit `0` OK, `2` for “needs manual / warn”, other non-zero for hard failure
 - NIC, Headscale URL, hostname, Flatpak IDs come from `.env` — no personal URLs or hostnames as code defaults
 - `TAILSCALE_LOGIN_SERVER` must be set in `.env` (no hardcoded Headscale URL in repo)

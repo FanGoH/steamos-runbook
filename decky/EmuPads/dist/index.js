@@ -147,7 +147,7 @@ function Content() {
     }
   };
 
-  const apply = async (emu) => {
+  const apply = async (emu, restart) => {
     if (busy) return;
     const muxUp = Boolean(status?.mux?.running);
     if (!selected.length && !muxUp) {
@@ -165,13 +165,18 @@ function Content() {
       orderedPads.length > 0 && orderedPads.every((p) => included[p.js] !== false);
     const pads = allOn ? "" : selected.map((p) => p.js).join(",");
     try {
-      const result = await applyBinds(emu, pads, mode, cemuP1);
+      const result = await applyBinds(emu, pads, mode, cemuP1, Boolean(restart));
       const body = (result?.messages || [result?.message || ""])
         .filter(Boolean)
         .join(" ")
         .slice(0, 220);
       toaster.toast({
-        title: result?.ok === false ? "Bind failed" : "Applied",
+        title:
+          result?.ok === false
+            ? "Bind failed"
+            : restart
+            ? "Applied and restarted"
+            : "Applied",
         body: body || `${emu}: ${mode} ${selected.map((p) => p.name).join(" → ")}`,
         duration: result?.ok === false ? 7000 : 5000,
       });
@@ -201,9 +206,8 @@ function Content() {
               SP_JSX.jsx("div", { children: `Player 2: ${playerLine(players, 1)}` }),
               emu.running
                 ? SP_JSX.jsx("div", {
-                    children: /EmuPads/.test(playerLine(players, 0))
-                      ? "Running — routing is live (no restart)."
-                      : "Running — restart after the first sink bind.",
+                    children:
+                      "Running — Apply keeps routing live; Apply and restart reloads binds.",
                   })
                 : null,
               extra
@@ -237,6 +241,14 @@ function Content() {
             disabled: busy,
             onClick: () => apply(key),
             children: `Apply to ${title}`,
+          }),
+        }),
+        SP_JSX.jsx(DFL.PanelSectionRow, {
+          children: SP_JSX.jsx(DFL.ButtonItem, {
+            layout: "below",
+            disabled: busy,
+            onClick: () => apply(key, true),
+            children: `Apply and restart ${title}`,
           }),
         }),
       ],
@@ -345,6 +357,14 @@ function Content() {
               disabled: busy,
               onClick: () => apply("all"),
               children: "Apply to Cemu + Azahar + Eden",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy,
+              onClick: () => apply("all", true),
+              children: "Apply and restart emulation",
             }),
           }),
         ],

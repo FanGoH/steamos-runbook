@@ -593,7 +593,7 @@ try:
         sock.sendall(bytes(hdr) + mask + masked)
 
     def need(n):
-        nonlocal leftover
+        global leftover
         while len(leftover) < n:
             chunk = sock.recv(max(4096, n - len(leftover)))
             if not chunk:

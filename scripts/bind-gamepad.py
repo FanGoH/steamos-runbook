@@ -983,6 +983,241 @@ def eden_running() -> bool:
     return any(is_eden_comm(line) for line in out.splitlines())
 
 
+# Do not match Sunshine / Steam / gamescope. Restart is Cemu / Azahar / Eden only.
+_RESTART_PROTECTED = {
+    "steam",
+    "steamwebhelper",
+    "gamescope",
+    "gamescopereaper",
+    "reaper",
+    "pluginloader",
+    "sunshine",
+    "sunshine-ds",
+    "sunshine-ds-kms",
+}
+
+
+def comm_matches_emu(comm: str, emu: str, cmdline: list[str] | None = None) -> bool:
+    name = comm.strip().lower()
+    if name in _RESTART_PROTECTED or name.startswith("sunshine"):
+        return False
+    if emu == "cemu":
+        return is_cemu_comm(comm)
+    if emu == "azahar":
+        return is_azahar_comm(comm)
+    if emu == "eden":
+        if is_eden_comm(comm):
+            return True
+        joined = " ".join(cmdline or []).lower()
+        return "eden.appimage" in joined or "/bin/eden" in joined
+    return False
+
+
+def steam_appid_from_environ(raw: bytes) -> str:
+    for part in raw.split(b"\0"):
+        if not part.startswith(b"SteamAppId="):
+            continue
+        appid = part.split(b"=", 1)[1].decode("utf-8", "replace").strip()
+        if appid and appid != "0":
+            return appid
+    return ""
+
+
+def _proc_comm(pid_dir: Path) -> str:
+    try:
+        return (pid_dir / "comm").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _proc_cmdline(pid_dir: Path) -> list[str]:
+    try:
+        raw = (pid_dir / "cmdline").read_bytes()
+    except OSError:
+        return []
+    return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+
+
+def _proc_ppid(pid_dir: Path) -> int | None:
+    try:
+        text = (pid_dir / "status").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("PPid:"):
+            try:
+                return int(line.split(":", 1)[1].strip())
+            except ValueError:
+                return None
+    return None
+
+
+def list_emu_procs(emu: str, proc_root: Path | None = None) -> list[dict]:
+    root = proc_root or Path("/proc")
+    found: list[dict] = []
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return found
+    for pid_dir in entries:
+        if not pid_dir.name.isdigit():
+            continue
+        comm = _proc_comm(pid_dir)
+        cmdline = _proc_cmdline(pid_dir)
+        if not comm_matches_emu(comm, emu, cmdline):
+            continue
+        appid = ""
+        try:
+            appid = steam_appid_from_environ((pid_dir / "environ").read_bytes())
+        except OSError:
+            appid = ""
+        cwd = ""
+        try:
+            cwd = os.readlink(pid_dir / "cwd")
+        except OSError:
+            cwd = ""
+        found.append(
+            {
+                "pid": int(pid_dir.name),
+                "comm": comm,
+                "cmdline": cmdline,
+                "appid": appid,
+                "cwd": cwd,
+            }
+        )
+    return found
+
+
+def _bwrap_ancestors(pid: int, proc_root: Path) -> list[int]:
+    extra: list[int] = []
+    seen: set[int] = {pid}
+    current = pid
+    for _ in range(8):
+        pid_dir = proc_root / str(current)
+        ppid = _proc_ppid(pid_dir)
+        if ppid is None or ppid <= 1 or ppid in seen:
+            break
+        pcomm = _proc_comm(proc_root / str(ppid)).lower()
+        if pcomm != "bwrap":
+            break
+        extra.append(ppid)
+        seen.add(ppid)
+        current = ppid
+    return extra
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def stop_emu_pids(pids: list[int], *, dry_run: bool = False) -> list[str]:
+    messages: list[str] = []
+    unique: list[int] = []
+    for pid in pids:
+        if pid not in unique:
+            unique.append(pid)
+    if not unique:
+        return messages
+    messages.append("Stopping " + ", ".join(str(p) for p in unique))
+    if dry_run:
+        return messages
+    for pid in unique:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    deadline = time.monotonic() + 4.0
+    while time.monotonic() < deadline:
+        if not any(_pid_alive(pid) for pid in unique):
+            return messages
+        time.sleep(0.15)
+    leftover = [pid for pid in unique if _pid_alive(pid)]
+    if leftover:
+        messages.append("Force-killing " + ", ".join(str(p) for p in leftover))
+        for pid in leftover:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+    return messages
+
+
+def relaunch_emu_plans(plans: list[dict], *, dry_run: bool = False) -> list[str]:
+    messages: list[str] = []
+    seen_app: set[str] = set()
+    seen_cmd: set[tuple[str, ...]] = set()
+    for plan in plans:
+        appid = str(plan.get("appid") or "").strip()
+        if appid:
+            if appid in seen_app:
+                continue
+            seen_app.add(appid)
+            messages.append(f"Relaunch Steam app {appid}")
+            if not dry_run:
+                subprocess.Popen(
+                    ["steam", f"steam://rungameid/{appid}"],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            continue
+        cmdline = [str(part) for part in (plan.get("cmdline") or []) if str(part)]
+        key = tuple(cmdline)
+        if len(cmdline) < 1 or key in seen_cmd:
+            continue
+        seen_cmd.add(key)
+        messages.append("Relaunch " + " ".join(cmdline)[:160])
+        if not dry_run:
+            cwd = plan.get("cwd") or None
+            subprocess.Popen(
+                cmdline,
+                cwd=cwd if cwd and os.path.isdir(cwd) else None,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    return messages
+
+
+def restart_emulators(
+    targets: tuple[str, ...] | list[str],
+    *,
+    proc_root: Path | None = None,
+    dry_run: bool = False,
+) -> tuple[list[str], bool]:
+    """SIGTERM matching emulator processes, then Steam-relaunch or re-exec.
+
+    Does not restart the mux. Does not match Sunshine / Steam / gamescope.
+    """
+    root = proc_root or Path("/proc")
+    messages: list[str] = []
+    plans: list[dict] = []
+    kill: list[int] = []
+    live = False
+    for emu in targets:
+        procs = list_emu_procs(emu, root)
+        if not procs:
+            continue
+        live = True
+        for proc in procs:
+            plans.append(proc)
+            kill.append(int(proc["pid"]))
+            if not dry_run:
+                kill.extend(_bwrap_ancestors(int(proc["pid"]), root))
+    if not live:
+        messages.append("No running emulator to restart.")
+        return messages, True
+    messages.extend(stop_emu_pids(kill, dry_run=dry_run))
+    if not dry_run:
+        time.sleep(0.4)
+    messages.extend(relaunch_emu_plans(plans, dry_run=dry_run))
+    return messages, True
+
+
 def azahar_guids(text: str) -> list[str]:
     return re.findall(r"guid:([0-9a-f]{32})", text)
 
@@ -1618,6 +1853,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
         messages.extend(msgs)
         rc = max(rc, code)
         changed_any = changed_any or changed
+    if getattr(args, "restart", False):
+        r_msgs, _ok = restart_emulators(targets)
+        messages.extend(r_msgs)
     return _emit_apply(
         rc=rc,
         emu=emu,
@@ -1627,6 +1865,19 @@ def cmd_apply(args: argparse.Namespace) -> int:
         mode=mode,
         cemu_p1=cemu_p1,
     )
+
+
+def cmd_restart(args: argparse.Namespace) -> int:
+    emu = (getattr(args, "emu", None) or "all").strip().lower()
+    if emu not in ("all", *EMUS):
+        json.dump({"ok": False, "message": f"Unknown emu {emu!r}."}, sys.stdout)
+        sys.stdout.write("\n")
+        return 1
+    targets = EMUS if emu == "all" else (emu,)
+    messages, ok = restart_emulators(targets, dry_run=bool(getattr(args, "dry_run", False)))
+    json.dump({"ok": ok, "emu": emu, "messages": messages}, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if ok else 1
 
 
 def cmd_eden(args: argparse.Namespace) -> int:
@@ -2151,6 +2402,27 @@ def _self_test() -> int:
         assert tile_cemu_p1(streaming=False) == "pro"
         assert tile_cemu_p1(ds_env="1") == "gamepad"
         assert tile_cemu_p1(ds_env="") == "pro"
+        assert comm_matches_emu("Cemu_relwithdeb", "cemu")
+        assert comm_matches_emu("azahar", "azahar")
+        assert comm_matches_emu("eden.appimage", "eden")
+        assert comm_matches_emu("AppRun", "eden", ["~/AppImages/eden.appimage", "-f", "-g", "rom"])
+        assert not comm_matches_emu("sunshine-ds", "eden")
+        assert not comm_matches_emu("sunshine-ds-kms", "cemu")
+        assert not comm_matches_emu("steam", "eden")
+        assert steam_appid_from_environ(b"SteamAppId=12345\0HOME=/home/deck\0") == "12345"
+        assert steam_appid_from_environ(b"SteamAppId=0\0") == ""
+        fake_proc = Path(tmp) / "proc"
+        eden_dir = fake_proc / "4242"
+        eden_dir.mkdir(parents=True)
+        (eden_dir / "comm").write_text("eden\n")
+        (eden_dir / "cmdline").write_bytes(b"eden.appimage\0-f\0-g\0/tmp/game.xci\0")
+        (eden_dir / "environ").write_bytes(b"SteamAppId=7788\0")
+        (eden_dir / "status").write_text("Name:\teden\nPPid:\t1\n")
+        listed = list_emu_procs("eden", fake_proc)
+        assert listed and listed[0]["appid"] == "7788"
+        dry_msgs, dry_ok = restart_emulators(("eden",), proc_root=fake_proc, dry_run=True)
+        assert dry_ok
+        assert any("7788" in line for line in dry_msgs), dry_msgs
         from pad_profile import main as pad_profile_main
 
         assert pad_profile_main(["self-test"]) == 0
@@ -2184,12 +2456,22 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--ini", default=None, help="Azahar or Eden qt-config.ini when --emu is one of those")
     p_apply.add_argument("--force", action="store_true", help="Do not warn if the emu is running")
     p_apply.add_argument(
+        "--restart",
+        action="store_true",
+        help="After binding, SIGTERM the running emulator and relaunch it",
+    )
+    p_apply.add_argument(
         "--cemu-p1",
         dest="cemu_p1",
         default="",
         help="Cemu player 1 type: gamepad (Wii U GamePad) or pro (Wii U Pro Controller)",
     )
     p_apply.set_defaults(func=cmd_apply)
+
+    p_restart = sub.add_parser("restart", help="Restart running Cemu / Azahar / Eden (not the mux)")
+    p_restart.add_argument("--emu", default="all", help="cemu, azahar, eden, or all")
+    p_restart.add_argument("--dry-run", dest="dry_run", action="store_true")
+    p_restart.set_defaults(func=cmd_restart)
 
     p_mode = sub.add_parser("set-mode", help="Write mux shared/multi without rebinding emulators")
     p_mode.add_argument("--mode", required=True, help="shared or multi")

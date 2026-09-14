@@ -1,6 +1,6 @@
 # Emu Pads (Decky)
 
-Always-on mux: virtual **EmuPads P1** (`1209:e301`) and **P2** (`1209:e302`). Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Cemu / Azahar / Eden bind the sinks. Apply only changes routing.
+Always-on mux: virtual **EmuPads P1** (`1209:e301`) and **P2** (`1209:e302`). Every host pad is a source (Sunshine Thor/Odin, phone, tablet, local Xbox, Steam virtual). Cemu / Azahar / Eden bind the sinks. **Apply** changes routing; **Apply and restart** writes binds then SIGTERMs the running emulator and relaunches it (Steam `rungameid` when `SteamAppId` is set). Does not restart the mux or Sunshine.
 
 Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. PluginLoader is root — `main.py` calls `scripts/bind-gamepad.py` as user `deck` (`runuser` + session bus). Never `sudo systemctl --user`. `~/homebrew/plugins` is often `root:root`; copy needs sudo, then reload Decky.
 

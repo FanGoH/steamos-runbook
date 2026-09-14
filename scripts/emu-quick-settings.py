@@ -3,6 +3,9 @@
 
 Decky Emu Quick calls this as user deck. Do not touch pad binds, dual-screen
 layout, fullscreen_mode, or Engage's 4GB memory pin.
+
+Eden docked/handheld, scaling filter, GPU Normal/High, and speed limit can
+apply live via hotkeys while Eden is running. Resolution has no hotkey.
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -222,6 +227,7 @@ EDEN_SETTINGS = [
         "default": "true",
         "options": _enum([("false", "Handheld"), ("true", "Docked")]),
         "normalize": "bool",
+        "hotswap": "live",
     },
     {
         "key": "resolution_setup",
@@ -242,6 +248,7 @@ EDEN_SETTINGS = [
                 ("8", "6x"),
             ]
         ),
+        "hotswap": "restart",
     },
     {
         "key": "gpu_accuracy",
@@ -250,6 +257,7 @@ EDEN_SETTINGS = [
         "kind": "enum",
         "default": "0",
         "options": _enum([("0", "Normal"), ("1", "High"), ("2", "Extreme")]),
+        "hotswap": "live",
     },
     {
         "key": "use_vsync",
@@ -283,6 +291,7 @@ EDEN_SETTINGS = [
                 ("6", "FSR 2"),
             ]
         ),
+        "hotswap": "live",
     },
     {
         "key": "anti_aliasing",
@@ -316,6 +325,7 @@ EDEN_SETTINGS = [
         "kind": "bool",
         "default": "true",
         "normalize": "bool",
+        "hotswap": "live",
     },
     {
         "key": "speed_limit",
@@ -780,6 +790,7 @@ def pack_setting(spec: dict, value: str, *, use_global: bool) -> dict:
         "display": option_label(spec, value),
         "use_global": use_global,
         "default": spec["default"],
+        "hotswap": spec.get("hotswap") or "restart",
     }
     if spec.get("options"):
         out["options"] = spec["options"]
@@ -828,6 +839,339 @@ def read_cemu(home: Path) -> list[dict]:
             value = _as_bool_token(value)
         packed.append(pack_setting(spec, value, use_global=True))
     return packed
+
+
+# --- Eden live hotkeys (in-process Settings::values) -----------------------
+# Disk writes do not update a running Eden. F10/F8/F9/Ctrl+U mutate memory.
+# There is no resolution hotkey in Eden 0.2.1; F6 Restart Emulation also
+# reuses in-memory Settings, so resolution still needs a process restart.
+
+EDEN_HOTKEY_DEFAULTS = {
+    "docked": "F10",
+    "gpu": "F9",
+    "filter": "F8",
+    "speed": "Ctrl+U",
+}
+EDEN_HOTKEY_NEEDLES = {
+    "docked": ("Change%20Docked%20Mode", "Change Docked Mode"),
+    "gpu": ("Change%20GPU%20Mode", "Change GPU Mode"),
+    "filter": ("Change%20Adapting%20Filter", "Change Adapting Filter"),
+    "speed": ("Toggle%20Framerate%20Limit", "Toggle Framerate Limit"),
+}
+_QT_MODS = {
+    "ctrl": "ctrl",
+    "control": "ctrl",
+    "shift": "shift",
+    "alt": "alt",
+    "meta": "super",
+    "super": "super",
+}
+_QT_KEYS = {
+    "esc": "Escape",
+    "escape": "Escape",
+    "return": "Return",
+    "enter": "Return",
+    "space": "space",
+    "tab": "Tab",
+    "backspace": "BackSpace",
+    "plus": "plus",
+    "minus": "minus",
+    "=": "equal",
+    "-": "minus",
+    ",": "comma",
+    ".": "period",
+}
+
+
+def qt_keyseq_to_xdotool(seq: str) -> str:
+    raw = (seq or "").strip().strip('"').replace(" ", "")
+    if not raw:
+        return ""
+    mods: list[str] = []
+    key = ""
+    for part in raw.split("+"):
+        if not part:
+            continue
+        mapped = _QT_MODS.get(part.lower())
+        if mapped:
+            mods.append(mapped)
+            continue
+        key = _QT_KEYS.get(part, _QT_KEYS.get(part.lower(), part if len(part) > 1 else part.lower()))
+    if not key:
+        return ""
+    return "+".join([*mods, key])
+
+
+def eden_keyseq_from_ini(text: str, needles: tuple[str, ...], default: str) -> str:
+    for needle in needles:
+        token = f"{needle}\\KeySeq="
+        for line in text.splitlines():
+            stripped = line.strip()
+            if token not in stripped:
+                continue
+            if "Controller_KeySeq" in stripped or "\\KeySeq\\default=" in stripped:
+                continue
+            _head, _sep, rest = stripped.partition(token)
+            if rest.startswith("\\"):
+                continue
+            value = rest.strip().strip('"')
+            if value:
+                return value
+    return default
+
+
+def load_eden_hotkeys(ini_text: str) -> dict[str, str]:
+    return {
+        name: qt_keyseq_to_xdotool(
+            eden_keyseq_from_ini(ini_text, needles, EDEN_HOTKEY_DEFAULTS[name])
+        )
+        for name, needles in EDEN_HOTKEY_NEEDLES.items()
+    }
+
+
+def eden_hotswap_keys(
+    key: str,
+    old: str,
+    new: str,
+    hotkeys: dict[str, str] | None = None,
+    *,
+    filter_count: int | None = None,
+) -> list[str]:
+    """Return xdotool key names that move Eden's in-memory setting from old to new."""
+    keys = hotkeys or {name: qt_keyseq_to_xdotool(seq) for name, seq in EDEN_HOTKEY_DEFAULTS.items()}
+    if str(old) == str(new):
+        return []
+    if key == "use_docked_mode":
+        seq = keys.get("docked") or ""
+        return [seq] if seq else []
+    if key == "use_speed_limit":
+        seq = keys.get("speed") or ""
+        return [seq] if seq else []
+    if key == "gpu_accuracy":
+        if {str(old), str(new)} <= {"0", "1"}:
+            seq = keys.get("gpu") or ""
+            return [seq] if seq else []
+        return []
+    if key == "scaling_filter":
+        spec = setting_by_key("eden", "scaling_filter")
+        options = spec.get("options") or []
+        n = filter_count if filter_count is not None else max(len(options), 1)
+        try:
+            src = int(old)
+            dst = int(new)
+        except (TypeError, ValueError):
+            return []
+        steps = (dst - src) % n
+        seq = keys.get("filter") or ""
+        if not seq or steps == 0:
+            return []
+        return [seq] * steps
+    return []
+
+
+def current_setting_value(emu: str, home: Path, title_id: str, key: str) -> str:
+    if emu == "eden":
+        packed = read_eden(home, title_id)
+    elif emu == "azahar":
+        packed = read_azahar(home, title_id)
+    else:
+        packed = read_cemu(home)
+    for item in packed:
+        if item["key"] == key:
+            return str(item["value"])
+    return ""
+
+
+def eden_running_title(home: Path, proc_root: Path | None) -> str:
+    return (detect_title("eden", home, proc_root).get("title_id") or "").upper()
+
+
+def eden_game_overrides_key(home: Path, title_id: str, key: str) -> bool:
+    if not title_id:
+        return False
+    custom = _read(custom_path("eden", home, title_id))
+    if not custom:
+        return False
+    entry = ini_get(custom, key)
+    return not ini_uses_global(entry, per_game=True)
+
+
+def _xdotool_env(display: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env["DISPLAY"] = display
+    authority = Path.home() / ".Xauthority"
+    if authority.is_file():
+        env.setdefault("XAUTHORITY", str(authority))
+    return env
+
+
+def _xdotool_lines(xdotool: str, display: str, extra: list[str]) -> list[str]:
+    try:
+        proc = subprocess.run(
+            [xdotool, *extra],
+            env=_xdotool_env(display),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
+def find_eden_x11_window() -> tuple[str, str] | None:
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return None
+    displays: list[str] = []
+    for display in (":1", ":0", os.environ.get("DISPLAY") or ""):
+        if display and display not in displays:
+            displays.append(display)
+    for display in displays:
+        ids = _xdotool_lines(xdotool, display, ["search", "--class", "eden"])
+        named: list[str] = []
+        for wid in ids:
+            names = _xdotool_lines(xdotool, display, ["getwindowname", wid])
+            title = names[0] if names else ""
+            if title.startswith("Eden"):
+                named.append(wid)
+        pick = named or ids
+        if pick:
+            return display, pick[0]
+        named_ids = _xdotool_lines(xdotool, display, ["search", "--name", "Eden |"])
+        if named_ids:
+            return display, named_ids[0]
+    return None
+
+
+def send_eden_hotkeys(keys: list[str]) -> dict:
+    if not keys:
+        return {"sent": False, "reason": "no_keys"}
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return {"sent": False, "reason": "no_xdotool"}
+    found = find_eden_x11_window()
+    if found is None:
+        return {"sent": False, "reason": "no_window"}
+    display, wid = found
+    env = _xdotool_env(display)
+    try:
+        # gamescope drops `xdotool key --window`; focus first like eden-from-retrodeck.sh.
+        subprocess.run(
+            [xdotool, "windowfocus", wid],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "windowactivate", wid],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        proc = subprocess.run(
+            [xdotool, "key", "--delay", "80", *keys],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"sent": False, "reason": "xdotool_failed", "error": str(exc)[:200]}
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "xdotool failed").strip()[:200]
+        return {"sent": False, "reason": "xdotool_failed", "error": err}
+    return {"sent": True, "display": display, "window": wid, "keys": keys}
+
+
+def apply_eden_hotswap(
+    home: Path,
+    scope: str,
+    title_id: str,
+    key: str,
+    old: str,
+    new: str,
+    proc_root: Path | None = None,
+) -> dict:
+    spec = setting_by_key("eden", key)
+    hotkeys = load_eden_hotkeys(_read(eden_ini(home)))
+    filter_count = len(spec.get("options") or []) if key == "scaling_filter" else None
+    keys = eden_hotswap_keys(key, old, new, hotkeys, filter_count=filter_count)
+    result: dict = {
+        "hotswap": "none",
+        "hotswap_keys": keys,
+        "hotswap_reason": "unchanged" if old == new else "no_hotkey",
+        "sent": False,
+    }
+    if not keys:
+        if old == new:
+            return result
+        if key == "resolution_setup":
+            result["hotswap_reason"] = "no_hotkey"
+        elif key == "gpu_accuracy" and "2" in {str(old), str(new)}:
+            result["hotswap_reason"] = "gpu_extreme"
+        return result
+    running = emu_running("eden", proc_root)
+    if not running:
+        result["hotswap_reason"] = "not_running"
+        return result
+    running_tid = eden_running_title(home, proc_root)
+    want_tid = (title_id or "").upper()
+    if scope == "game":
+        if not want_tid or want_tid != running_tid:
+            result["hotswap_reason"] = "other_game"
+            return result
+    elif running_tid and eden_game_overrides_key(home, running_tid, key):
+        result["hotswap_reason"] = "game_override"
+        return result
+    result["hotswap_reason"] = "live"
+    if proc_root is not None:
+        result["hotswap"] = "skipped"
+        result["hotswap_reason"] = "test_proc"
+        return result
+    sent = send_eden_hotkeys(keys)
+    result.update(sent)
+    if sent.get("sent"):
+        result["hotswap"] = "live"
+        result["hotswap_reason"] = "live"
+    else:
+        result["hotswap"] = "skipped"
+        result["hotswap_reason"] = sent.get("reason") or "send_failed"
+    return result
+
+
+def hotswap_message(key: str, info: dict) -> str | None:
+    reason = info.get("hotswap_reason") or ""
+    keys = info.get("hotswap_keys") or []
+    shown = "+".join(keys[:1]) if keys else ""
+    if info.get("hotswap") == "live":
+        return f"Applied live in Eden ({shown})"
+    if reason == "not_running":
+        return "Applies on the next Eden launch."
+    if reason == "no_hotkey" and key == "resolution_setup":
+        return "Close and reopen Eden to apply resolution (no live hotkey in this build)."
+    if reason == "gpu_extreme":
+        return "GPU Extreme needs an Eden restart (F9 only toggles Normal/High)."
+    if reason == "no_hotkey":
+        return "Restart Eden to apply."
+    if reason == "other_game":
+        return "Saved for that game. Not applied live (a different title is running)."
+    if reason == "game_override":
+        return "Saved global. Running game has its own override — not applied live."
+    if reason == "no_xdotool":
+        return "Saved. Install xdotool for live apply, or press the Eden hotkey."
+    if reason == "no_window":
+        return f"Saved. Could not find the Eden window for {shown or 'the hotkey'}."
+    if reason == "xdotool_failed":
+        err = info.get("error") or "xdotool failed"
+        return f"Saved. Live hotkey failed ({err})."
+    if reason == "test_proc":
+        return "Hotkey planned (test proc; not sent)."
+    if reason == "unchanged":
+        return None
+    return None
 
 
 def set_eden(home: Path, scope: str, title_id: str, key: str, value: str) -> list[str]:
@@ -1001,12 +1345,20 @@ def emu_payload(
     if emu == "eden":
         settings = read_eden(home, title_id)
         per_game = True
+        note = (
+            "Console, scaling filter, GPU Normal/High, and speed limit apply live "
+            "while Eden is running. Resolution needs a full Eden restart."
+            if running
+            else "Edits apply on the next Eden launch."
+        )
     elif emu == "azahar":
         settings = read_azahar(home, title_id)
         per_game = True
+        note = "Restart Azahar to apply. Dual-screen layout stays untouched."
     else:
         settings = read_cemu(home)
         per_game = False
+        note = "Restart Cemu to apply. Fullscreen and GamePad geometry stay untouched."
     return {
         "running": running,
         "title_id": title_id,
@@ -1016,7 +1368,7 @@ def emu_payload(
         "scope_default": "game" if running and title_id and per_game else "global",
         "games": known_games(emu, home),
         "settings": settings,
-        "note": "Restart the game to apply. Dual-screen layout and pad binds stay untouched.",
+        "note": note,
     }
 
 
@@ -1040,7 +1392,7 @@ def status_payload(
     return {
         "ok": True,
         "active": active,
-        "apply": "Restart the game to apply.",
+        "apply": emus[active]["note"],
         "emus": emus,
     }
 
@@ -1052,20 +1404,43 @@ def do_set(
     key: str,
     value: str,
     home: Path,
+    proc_root: Path | None = None,
 ) -> dict:
     emu = emu.lower()
     scope = (scope or "global").lower()
     if scope not in {"global", "game"}:
         raise ValueError(f"Unknown scope {scope}")
+    hotswap: dict = {"hotswap": "none", "hotswap_keys": [], "hotswap_reason": "not_eden"}
     if emu == "cemu":
         messages = set_cemu(home, key, value)
+        hotswap["hotswap_reason"] = "restart"
     elif emu == "eden":
+        read_title = title_id if scope == "game" else ""
+        old = current_setting_value("eden", home, read_title, key)
+        spec = setting_by_key("eden", key)
+        new = normalize_value(spec, value)
         messages = set_eden(home, scope, title_id, key, value)
+        hotswap = apply_eden_hotswap(
+            home, scope, title_id, key, old, new, proc_root=proc_root
+        )
+        extra = hotswap_message(key, hotswap)
+        if extra:
+            messages.append(extra)
     elif emu == "azahar":
         messages = set_azahar(home, scope, title_id, key, value)
+        hotswap["hotswap_reason"] = "restart"
+        messages.append("Restart Azahar to apply.")
     else:
         raise ValueError(f"Unknown emu {emu}")
-    return {"ok": True, "messages": messages, "message": " ".join(messages)}
+    out = {"ok": True, "messages": messages, "message": " ".join(messages)}
+    out.update(
+        {
+            "hotswap": hotswap.get("hotswap") or "none",
+            "hotswap_keys": hotswap.get("hotswap_keys") or [],
+            "hotswap_reason": hotswap.get("hotswap_reason") or "",
+        }
+    )
+    return out
 
 
 def do_reset(emu: str, scope: str, title_id: str, home: Path) -> dict:
@@ -1121,7 +1496,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         if args.cmd == "set":
-            data = do_set(args.emu, args.scope, args.title, args.key, args.value, home)
+            data = do_set(
+                args.emu,
+                args.scope,
+                args.title,
+                args.key,
+                args.value,
+                home,
+                proc_root=proc,
+            )
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True
             return _print(data)

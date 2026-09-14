@@ -10,7 +10,17 @@ Install: `scripts/ensure-emu-quick-decky.sh`. PluginLoader is root — `main.py`
 - **Azahar:** internal resolution, VSync, frame limit, texture filter, renderer, async shaders, accurate mul, New 3DS. Per-game `custom/<titleid>.ini`. Does **not** touch `layout_option` (dual-screen Separate Windows).
 - **Cemu:** VSync, upscale filter, FPS overlay, async compile in standalone + RetroDECK `settings.xml`. Does **not** touch `fullscreen` / GamePad geometry.
 
-Changes are on disk. **Restart the game** to apply. Overlay / QAM can stay open; do not SIGSTOP the emulator.
+INI/XML writes always happen. While Eden is running, Emu Quick also sends the matching Eden hotkey (focus the window, then `xdotool key` without `--window` — gamescope drops `--window`):
+
+| Setting | Live | How |
+|---|---|---|
+| Console (docked / handheld) | yes | F10 toggle (`Change Docked Mode`) |
+| Scaling filter | yes | F8 cycles from the current value |
+| GPU accuracy Normal ↔ High | yes | F9. **Extreme still needs an Eden restart** |
+| Limit speed | yes | Ctrl+U toggle |
+| Resolution scale | no | this Eden build has no resolution hotkey; **close and reopen Eden** (F6 restart-emulation keeps in-memory Settings) |
+
+Hotkeys are read from `qt-config.ini` so a rebound F10 still works. Live apply only if the running title matches (or global while that game does not override the key). Overlay / QAM can stay open; do not SIGSTOP the emulator. Needs `xdotool`.
 
 ## CLI
 

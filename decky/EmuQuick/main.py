@@ -176,7 +176,7 @@ class Plugin:
         if title:
             cmd.extend(["--title", title])
         try:
-            proc = _run_as_deck(cmd, timeout=20)
+            proc = _run_as_deck(cmd, timeout=25)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "emu-quick-settings set timed out"}
         data = _json_from(proc)

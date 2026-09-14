@@ -241,6 +241,122 @@ def test_status_title_override() -> None:
         assert res["use_global"] is False
 
 
+def test_qt_keyseq_and_hotswap_keys() -> None:
+    assert mod.qt_keyseq_to_xdotool("Ctrl+U") == "ctrl+u"
+    assert mod.qt_keyseq_to_xdotool("F10") == "F10"
+    assert mod.qt_keyseq_to_xdotool('"Ctrl+,"') == "ctrl+comma"
+    assert mod.eden_hotswap_keys("use_docked_mode", "false", "true") == ["F10"]
+    assert mod.eden_hotswap_keys("use_docked_mode", "true", "true") == []
+    assert mod.eden_hotswap_keys("scaling_filter", "0", "2") == ["F8", "F8"]
+    assert mod.eden_hotswap_keys("scaling_filter", "6", "0") == ["F8"]
+    assert mod.eden_hotswap_keys("gpu_accuracy", "0", "1") == ["F9"]
+    assert mod.eden_hotswap_keys("gpu_accuracy", "0", "2") == []
+    assert mod.eden_hotswap_keys("use_speed_limit", "true", "false") == ["ctrl+u"]
+    assert mod.eden_hotswap_keys("resolution_setup", "2", "4") == []
+    rebound = {
+        name: mod.qt_keyseq_to_xdotool(seq)
+        for name, seq in mod.EDEN_HOTKEY_DEFAULTS.items()
+    }
+    rebound["docked"] = "F7"
+    assert mod.eden_hotswap_keys("use_docked_mode", "false", "true", rebound) == ["F7"]
+
+
+def test_parse_shortcut_from_ini() -> None:
+    text = (
+        r"Shortcuts\Main%20Window\Change%20Docked%20Mode\KeySeq\default=false"
+        "\n"
+        r"Shortcuts\Main%20Window\Change%20Docked%20Mode\KeySeq=F7"
+        "\n"
+        r"Shortcuts\Main%20Window\Change%20Adapting%20Filter\KeySeq=F8"
+        "\n"
+    )
+    keys = mod.load_eden_hotkeys(text)
+    assert keys["docked"] == "F7"
+    assert keys["filter"] == "F8"
+    assert keys["speed"] == "ctrl+u"
+
+
+def test_do_set_hotswap_skipped_with_proc() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        proc = home / "proc"
+        rom = str(home / "games/Fire Emblem Engage[0100A6301214E000].xci")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", rom])
+        result = mod.do_set(
+            "eden", "global", "", "use_docked_mode", "false", home, proc_root=proc
+        )
+        assert result["ok"] is True
+        assert result["hotswap_keys"] == ["F10"]
+        assert result["hotswap"] == "skipped"
+        assert result["hotswap_reason"] == "test_proc"
+        text = mod.eden_ini(home).read_text()
+        assert "use_docked_mode=false" in text
+        res = mod.do_set(
+            "eden", "global", "", "resolution_setup", "2", home, proc_root=proc
+        )
+        assert res["hotswap_keys"] == []
+        assert res["hotswap_reason"] == "no_hotkey"
+        assert "Close and reopen Eden" in res["message"]
+
+
+def test_hotswap_skips_other_game_and_override() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        _write(
+            home / ".config/eden/custom/0100A6301214E000.ini",
+            "[System]\nuse_docked_mode\\use_global=false\nuse_docked_mode=true\n",
+        )
+        proc = home / "proc"
+        rom = str(home / "games/Fire Emblem Engage[0100A6301214E000].xci")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", rom])
+        global_set = mod.do_set(
+            "eden", "global", "", "use_docked_mode", "false", home, proc_root=proc
+        )
+        assert global_set["hotswap_reason"] == "game_override"
+        other = mod.do_set(
+            "eden",
+            "game",
+            "0100F2C0115B6000",
+            "use_docked_mode",
+            "true",
+            home,
+            proc_root=proc,
+        )
+        assert other["hotswap_reason"] == "other_game"
+        same = mod.do_set(
+            "eden",
+            "game",
+            "0100A6301214E000",
+            "use_docked_mode",
+            "false",
+            home,
+            proc_root=proc,
+        )
+        assert same["hotswap_reason"] == "test_proc"
+        assert same["hotswap_keys"] == ["F10"]
+
+
+def test_status_marks_live_settings() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        payload = mod.status_payload(home)
+        docked = next(
+            s
+            for s in payload["emus"]["eden"]["settings"]
+            if s["key"] == "use_docked_mode"
+        )
+        res = next(
+            s
+            for s in payload["emus"]["eden"]["settings"]
+            if s["key"] == "resolution_setup"
+        )
+        assert docked["hotswap"] == "live"
+        assert res["hotswap"] == "restart"
+
+
 if __name__ == "__main__":
     tests = [
         test_ini_set_preserves_other_keys,
@@ -255,6 +371,11 @@ if __name__ == "__main__":
         test_cli_status_json,
         test_docked_label_aliases,
         test_status_title_override,
+        test_qt_keyseq_and_hotswap_keys,
+        test_parse_shortcut_from_ini,
+        test_do_set_hotswap_skipped_with_proc,
+        test_hotswap_skips_other_game_and_override,
+        test_status_marks_live_settings,
     ]
     for fn in tests:
         fn()

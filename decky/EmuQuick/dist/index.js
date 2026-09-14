@@ -95,17 +95,29 @@ function Content() {
     effectiveTitle ||
     "No game selected";
 
-  const toastResult = (title, result) => {
-    const body = (result?.messages || [result?.message || ""])
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 220);
-    toaster.toast({
-      title: result?.ok === false ? "Save failed" : title,
-      body: body || "Restart the game to apply.",
-      duration: result?.ok === false ? 7000 : 4000,
-    });
-  };
+    const toastResult = (title, result) => {
+      const hotswap = result?.hotswap;
+      const reason = result?.hotswap_reason || "";
+      const body = (result?.messages || [result?.message || ""])
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 220);
+      let fallback = "Restart the emulator to apply.";
+      if (hotswap === "live") fallback = "Applied live in Eden.";
+      else if (reason === "no_hotkey")
+        fallback = "Saved. Close and reopen Eden to apply.";
+      else if (reason === "not_running") fallback = "Saved for the next launch.";
+      toaster.toast({
+        title:
+          result?.ok === false
+            ? "Save failed"
+            : hotswap === "live"
+              ? "Applied live"
+              : title,
+        body: body || fallback,
+        duration: result?.ok === false ? 7000 : 4000,
+      });
+    };
 
   const pickEmu = (key) => {
     emuTouched.current = true;
@@ -179,7 +191,10 @@ function Content() {
   };
 
   const settingRow = (setting) => {
-    const badge = canPerGame && setting.use_global === false ? " · this game" : "";
+    const extra = [];
+    if (canPerGame && setting.use_global === false) extra.push("this game");
+    if (setting.hotswap === "live") extra.push("live");
+    const badge = extra.length ? ` · ${extra.join(" · ")}` : "";
     if (setting.kind === "bool" && DFL.ToggleField) {
       return SP_JSX.jsx(
         DFL.PanelSectionRow,
@@ -238,9 +253,11 @@ function Content() {
               style: { opacity: 0.8, fontSize: "0.88em" },
               children:
                 error ||
-                (block.running
-                  ? `Running${block.title ? `: ${block.title}` : ""}. Restart the game to apply.`
-                  : "No game running. Edits apply on the next launch."),
+                (block.note
+                  ? block.note
+                  : block.running
+                    ? `Running${block.title ? `: ${block.title}` : ""}.`
+                    : "No game running. Edits apply on the next launch."),
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -361,7 +378,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.7, fontSize: "0.85em" },
               children:
-                "Leaves pad binds, dual-screen layout, and Engage 4GB memory alone. Restart after a change.",
+                "Leaves pad binds, dual-screen layout, and Engage 4GB memory alone. Eden console / filter / GPU Normal-High / speed limit can apply live (F10/F8/F9/Ctrl+U). Resolution still needs an Eden restart.",
             }),
           }),
         ],

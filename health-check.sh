@@ -523,6 +523,21 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 EOF
 elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
   ok "RetroDECK Azahar sdmc is the Syncthing mesh (real directory)"
+  for default_sdmc in \
+    "/home/$STEAMOS_USER/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc" \
+    "/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
+  do
+    [ -e "$default_sdmc" ] || [ -L "$default_sdmc" ] || continue
+    if [ -L "$default_sdmc" ] && [ "$(readlink -f "$default_sdmc")" = "$(readlink -f "$RD_SDMC")" ]; then
+      ok "$(basename "$(dirname "$(dirname "$(dirname "$default_sdmc")")")") default sdmc -> mesh"
+    else
+      fail "$default_sdmc is not a symlink to the RetroDECK mesh"
+      record_manual "Point Azahar default sdmc at RetroDECK" <<EOF
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  done
   want_sdmc="${RD_SDMC%/}/"
   for cfg in \
     "/home/$STEAMOS_USER/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" \

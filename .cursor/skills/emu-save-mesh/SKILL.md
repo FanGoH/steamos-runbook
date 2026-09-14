@@ -40,7 +40,7 @@ Title folder `10143500` is **The Wind Waker HD**.
 
 Game Mode, standalone Flatpak (dual-screen), and Syncthing all use **`~/retrodeck/saves/n3ds/azahar/sdmc`**. `ensure-syncthing.sh` sets both `qt-config.ini` `sdmc_directory`s there and `flatpak override --user --filesystem=/home/deck/retrodeck/saves/n3ds/azahar:rw` because standalone Azahar ships `host:ro`. Dual-screen scripts re-pin `sdmc_directory` every launch so Azahar cannot drift back to `~/.var/app/org.azahar_emu.Azahar/...`.
 
-Do **not** symlink `~/retrodeck/saves/n3ds/azahar/sdmc` into `~/.var/app/org.azahar_emu.Azahar/…`. RetroDECK cannot use another app’s data dir; Azahar then resets to `~/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc/` and creates empty title folders.
+Do **not** make `~/retrodeck/saves/n3ds/azahar/sdmc` itself a symlink into `~/.var/app/…`. RetroDECK cannot use another app’s data dir. The *reverse* is required: standalone/default Azahar `~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc` (and RetroDECK’s fallback data sdmc) must be symlinks *to* the RetroDECK mesh, because Azahar rewrites `sdmc_directory` back to that default on launch.
 
 Ignore `~/retrodeck/saves/n3ds/Azahar` (capital A) and `~/retrodeck/saves/n3ds/*.zip` (RomM dumps, not in-game saves). Leftover files under `~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc/` are **not** the mesh after unification.
 

@@ -259,6 +259,43 @@ EOF
     fi
   fi
 
+
+  # Azahar rewrites sdmc_directory back to its default data dir on launch/quit.
+  # Point that default path at the RetroDECK mesh so HDMI (explicit sdmc) and
+  # dual-screen (reset-to-default) still share one tree. Never the reverse:
+  # RetroDECK sdmc must stay a real directory.
+  link_default_sdmc_to_mesh() {
+    local default_sdmc="$1"
+    local mesh="$RD_SDMC"
+    local parent bak target
+    parent="$(dirname "$default_sdmc")"
+    mkdir -p "$parent" "$mesh"
+    if [ -L "$default_sdmc" ]; then
+      target="$(readlink -f "$default_sdmc" || true)"
+      if [ "$target" = "$(readlink -f "$mesh")" ]; then
+        echo "Already linked $default_sdmc -> $mesh"
+        return 0
+      fi
+      rm -f "$default_sdmc"
+    elif [ -d "$default_sdmc" ]; then
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --update "$default_sdmc/" "$mesh/"
+      fi
+      bak="${default_sdmc}.pre-mesh"
+      if [ -e "$bak" ]; then
+        bak="${default_sdmc}.pre-mesh-$(date +%Y%m%d%H%M%S)"
+      fi
+      mv "$default_sdmc" "$bak"
+      echo "Moved leftover $default_sdmc -> $bak"
+    elif [ -e "$default_sdmc" ]; then
+      rm -f "$default_sdmc"
+    fi
+    ln -s "$mesh" "$default_sdmc"
+    echo "Linked $default_sdmc -> $mesh"
+  }
+
+  link_default_sdmc_to_mesh "/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc"
+  link_default_sdmc_to_mesh "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" "$RD_SDMC"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini" "$RD_SDMC"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/config/azahar-emu/qt-config.ini" "$RD_SDMC"

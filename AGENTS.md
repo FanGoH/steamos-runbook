@@ -68,6 +68,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - Switch 2 controller pairing (`python -m ngc pair` / Decky plugin; hold Sync). Decky plugin copy into `~/homebrew/plugins` needs sudo when that dir is root-owned.
 - Emu Pads Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-emu-pads-decky.sh`)
 - Emu Quick Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-emu-quick-decky.sh`)
+- SunshineDS Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-sunshine-ds-decky.sh`)
 - Game Mode `sunshine-ds-kms` setcap sudoers (`scripts/ensure-sunshine-ds-kms-setcap.sh`): `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` must sort **after** `wheel` or NOPASSWD is ignored. SteamOS updates wipe it. Do **not** `setcap` desktop `sunshine-ds`.
 
 **Light checks** (no reinstall nag):

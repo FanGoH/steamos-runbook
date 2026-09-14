@@ -496,6 +496,147 @@ main()
 PY
 }
 
+# Remount a plugin's Python + QAM frontend. Copying files is not enough while
+# PluginLoader still has the old bundle in memory.
+decky_reload_plugin() {
+  local name="${1:?plugin name}"
+  local loader="${DECKY_LOADER_URL:-http://127.0.0.1:1337}"
+  python3 - "$loader" "$name" <<'PY'
+import base64, json, os, socket, struct, sys, urllib.error, urllib.parse, urllib.request
+
+loader, name = sys.argv[1], sys.argv[2]
+parsed = urllib.parse.urlparse(loader)
+host = parsed.hostname or "127.0.0.1"
+port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+try:
+    with urllib.request.urlopen(loader.rstrip("/") + "/auth/token", timeout=5) as resp:
+        token = resp.read().decode("utf-8", errors="replace").strip()
+except (urllib.error.URLError, TimeoutError, OSError) as e:
+    print(f"PluginLoader not answering at {loader}: {e.__class__.__name__}", file=sys.stderr)
+    sys.exit(1)
+if not token:
+    print("PluginLoader /auth/token was empty", file=sys.stderr)
+    sys.exit(1)
+
+key = base64.b64encode(os.urandom(16)).decode("ascii")
+path = "/ws?" + urllib.parse.urlencode({"auth": token})
+handshake = (
+    f"GET {path} HTTP/1.1\r\n"
+    f"Host: {host}:{port}\r\n"
+    f"Upgrade: websocket\r\n"
+    f"Connection: Upgrade\r\n"
+    f"Sec-WebSocket-Key: {key}\r\n"
+    f"Sec-WebSocket-Version: 13\r\n"
+    f"\r\n"
+).encode("ascii")
+
+try:
+    sock = socket.create_connection((host, port), timeout=10)
+except OSError as e:
+    print(f"Could not connect to PluginLoader websocket: {e.__class__.__name__}", file=sys.stderr)
+    sys.exit(1)
+
+leftover = b""
+msg = None
+try:
+    sock.settimeout(15)
+    sock.sendall(handshake)
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            print("PluginLoader websocket handshake closed", file=sys.stderr)
+            sys.exit(1)
+        buf += chunk
+    header, leftover = buf.split(b"\r\n\r\n", 1)
+    status = header.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+    if " 101 " not in status:
+        print(f"PluginLoader websocket handshake failed ({status})", file=sys.stderr)
+        sys.exit(1)
+
+    def send_text(text):
+        payload = text.encode("utf-8")
+        n = len(payload)
+        hdr = bytearray([0x81])
+        if n < 126:
+            hdr.append(0x80 | n)
+        elif n < 65536:
+            hdr.append(0x80 | 126)
+            hdr.extend(struct.pack("!H", n))
+        else:
+            hdr.append(0x80 | 127)
+            hdr.extend(struct.pack("!Q", n))
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        sock.sendall(bytes(hdr) + mask + masked)
+
+    def need(n):
+        nonlocal leftover
+        while len(leftover) < n:
+            chunk = sock.recv(max(4096, n - len(leftover)))
+            if not chunk:
+                raise OSError("ws closed")
+            leftover += chunk
+        data, leftover = leftover[:n], leftover[n:]
+        return data
+
+    def recv_message():
+        while True:
+            header2 = need(2)
+            opcode = header2[0] & 0x0F
+            masked = bool(header2[1] & 0x80)
+            length = header2[1] & 0x7F
+            if length == 126:
+                length = struct.unpack("!H", need(2))[0]
+            elif length == 127:
+                length = struct.unpack("!Q", need(8))[0]
+            mask = need(4) if masked else b""
+            payload = need(length)
+            if masked:
+                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+            if opcode == 0x8:
+                return None
+            if opcode == 0x9:
+                pmask = os.urandom(4)
+                masked_payload = bytes(b ^ pmask[i % 4] for i, b in enumerate(payload))
+                sock.sendall(bytes([0x8A, 0x80 | len(payload)]) + pmask + masked_payload)
+                continue
+            if opcode != 0x1:
+                continue
+            return json.loads(payload.decode("utf-8"))
+
+    send_text(json.dumps({
+        "type": 0,
+        "id": 1,
+        "route": "loader/reload_plugin",
+        "args": [name],
+    }))
+    msg = recv_message()
+    try:
+        sock.sendall(bytes([0x88, 0x80]) + os.urandom(4))
+    except OSError:
+        pass
+finally:
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+if not msg:
+    print(f"PluginLoader closed before reload_plugin {name!r} replied", file=sys.stderr)
+    sys.exit(1)
+if msg.get("type") == -1:
+    err = (msg.get("error") or {}).get("message") or "unknown error"
+    print(f"reload_plugin {name!r} failed: {err}", file=sys.stderr)
+    sys.exit(1)
+if msg.get("type") != 1:
+    print(f"Unexpected PluginLoader message type {msg.get('type')}", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
 sunshine_start_via_decky() {
   sunshine_decky_call start_sunshine
 }

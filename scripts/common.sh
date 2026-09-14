@@ -884,22 +884,28 @@ print_manual_summary() {
 }
 
 tailscale_up_command() {
-  if [ -z "${TAILSCALE_LOGIN_SERVER:-}" ]; then
-    cat <<'EOF'
+  local login="${TAILSCALE_LOGIN_SERVER:-}"
+  local operator="${TAILSCALE_OPERATOR:-deck}"
+  local host="${TAILSCALE_HOSTNAME:-steammachine}"
+  if [ -z "$login" ]; then
+    cat <<EOF
 # Set TAILSCALE_LOGIN_SERVER in .env first (see .env.example), then:
-./deck-tailscale up \
-  --login-server="$TAILSCALE_LOGIN_SERVER" \
-  --operator="$TAILSCALE_OPERATOR" \
-  --hostname="$TAILSCALE_HOSTNAME" \
+# Full bring-up for this Steam Machine. Do not add --reset or --ssh.
+# --hostname=${host} (not the handheld steamdeck).
+./deck-tailscale up \\
+  --login-server="\$TAILSCALE_LOGIN_SERVER" \\
+  --operator=${operator} \\
+  --hostname=${host} \\
   --accept-routes
 EOF
     return 0
   fi
   cat <<EOF
+# Full bring-up for this Steam Machine. Do not add --reset or --ssh.
 ./deck-tailscale up \\
-  --login-server=${TAILSCALE_LOGIN_SERVER} \\
-  --operator=${TAILSCALE_OPERATOR} \\
-  --hostname=${TAILSCALE_HOSTNAME} \\
+  --login-server=${login} \\
+  --operator=${operator} \\
+  --hostname=${host} \\
   --accept-routes
 EOF
 }

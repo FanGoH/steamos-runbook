@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Keep Decky Tailscale Control from overriding this Steam Machine's Headscale name.
-# Advanced Settings must not pass --hostname/--reset/--ssh. Login server comes from .env.
+# Pin Decky Tailscale Control Advanced Settings to this Steam Machine.
+# Custom flags match the manual ./deck-tailscale up command (hostname from .env).
+# Never --reset or --ssh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +33,9 @@ patch_args=(--main "$MAIN" --index "$INDEX" --settings "$SETTINGS")
 if [ -n "${TAILSCALE_LOGIN_SERVER:-}" ]; then
   patch_args+=(--login-server "$TAILSCALE_LOGIN_SERVER")
 fi
+if [ -n "${TAILSCALE_HOSTNAME:-}" ]; then
+  patch_args+=(--hostname "$TAILSCALE_HOSTNAME")
+fi
 
 if [ ! -w "$MAIN" ] || [ ! -w "$INDEX" ]; then
   if sudo -n true 2>/dev/null; then
@@ -39,7 +43,7 @@ if [ ! -w "$MAIN" ] || [ ! -w "$INDEX" ]; then
   else
     echo "Tailscale Control plugin files are not writable."
     record_manual "Patch Tailscale Control so it does not override steammachine" <<EOF
-sudo python3 $PATCH --main $MAIN --index $INDEX --settings $SETTINGS --login-server "\$TAILSCALE_LOGIN_SERVER"
+sudo python3 $PATCH --main $MAIN --index $INDEX --settings $SETTINGS --login-server "\$TAILSCALE_LOGIN_SERVER" --hostname "\$TAILSCALE_HOSTNAME"
 EOF
     exit 2
   fi
@@ -53,11 +57,13 @@ from pathlib import Path
 text = Path(sys.argv[1]).read_text()
 if 'cmd_list.append("--reset")' in text:
     sys.exit(1)
-if "Do not --reset" not in text:
+if "def _playbook_hostname(" not in text:
+    sys.exit(1)
+if "--hostname={playbook_hostname}" not in text:
     sys.exit(1)
 PY
 then
-  echo "Tailscale Control main.py still appends --reset."
+  echo "Tailscale Control main.py is missing hostname pin or still --reset."
   exit 1
 fi
 

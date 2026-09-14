@@ -23,6 +23,7 @@ const getStatus = callable("get_status");
 const applyLive = callable("apply_live");
 const saveSettings = callable("save_settings");
 const resetSettings = callable("reset_settings");
+const restartEmulator = callable("restart_emulator");
 
 const EMUS = [
   { key: "eden", title: "Eden" },
@@ -276,6 +277,32 @@ function Content() {
     }
   };
 
+  const restart = async (target) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await restartEmulator(target);
+      const body = (result?.messages || [result?.message || ""])
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 220);
+      toaster.toast({
+        title: result?.ok === false ? "Reset failed" : "Reset emulator",
+        body: body || "No running emulator to restart.",
+        duration: result?.ok === false ? 7000 : 5000,
+      });
+      await refresh({ emu, title: effectiveTitle });
+    } catch (err) {
+      toaster.toast({
+        title: "Reset failed",
+        body: String(err).slice(0, 220),
+        duration: 7000,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const settingRow = (setting) => {
     const extra = [];
     if (canPerGame && setting.use_global === false) extra.push("this game");
@@ -397,6 +424,16 @@ function Content() {
               ),
             }),
           }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy,
+              onClick: () => restart(block.running ? emu : "all"),
+              children: block.running
+                ? `Reset ${EMUS.find((item) => item.key === emu)?.title || "emulator"}`
+                : "Reset running emulators",
+            }),
+          }),
         ],
       }),
       SP_JSX.jsxs(DFL.PanelSection, {
@@ -511,7 +548,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.7, fontSize: "0.85em" },
               children:
-                "Live rows (docked, filter, GPU Normal/High, speed limit) apply in Eden now and stay unsaved until Save. Resolution still needs an Eden restart after Save.",
+                "Live rows (docked, filter, GPU Normal/High, speed limit) apply in Eden now and stay unsaved until Save. Resolution needs Reset emulator after Save (SIGTERM, then Steam relaunch).",
             }),
           }),
         ],

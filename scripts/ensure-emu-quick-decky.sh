@@ -21,6 +21,17 @@ fi
 
 PLUGIN_DEST="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}/plugins/EmuQuick"
 PARENT="$(dirname "$PLUGIN_DEST")"
+PLUGIN_NAME="$(python3 -c "import json; print(json.load(open('$SRC/plugin.json'))['name'])")"
+
+finish_install() {
+  echo "$1"
+  if decky_reload_plugin "$PLUGIN_NAME"; then
+    echo "Reloaded $PLUGIN_NAME in Decky (close and reopen QAM if it is already open)."
+  else
+    echo "Copied files; reload Decky plugins (or leave Game Mode and come back) to see the new QAM UI."
+  fi
+  exit 0
+}
 
 copy_plugin() {
   mkdir -p "$PLUGIN_DEST/dist"
@@ -39,8 +50,7 @@ fi
 
 if [ -w "$PARENT" ]; then
   copy_plugin
-  echo "Installed Emu Quick to $PLUGIN_DEST"
-  exit 0
+  finish_install "Installed Emu Quick to $PLUGIN_DEST"
 fi
 
 if [ -w "$PLUGIN_DEST/main.py" ] && [ -w "$PLUGIN_DEST/dist/index.js" ]; then
@@ -48,16 +58,14 @@ if [ -w "$PLUGIN_DEST/main.py" ] && [ -w "$PLUGIN_DEST/dist/index.js" ]; then
   cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
   [ -w "$PLUGIN_DEST/plugin.json" ] && cp -a "$SRC/plugin.json" "$PLUGIN_DEST/plugin.json"
   [ -w "$PLUGIN_DEST/package.json" ] && cp -a "$SRC/package.json" "$PLUGIN_DEST/package.json"
-  echo "Updated writable Emu Quick files in $PLUGIN_DEST"
-  exit 0
+  finish_install "Updated writable Emu Quick files in $PLUGIN_DEST"
 fi
 
 if sudo -n true 2>/dev/null; then
   sudo mkdir -p "$PLUGIN_DEST/dist"
   sudo cp -a "$SRC/main.py" "$SRC/plugin.json" "$SRC/package.json" "$PLUGIN_DEST/"
   sudo cp -a "$SRC/dist/index.js" "$PLUGIN_DEST/dist/index.js"
-  echo "Installed Emu Quick to $PLUGIN_DEST (sudo)"
-  exit 0
+  finish_install "Installed Emu Quick to $PLUGIN_DEST (sudo)"
 fi
 
 echo "Decky plugins dir is not writable ($PARENT)."

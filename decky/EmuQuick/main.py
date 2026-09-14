@@ -40,16 +40,41 @@ def _session_uid() -> int:
         return 1000 if os.getuid() == 0 else os.getuid()
 
 
+def _script_has(script: str, needle: str) -> bool:
+    try:
+        with open(script, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if needle in line:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def _playbook() -> str:
     home = _user_home()
     env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
     script = os.path.join("scripts", "emu-quick-settings.py")
-    if env and os.path.isfile(os.path.join(env, script)):
-        return env
-    cand = os.path.join(home, "steamos-playbook")
-    if os.path.isfile(os.path.join(cand, script)):
-        return cand
-    return cand
+    candidates: list[str] = []
+    if env:
+        candidates.append(env)
+    candidates.append(os.path.join(home, "steamos-playbook"))
+    wt = os.path.join(home, "worktrees")
+    if os.path.isdir(wt):
+        try:
+            names = sorted(os.listdir(wt))
+        except OSError:
+            names = []
+        for name in names:
+            candidates.append(os.path.join(wt, name))
+    fallback = candidates[0] if candidates else os.path.join(home, "steamos-playbook")
+    for cand in candidates:
+        path = os.path.join(cand, script)
+        if os.path.isfile(path) and _script_has(path, 'add_parser("restart"'):
+            return cand
+        if os.path.isfile(path):
+            fallback = cand
+    return fallback
 
 
 def _script() -> str:
@@ -281,6 +306,25 @@ class Plugin:
             proc = _run_as_deck(cmd, timeout=20)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "emu-quick-settings reset timed out"}
+        data = _json_from(proc)
+        if not data.get("messages") and data.get("message"):
+            data["messages"] = [data["message"]]
+        return data
+
+    async def restart_emulator(self, emu: str = "all", **kwargs: object) -> dict:
+        if kwargs:
+            emu = str(kwargs.get("emu", emu) or emu)
+        script = _script()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        emu = (emu or "all").strip().lower()
+        if emu not in ("all", "eden", "azahar", "cemu"):
+            return {"ok": False, "message": f"Unknown emu {emu}"}
+        cmd = ["python3", script, "restart", "--emu", emu]
+        try:
+            proc = _run_as_deck(cmd, timeout=55)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "emu-quick-settings restart timed out"}
         data = _json_from(proc)
         if not data.get("messages") and data.get("message"):
             data["messages"] = [data["message"]]

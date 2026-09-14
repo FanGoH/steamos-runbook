@@ -40,6 +40,10 @@ def _session_uid() -> int:
         return 1000 if os.getuid() == 0 else os.getuid()
 
 
+def _snapshot() -> str:
+    return os.path.join(_user_home(), "homebrew", "data", "SecondScreen")
+
+
 def _playbook() -> str:
     home = _user_home()
     env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
@@ -48,6 +52,7 @@ def _playbook() -> str:
     if env:
         candidates.append(env)
     candidates.append(os.path.join(home, "steamos-playbook"))
+    candidates.append(_snapshot())
     for cand in candidates:
         if os.path.isfile(os.path.join(cand, script)):
             return cand
@@ -107,6 +112,17 @@ def _json_from(proc: subprocess.CompletedProcess) -> dict:
     return data if isinstance(data, dict) else {"ok": False, "message": "bad json"}
 
 
+def _missing_backend() -> dict:
+    return {
+        "ok": False,
+        "message": (
+            "Second Screen backend missing. Run "
+            "./scripts/ensure-second-screen-decky.sh"
+        ),
+        "windows": [],
+    }
+
+
 class Plugin:
     async def _main(self) -> None:
         _log(f"Second Screen plugin loaded (playbook={_playbook()})")
@@ -114,7 +130,7 @@ class Plugin:
     async def get_status(self) -> dict:
         script = _script()
         if not os.path.isfile(script):
-            return {"ok": False, "message": f"Missing {script}", "windows": []}
+            return _missing_backend()
         try:
             proc = _run_as_deck(["python3", script, "status"], timeout=12)
         except subprocess.TimeoutExpired:
@@ -126,7 +142,7 @@ class Plugin:
             mode = str(kwargs.get("mode", mode) or mode)
         script = _script()
         if not os.path.isfile(script):
-            return {"ok": False, "message": f"Missing {script}"}
+            return _missing_backend()
         mode = (mode or "auto").strip().lower()
         if mode not in ("auto", "on", "off"):
             return {"ok": False, "message": f"Unknown dual-screen mode {mode}"}
@@ -152,7 +168,7 @@ class Plugin:
             )
         script = _script()
         if not os.path.isfile(script):
-            return {"ok": False, "message": f"Missing {script}"}
+            return _missing_backend()
         window_id = (window_id or "").strip()
         display = (display or "").strip()
         if not window_id:
@@ -169,7 +185,7 @@ class Plugin:
     async def idle_clock(self) -> dict:
         script = _script()
         if not os.path.isfile(script):
-            return {"ok": False, "message": f"Missing {script}"}
+            return _missing_backend()
         try:
             proc = _run_as_deck(["python3", script, "idle"], timeout=25)
         except subprocess.TimeoutExpired:

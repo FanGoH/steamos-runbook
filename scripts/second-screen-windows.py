@@ -21,9 +21,29 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+def _playbook_root() -> Path:
+    """Prefer the live playbook; fall back to a Decky snapshot so git checkout cannot blank QAM."""
+    home = Path(os.environ.get("HOME") or "/home/deck")
+    script = Path("scripts") / "second-screen-windows.py"
+    candidates: list[Path] = []
+    env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
+    if env:
+        candidates.append(Path(env))
+    candidates.append(home / "steamos-playbook")
+    candidates.append(Path(__file__).resolve().parent.parent)
+    candidates.append(home / "homebrew" / "data" / "SecondScreen")
+    for cand in candidates:
+        if (cand / script).is_file():
+            return cand
+    return candidates[0]
+
+ROOT = _playbook_root()
 BIND_PY = ROOT / "scripts" / "bind-gamepad.py"
-PAINT_SH = ROOT / "scripts" / "sunshine-ds-gamemode-virtual.sh"
+_PAINT_CANDIDATES = (
+    ROOT / "scripts" / "sunshine-ds-gamemode-virtual.sh",
+    Path("/home/deck/steamos-playbook/scripts/sunshine-ds-gamemode-virtual.sh"),
+)
+PAINT_SH = next((p for p in _PAINT_CANDIDATES if p.is_file()), _PAINT_CANDIDATES[0])
 MIRROR_PIDFILE = Path(
     os.environ.get("SECOND_SCREEN_MIRROR_PIDFILE")
     or (ROOT / "logs" / "second-screen-mirror.pid")

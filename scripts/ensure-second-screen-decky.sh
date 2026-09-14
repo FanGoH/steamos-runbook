@@ -20,8 +20,18 @@ if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/i
 fi
 
 PLUGIN_DEST="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}/plugins/SecondScreen"
+SNAPSHOT="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}/data/SecondScreen"
 PARENT="$(dirname "$PLUGIN_DEST")"
 PLUGIN_NAME="$(python3 -c "import json; print(json.load(open('$SRC/plugin.json'))['name'])")"
+
+snapshot_backend() {
+  mkdir -p "$SNAPSHOT/scripts" "$SNAPSHOT/logs"
+  cp -a "$ROOT/scripts/second-screen-windows.py" "$SNAPSHOT/scripts/"
+  cp -a "$ROOT/scripts/bind-gamepad.py" "$SNAPSHOT/scripts/"
+  cp -a "$ROOT/scripts/pad_profile.py" "$SNAPSHOT/scripts/"
+}
+
+snapshot_backend
 
 finish_install() {
   echo "$1"

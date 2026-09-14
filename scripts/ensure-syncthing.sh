@@ -259,9 +259,14 @@ EOF
 
 unify_azahar_onto_retrodeck
 
+DUSKLIGHT_PATH="${SYNCTHING_DUSKLIGHT_PATH:-/home/${STEAMOS_USER}/.local/share/TwilitRealm/Dusklight/USA/Card A}"
+mkdir -p "$DUSKLIGHT_PATH"
+echo "Dusklight saves: $DUSKLIGHT_PATH"
+
 export SYNCTHING_GUI="$GUI"
 export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
 export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
+export SYNCTHING_DUSKLIGHT_PATH="$DUSKLIGHT_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

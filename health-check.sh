@@ -440,9 +440,9 @@ EOF
 fi
 ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
 if [ -f "$ST_CFG" ]; then
-  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" <<'PY'
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" <<'PY'
 import sys, xml.etree.ElementTree as ET, shlex
-cfg, eden_id, azahar_id = sys.argv[1:4]
+cfg, eden_id, azahar_id, dusk_id = sys.argv[1:5]
 root = ET.parse(cfg).getroot()
 folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
 gui_el = root.find("gui")
@@ -453,6 +453,7 @@ if gui_el is not None:
 print(f"st_gui_addr={shlex.quote(address)}")
 print(f"st_eden_path={shlex.quote(folders.get(eden_id, ''))}")
 print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
+print(f"st_dusk_path={shlex.quote(folders.get(dusk_id, ''))}")
 PY
 )"
   if [ "$st_gui_addr" = "$ST_GUI" ]; then
@@ -474,6 +475,15 @@ EOF
   else
     warn "azahar-saves folder missing or not RetroDECK Azahar sdmc"
     record_manual "Share Azahar sdmc saves over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_dusk_path" == *"/TwilitRealm/Dusklight/"*"/Card A"* ]]; then
+    ok "dusklight-saves -> $st_dusk_path"
+  else
+    warn "dusklight-saves folder missing or not USA/Card A"
+    record_manual "Share Dusklight Card A over Syncthing" <<'EOF'
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF

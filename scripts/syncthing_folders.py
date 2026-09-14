@@ -25,6 +25,9 @@ EDEN_LABEL = os.environ.get("SYNCTHING_EDEN_FOLDER_LABEL", "EdenSaves")
 AZAHAR_LABEL = os.environ.get("SYNCTHING_AZAHAR_FOLDER_LABEL", "AzaharSaves")
 EDEN_PATH = os.environ.get("SYNCTHING_EDEN_PATH", "").strip()
 AZAHAR_PATH = os.environ.get("SYNCTHING_AZAHAR_PATH", "").strip()
+DUSKLIGHT_ID = os.environ.get("SYNCTHING_DUSKLIGHT_FOLDER_ID", "dusklight-saves")
+DUSKLIGHT_LABEL = os.environ.get("SYNCTHING_DUSKLIGHT_FOLDER_LABEL", "DusklightSaves")
+DUSKLIGHT_PATH = os.environ.get("SYNCTHING_DUSKLIGHT_PATH", "").strip()
 PEER_IDS = [
     p.strip()
     for p in os.environ.get("SYNCTHING_PEER_IDS", "").split()
@@ -176,8 +179,8 @@ def ensure_gui_listen(key: str, wanted: str) -> None:
 
 
 def main() -> int:
-    if not AZAHAR_PATH and not EDEN_PATH:
-        print("No Eden/Azahar paths given; nothing to share")
+    if not AZAHAR_PATH and not EDEN_PATH and not DUSKLIGHT_PATH:
+        print("No Eden/Azahar/Dusklight paths given; nothing to share")
         return 0
     key = api_key()
     wait_ready(key)
@@ -202,6 +205,12 @@ def main() -> int:
         Path(AZAHAR_PATH).mkdir(parents=True, exist_ok=True)
         devices = merge_devices(by_id.get(AZAHAR_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, AZAHAR_ID, AZAHAR_LABEL, AZAHAR_PATH, devices)
+        by_id[AZAHAR_ID] = {"devices": devices}
+
+    if DUSKLIGHT_PATH:
+        Path(DUSKLIGHT_PATH).mkdir(parents=True, exist_ok=True)
+        devices = merge_devices(by_id.get(DUSKLIGHT_ID, {}).get("devices") or [], extra, local_id)
+        ensure_folder(key, DUSKLIGHT_ID, DUSKLIGHT_LABEL, DUSKLIGHT_PATH, devices)
 
     return 0
 

@@ -1,10 +1,10 @@
 ---
 name: emu-save-mesh
 description: >-
-  Keep Eden and Azahar saves on this Steam Machine in the official Syncthing
-  mesh with lab, Odin, and Thor. Use when the user mentions Syncthing,
-  EdenSaves, AzaharSaves, Game Mode saves not reaching a handheld, or
-  ensure-syncthing.
+  Keep Eden, Azahar, and Dusklight saves on this Steam Machine in the official
+  Syncthing mesh with lab, Odin, and Thor. Use when the user mentions Syncthing,
+  EdenSaves, AzaharSaves, Dusklight, Twilight Princess recomp, Game Mode saves
+  not reaching a handheld, or ensure-syncthing.
 ---
 
 # Emulator save mesh (Steam Machine)
@@ -22,6 +22,9 @@ Lab-wide device table and handheld ADB: on lab, `~/.cursor/skills/emu-save-mesh/
   Host AppImage and Game Mode already write here, so they land on the mesh themselves.
 - **Azahar:** Game Mode / Tender sdmc (same tree as dual-screen after the Flatpak override)  
   `~/retrodeck/saves/n3ds/azahar/sdmc/Nintendo 3DS/00000000000000000000000000000000/00000000000000000000000000000000`
+- **Dusklight:** memory-card saves only  
+  `~/.local/share/TwilitRealm/Dusklight/USA/Card A`  
+  (`01-GZ2E-gczelda2.gci`). Do **not** share `config.json`, logs, shaders, or `.controller` files.
 
 `ignorePerms: true`. Azahar `caseSensitiveFS: false`. One game on one device; close the emulator after a session.
 
@@ -41,3 +44,4 @@ Ignore `~/retrodeck/saves/n3ds/Azahar` (capital A) and `~/retrodeck/saves/n3ds/*
 2. Hash `title/00040000/00033500/data/00000001/save*.bin` on that path vs lab vs Thor.
 3. Empty title dir after a “fix” → cross-Flatpak symlink. Recover from lab `/mnt/storage/syncthing/azahar-saves`.
 4. If Game Mode saves still miss handhelds: Azahar rewrote `sdmc_directory` to the RetroDECK fallback — re-run `ensure-syncthing.sh`.
+5. Dusklight on Android: `Android/data/dev.twilitrealm.dusk/files` is empty (scoped storage). Point **Settings → Data Folder** at `/storage/emulated/0/Sync/Dusklight` so Card A is the mesh. RetroArch Dolphin `*.gci` under `RetroArch/saves/` is a **different** save — do not mix it into Dusklight.

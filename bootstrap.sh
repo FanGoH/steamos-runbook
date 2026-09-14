@@ -67,6 +67,7 @@ run_step "ensure-syncthing" "$ROOT/scripts/ensure-syncthing.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
 run_step "ensure-sunshine-ds-apps" "$ROOT/scripts/ensure-sunshine-ds-apps.sh" warn
 run_step "ensure-sunshine-ds" "$ROOT/scripts/ensure-sunshine-ds.sh" warn
+run_step "ensure-sunshine-ds-decky" "$ROOT/scripts/ensure-sunshine-ds-decky.sh" warn
 run_step "ensure-sunshine-ds-gamemode" "$ROOT/scripts/ensure-sunshine-ds-gamemode.sh" warn
 run_step "ensure-sunshine-ds-kms-setcap" "$ROOT/scripts/ensure-sunshine-ds-kms-setcap.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn

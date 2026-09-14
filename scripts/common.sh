@@ -983,41 +983,14 @@ gamescope_session_size() {
   printf '1920 1080\n'
 }
 
-# HDMI / top-stream size. Prefer the live Xwayland (:0 / :1), not EDID
-# preferred 4K. Requesting 3840x2160 on a 1080p session flickers and leaves
-# a brighter 1080p tile in the top-left of a 4K panel. When Steam output
-# is actually 4K, :0/:1 grow and this follows. Never use :2 — GamePad
-# virtual stays 1920x1080.
+# HDMI / top-stream size. Use Steam scanout on :0 only — never max() with
+# :1. A leftover 4K Cemu window keeps :1 at 3840 after the TV is dropped
+# to 1080p; taking the larger Xwayland then rewrites Cemu TV to 4K and
+# Moonlight 1080p taps miss. When Steam is actually 4K, :0 is 4K and this
+# follows. Never use :2 — GamePad virtual stays 1920x1080. Do not use EDID
+# preferred 4K while :0 is still 1080p.
 gamescope_hdmi_tv_size() {
-  local sw sh tw th ew="" eh="" mode card
-  read -r sw sh <<<"$(gamescope_session_size :0)"
-  read -r tw th <<<"$(gamescope_session_size :1)"
-  if [ $((tw * th)) -gt $((sw * sh)) ]; then
-    sw="$tw"
-    sh="$th"
-  fi
-  for card in /sys/class/drm/card*-HDMI-A-*/modes; do
-    [ -r "$card" ] || continue
-    enabled="$(dirname "$card")/enabled"
-    if [ -r "$enabled" ] && [ "$(cat "$enabled" 2>/dev/null)" != "enabled" ]; then
-      continue
-    fi
-    mode="$(head -1 "$card" 2>/dev/null || true)"
-    case "$mode" in
-      [0-9]*x[0-9]*)
-        ew="${mode%x*}"
-        eh="${mode#*x}"
-        eh="${eh%%[^0-9]*}"
-        break
-        ;;
-    esac
-  done
-  if [ -n "$ew" ] && [ -n "$eh" ] && [ "$ew" -ge 64 ] && [ "$eh" -ge 64 ] 2>/dev/null \
-    && [ "$ew" -le "$sw" ] && [ "$eh" -le "$sh" ]; then
-    printf '%s %s\n' "$ew" "$eh"
-    return 0
-  fi
-  printf '%s %s\n' "$sw" "$sh"
+  gamescope_session_size :0
 }
 
 # Back-compat name used by older callers.

@@ -441,15 +441,22 @@ set_gamescope_focus() {
 }
 
 present_cemu_tv() {
-  local sw sh
+  local sw sh xw xh
   find_tv_wid || return 1
   read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r xw xh <<<"$(gamescope_session_size "$TV_DISPLAY")"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
-  # HDMI native (4K) on top, GamePad stays 1080p. Only resize when the
+  # HDMI scanout size on top, GamePad stays 1080p. Only resize when the
   # TV window does not already match — that loop was the flicker.
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
+  # FULLSCREEN on a leftover 4K :1 grows the TV back to 3840 and breaks
+  # 1080p Moonlight touch. Only fullscreen when :1 already matches HDMI.
+  if [ "${xw:-0}" = "$sw" ] && [ "${xh:-0}" = "$sh" ]; then
+    DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
+  else
+    DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$TV_WID" 2>/dev/null || true
+  fi
   DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
@@ -653,6 +660,7 @@ if [ "$DO_PLACE" -eq 1 ]; then
     echo "Headless gamescope $PAD_DISPLAY is not available."
     exit 1
   }
+  write_rd_geometry || true
   present_dual_layout || {
     echo "Could not place GamePad on $PAD_DISPLAY. See $LOG"
     exit 2

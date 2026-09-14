@@ -667,18 +667,19 @@ def repair_tender_3ds_installs(home: Path) -> int:
         )
         for row in rows:
             dump = None
-            if row["file_path"]:
-                dump = resolve_azahar_rom(Path(row["file_path"]), home=home)
-            if dump is None:
-                dump = _3ds_dump_for_tender_row(home, row["fs_name"], row["name"])
+            cia_row = (row["fs_name"] or "").lower().endswith(".cia")
+            if not cia_row:
+                if row["file_path"]:
+                    dump = resolve_azahar_rom(Path(row["file_path"]), home=home)
+                if dump is None:
+                    dump = _3ds_dump_for_tender_row(home, row["fs_name"], row["name"])
             if dump is None:
                 existing = con.execute(
                     "SELECT rom_id FROM rom_installs WHERE rom_id = ?",
                     (row["rom_id"],),
                 ).fetchone()
                 applied = row["applied_launch_options"] or ""
-                cia = (row["file_path"] or row["fs_name"] or "").lower().endswith(".cia")
-                if existing or row["launchable"] == 1 or applied.strip() or cia:
+                if existing or row["launchable"] == 1 or applied.strip():
                     if existing:
                         con.execute(
                             "DELETE FROM rom_installs WHERE rom_id = ?",
@@ -739,6 +740,37 @@ def repair_tender_3ds_installs(home: Path) -> int:
     return fixed
 
 
+def clear_tender_3ds_cache(home: Path) -> int:
+    """Drop Tender's 3DS incremental-skip stamp so the next sync re-fetches 3DS.
+
+    Does not call Force Full Sync (that wipes Switch/PS2 launch options too).
+    CIA rows stay uninstalled; bootable ``.3ds`` installs are repaired after.
+    """
+    db = home / TENDER_DB
+    if not db.is_file():
+        return 0
+    cleared = 0
+    con = sqlite3.connect(db)
+    try:
+        tables = {
+            row[0]
+            for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if "platform_sync_state" in tables:
+            cur = con.execute(
+                "DELETE FROM platform_sync_state WHERE platform_slug IN ('3ds', 'n3ds')"
+            )
+            cleared += cur.rowcount
+            if cur.rowcount:
+                print(
+                    f"tender cleared 3ds platform_sync_state ({cur.rowcount} stamp(s))"
+                )
+        con.commit()
+    finally:
+        con.close()
+    return cleared + repair_tender_3ds_installs(home)
+
+
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "--rom-for-appid":
         if len(sys.argv) != 3:
@@ -790,13 +822,16 @@ def main() -> int:
         repair_tender_ps2_installs(home)
         repair_tender_3ds_installs(home)
         return 0
+    if len(sys.argv) == 2 and sys.argv[1] == "--clear-tender-3ds-cache":
+        return 0 if clear_tender_3ds_cache(Path.home()) >= 0 else 1
     if len(sys.argv) != 2:
         print(
             f"usage: {sys.argv[0]} /path/to/shortcuts.vdf\n"
             f"       {sys.argv[0]} --rom-for-appid APPID\n"
           f"       {sys.argv[0]} --launch-options-for-appid APPID\n"
           f"       {sys.argv[0]} --resolve-azahar-rom PATH\n"
-          f"       {sys.argv[0]} --repair-tender",
+          f"       {sys.argv[0]} --repair-tender\n"
+          f"       {sys.argv[0]} --clear-tender-3ds-cache",
             file=sys.stderr,
         )
         return 2
@@ -944,22 +979,52 @@ def _self_test() -> None:
             "INSERT INTO rom_installs VALUES (104, ?, ?, '3ds', 'n3ds', '2026-01-01', 1)",
             (str(leftover_cia), str(n3ds)),
         )
+        con.execute(
+            "INSERT INTO roms VALUES (121, \"Luigi's Mansion\", "
+            "\"Luigi's Mansion (USA).3ds\", '3ds', '', 1)"
+        )
+        con.execute(
+            """
+            CREATE TABLE platform_sync_state (
+              platform_slug TEXT PRIMARY KEY,
+              last_sync TEXT,
+              rom_count INTEGER,
+              run_id TEXT
+            );
+            """
+        )
+        con.execute(
+            "INSERT INTO platform_sync_state VALUES ('3ds', '2026-01-01', 16, 'x')"
+        )
+        con.execute(
+            "INSERT INTO platform_sync_state VALUES ('switch', '2026-01-01', 17, 'x')"
+        )
         con.commit()
         con.close()
         assert repair_tender_3ds_installs(home) >= 2
         con = sqlite3.connect(db)
-        # Matching .3ds is adopted onto the CIA row — never Ultra Sun.
+        # CIA rows never become Play, even when a matching .3ds exists.
+        assert con.execute("SELECT COUNT(*) FROM rom_installs WHERE rom_id=105").fetchone()[0] == 0
         assert con.execute(
-            "SELECT file_path, launchable FROM rom_installs WHERE rom_id=105"
-        ).fetchone() == (str(luigi_3ds), 1)
-        assert "Luigi" in con.execute(
             "SELECT applied_launch_options FROM roms WHERE rom_id=105"
-        ).fetchone()[0]
+        ).fetchone()[0] == ""
+        assert con.execute(
+            "SELECT file_path, launchable FROM rom_installs WHERE rom_id=121"
+        ).fetchone() == (str(luigi_3ds), 1)
         # Leftover CIA with no cart: drop Tender's Play cache.
         assert con.execute("SELECT COUNT(*) FROM rom_installs WHERE rom_id=104").fetchone()[0] == 0
         assert con.execute(
             "SELECT applied_launch_options FROM roms WHERE rom_id=104"
         ).fetchone()[0] == ""
+        con.close()
+        assert clear_tender_3ds_cache(home) >= 1
+        con = sqlite3.connect(db)
+        assert con.execute(
+            "SELECT COUNT(*) FROM platform_sync_state WHERE platform_slug='3ds'"
+        ).fetchone()[0] == 0
+        assert con.execute(
+            "SELECT COUNT(*) FROM platform_sync_state WHERE platform_slug='switch'"
+        ).fetchone()[0] == 1
         con.close()
 
 

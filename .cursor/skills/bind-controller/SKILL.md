@@ -28,7 +28,7 @@ Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPa
 - **Shared P1** (default): last pad that sent a press/stick move is the only one copied to P1 (no analog mix). Azahar uses this too. Steam virtual `28de:11ff` is skipped when a Sunshine / physical pad is present (Steam’s curve stacked on SDL made Cemu sticks feel short/wonky). The plugin list hides those wraps and the EmuPads sinks so only real host pads show. After Moonlight drops the list is empty until Odin/Thor returns; Apply still binds EmuPads P1 while the mux is up. Shared / Multiplayer persists to `mux.json` on click. Axes are rescaled to the sink ±32767 range. Event loop copies first; `xprop` / rescan run on idle or every 250ms.
 - **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
-- Overlay/QAM/Home/Library mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads. `checkpoint-2026-09-11-steam-menu-mute`.
+- Overlay/QAM/Home/Library mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads. `checkpoint-2026-09-11-steam-menu-mute`. Native games (Dusklight) also get mute+grab — otherwise Thor plus EmuPads P1/P2 are three controllers and every press doubles. Sinks ungrab only while Cemu / Azahar / Eden is running.
 
 Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. Source `decky/EmuPads/` (see that README). `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
 

@@ -7,7 +7,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 ## Routing
 
 - Config: `~/.config/emupads/mux.json`
-- Mute + grab: `$XDG_RUNTIME_DIR/emupads-mute` **or** Steam Home/Library/overlay/QAM (`FOCUSED_APP=769`). Sinks are hidden from Steam (EVIOCGRAB) and from the plugin pad list. Steam still reads the real Sunshine pad.
+- Mute + grab: `$XDG_RUNTIME_DIR/emupads-mute`, Steam Home/Library/overlay/QAM (`FOCUSED_APP=769`), **or any non-emulator** (Dusklight, other Steam titles). Sinks stay hidden unless Cemu / Azahar / Eden is running, so Thor is not copied onto a second pad the native game also reads. Steam still sees the real Sunshine pad.
 - **Shared P1** (default): last pad that sent a press or stick is the only one copied (no analog mix).
 - **Multi**: first selected → P1, second → P2.
 - Skip Steam wrap `28de:11ff` when a Sunshine or physical pad is present (Steam’s curve stacked on SDL made Cemu sticks short). The plugin pad list hides those wraps and the EmuPads sinks — only real host pads (Thor, Odin, physical Xbox, phone) are shown. After Moonlight drops, the list is empty until Odin/Thor injects again; Apply still binds EmuPads P1 while the mux is up. Reconnect, then Refresh pads.

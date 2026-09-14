@@ -69,13 +69,13 @@ Decky is only checked for files under `~/homebrew` (success if present; no reins
 
 ### Tailscale / Headscale re-login
 
-When logged out, scripts print a command using your `.env`:
+When logged out, scripts print the full bring-up command from `.env`. This Steam Machine uses `--hostname=steammachine` (not the handheld `steamdeck`). Do not add `--reset` or `--ssh`:
 
 ```bash
 ./deck-tailscale up \
   --login-server="$TAILSCALE_LOGIN_SERVER" \
   --operator="$TAILSCALE_OPERATOR" \
-  --hostname="$TAILSCALE_HOSTNAME" \
+  --hostname=steammachine \
   --accept-routes
 ```
 
@@ -90,6 +90,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `health-check.sh` | Status report with ✅/❌ + manual actions |
 | `enable-wol.sh` | Apply Wake-on-LAN (used by `wol.service`) |
 | `deck-tailscale` | Wrapper around `TAILSCALE_BIN` (default `/opt/tailscale/tailscale`) |
+| `scripts/ensure-tailscale-control.sh` | Patch Decky **Tailscale Control** Advanced Settings to the same full `up` command (`--hostname=steammachine`, Headscale login server, no `--reset` / `--ssh`) |
 | `scripts/sunshine-watch.sh` | Pulse-ready oneshot: chmod Pulse dir, wait for PluginLoader, Decky start if GameStream is down |
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
 | `scripts/build-sunshine-ds.sh` | Build FanGoH Sunshine DS in Distrobox (does not replace Decky Sunshine) |
@@ -147,7 +148,7 @@ Copy `.env.example` to `.env`. Important variables:
 |----------|---------|
 | `STEAMOS_NIC_INTERFACE` | Ethernet NIC for WOL |
 | `TAILSCALE_LOGIN_SERVER` | Headscale (or Tailscale) login server URL |
-| `TAILSCALE_HOSTNAME` | Hostname on the tailnet |
+| `TAILSCALE_HOSTNAME` | Tailnet name for this Steam Machine (`steammachine`). Do not use `steamdeck` (handheld) |
 | `TAILSCALE_OPERATOR` | Operator user (usually `deck`) |
 | `OPENRGB_FLATPAK_ID` | OpenRGB Flatpak id |
 | `SUNSHINE_USER_SERVICE` | Sunshine systemd user unit (kept disabled; Decky starts the Flatpak) |

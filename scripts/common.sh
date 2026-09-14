@@ -24,7 +24,8 @@ load_env() {
   STEAMOS_DISTROBOX_NAME="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
   STEAMOS_DISTROBOX_IMAGE="${STEAMOS_DISTROBOX_IMAGE:-registry.fedoraproject.org/fedora:42}"
   TAILSCALE_LOGIN_SERVER="${TAILSCALE_LOGIN_SERVER:-}"
-  TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME:-steamdeck}"
+  # This host is the Steam Machine (lab: steammachine / gpc). steamdeck is the handheld.
+  TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME:-steammachine}"
   TAILSCALE_OPERATOR="${TAILSCALE_OPERATOR:-deck}"
   TAILSCALE_BIN="${TAILSCALE_BIN:-/opt/tailscale/tailscale}"
   OPENRGB_FLATPAK_ID="${OPENRGB_FLATPAK_ID:-org.openrgb.OpenRGB}"
@@ -883,22 +884,28 @@ print_manual_summary() {
 }
 
 tailscale_up_command() {
-  if [ -z "${TAILSCALE_LOGIN_SERVER:-}" ]; then
-    cat <<'EOF'
+  local login="${TAILSCALE_LOGIN_SERVER:-}"
+  local operator="${TAILSCALE_OPERATOR:-deck}"
+  local host="${TAILSCALE_HOSTNAME:-steammachine}"
+  if [ -z "$login" ]; then
+    cat <<EOF
 # Set TAILSCALE_LOGIN_SERVER in .env first (see .env.example), then:
-./deck-tailscale up \
-  --login-server="$TAILSCALE_LOGIN_SERVER" \
-  --operator="$TAILSCALE_OPERATOR" \
-  --hostname="$TAILSCALE_HOSTNAME" \
+# Full bring-up for this Steam Machine. Do not add --reset or --ssh.
+# --hostname=${host} (not the handheld steamdeck).
+./deck-tailscale up \\
+  --login-server="\$TAILSCALE_LOGIN_SERVER" \\
+  --operator=${operator} \\
+  --hostname=${host} \\
   --accept-routes
 EOF
     return 0
   fi
   cat <<EOF
+# Full bring-up for this Steam Machine. Do not add --reset or --ssh.
 ./deck-tailscale up \\
-  --login-server=${TAILSCALE_LOGIN_SERVER} \\
-  --operator=${TAILSCALE_OPERATOR} \\
-  --hostname=${TAILSCALE_HOSTNAME} \\
+  --login-server=${login} \\
+  --operator=${operator} \\
+  --hostname=${host} \\
   --accept-routes
 EOF
 }

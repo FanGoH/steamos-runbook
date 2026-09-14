@@ -5,6 +5,8 @@ alwaysApply: true
 
 # sunshine-ds (desktop GameStream)
 
+This host is the **Steam Machine** (`steammachine` / `gpc`), not the handheld `steamdeck`. Tailscale Control Advanced Settings `--hostname=steammachine` (same as `./deck-tailscale up`); never `--reset` / `--ssh`.
+
 Two servers: Decky Flatpak `:47989` (KMS) and Distrobox sunshine-ds `:48100` (`capture = kwin`). Pin Thor/Odin Moonlight to `:48100` on Plasma. Dual-stream is Plasma/KWin only.
 
 Game Mode dual-stream is a **third** server: `sunshine-ds-kms` `:48200` (`capture = kms`, `dual_display_source = gamescope-virtual`). Checkpoint `checkpoint-2026-09-14-gamemode-fill-exit` (Tender Cemu/Azahar tiles fill Thor bottom; Azahar Exit paints outside Steam). Tile grab remains `checkpoint-2026-09-11-gamemode-tender-ds` (`:1`). Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Sunshine x360 is **15-button** libvirtualhid (`LB=b6` `Back=b10`); do not write Steam xpad 11-button maps.

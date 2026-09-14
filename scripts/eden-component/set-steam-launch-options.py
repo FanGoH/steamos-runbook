@@ -193,11 +193,10 @@ LAUNCHABLE_EXT = {
     ".3ds",
     ".cci",
     ".cxi",
-    ".cia",
 }
 ARCHIVE_EXT = {".zip", ".rar", ".7z"}
 TENDER_DB = Path("homebrew/data/romm-tender/romm_sync.db")
-DS_EXT = {".3ds", ".cci", ".cxi", ".cia"}
+BOOTABLE_DS_EXT = {".3ds", ".cci", ".cxi"}
 
 
 def pick_launchable_dump(target: Path) -> Path | None:
@@ -238,7 +237,7 @@ def _3ds_dump_for_name(base: Path, name: str) -> Path | None:
         return None
     dumps: list[Path] = []
     for path in base.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in DS_EXT:
+        if not path.is_file() or path.suffix.lower() not in BOOTABLE_DS_EXT:
             continue
         hay = _fold_3ds_name(path.stem)
         parent = _fold_3ds_name(path.parent.name)
@@ -249,6 +248,50 @@ def _3ds_dump_for_name(base: Path, name: str) -> Path | None:
     return max(dumps, key=lambda p: p.stat().st_size)
 
 
+def _3ds_name_hits(want: str, path: Path) -> bool:
+    hay = _fold_3ds_name(path.stem)
+    parent = _fold_3ds_name(path.parent.name)
+    if not want:
+        return False
+    return want in hay or hay in want or want in parent or parent in want
+
+
+def resolve_azahar_rom(hint: Path, *, home: Path | None = None) -> Path | None:
+    """Bootable cart for Azahar: ``.3ds`` / ``.cci`` / ``.cxi``, never ``.cia``.
+
+    A missing Luigi CIA must not fall through to the largest file in ``n3ds``
+    (that was Pokémon Ultra Sun). Name-match in the hint folder first, then
+    RetroDECK n3ds / emulation. No match → None.
+    """
+    home = home or Path.home()
+    if hint.is_file() and hint.suffix.lower() in BOOTABLE_DS_EXT:
+        return hint
+    want = _fold_3ds_name(hint.stem)
+    if not want:
+        return None
+    bases: list[Path] = []
+    if hint.parent.is_dir():
+        bases.append(hint.parent)
+    for extra in (home / "retrodeck/roms/n3ds", home / "emulation/3ds/games"):
+        if not extra.is_dir():
+            continue
+        extra_r = extra.resolve()
+        if any(b.resolve() == extra_r for b in bases):
+            continue
+        bases.append(extra)
+    for base in bases:
+        found = [
+            path
+            for path in base.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() in BOOTABLE_DS_EXT
+            and _3ds_name_hits(want, path)
+        ]
+        if found:
+            return max(found, key=lambda p: p.stat().st_size)
+    return None
+
+
 def move_3ds_emulation_into_n3ds(home: Path) -> int:
     """Move ~/emulation/3ds/games dumps into RetroDECK n3ds (rename, no copy)."""
     src_root = home / "emulation/3ds/games"
@@ -257,7 +300,7 @@ def move_3ds_emulation_into_n3ds(home: Path) -> int:
         return 0
     moved = 0
     for dump in sorted(src_root.rglob("*")):
-        if not dump.is_file() or dump.suffix.lower() not in DS_EXT:
+        if not dump.is_file() or dump.suffix.lower() not in BOOTABLE_DS_EXT:
             continue
         dest = dest_root / dump.name
         if dest.is_symlink():
@@ -321,6 +364,16 @@ def launch_options_for_appid(appid: str, home: Path) -> str | None:
     """Steam LaunchOptions string for an empty-argv rom-launcher recovery."""
     row = _tender_row_for_appid(appid, home)
     if row is not None:
+        platform = row["platform_slug"] or ""
+        if platform in ("3ds", "n3ds"):
+            dump = None
+            if row["file_path"]:
+                dump = resolve_azahar_rom(Path(row["file_path"]), home=home)
+            if dump is None:
+                dump = _3ds_dump_for_tender_row(home, None, row["name"])
+            if dump is None:
+                return None
+            return _tender_launch_options("3ds", dump)
         applied = row["applied_launch_options"] or ""
         if applied.strip():
             return applied
@@ -330,7 +383,7 @@ def launch_options_for_appid(appid: str, home: Path) -> str | None:
         if dump is None and row["rom_dir"]:
             dump = pick_launchable_dump(Path(row["rom_dir"]))
         if dump is not None:
-            return _tender_launch_options(row["platform_slug"] or "", dump)
+            return _tender_launch_options(platform, dump)
     dump = rom_for_appid(appid, home)
     if dump is None:
         return None
@@ -575,15 +628,17 @@ def _3ds_dump_for_tender_row(home: Path, fs_name: str | None, name: str | None) 
     n3ds = home / "retrodeck/roms/n3ds"
     emu = home / "emulation/3ds/games"
     if fs_name:
-        for base in (n3ds, emu):
-            if not base.is_dir():
-                continue
-            exact = base / fs_name
-            if exact.is_file():
-                return exact.resolve() if exact.is_symlink() else exact
-            for path in base.rglob(fs_name):
-                if path.is_file():
-                    return path.resolve() if path.is_symlink() else path
+        suffix = Path(fs_name).suffix.lower()
+        if suffix in BOOTABLE_DS_EXT:
+            for base in (n3ds, emu):
+                if not base.is_dir():
+                    continue
+                exact = base / fs_name
+                if exact.is_file() and exact.suffix.lower() in BOOTABLE_DS_EXT:
+                    return exact.resolve() if exact.is_symlink() else exact
+                for path in base.rglob(fs_name):
+                    if path.is_file() and path.suffix.lower() in BOOTABLE_DS_EXT:
+                        return path.resolve() if path.is_symlink() else path
     for base in (n3ds, emu):
         dump = _3ds_dump_for_name(base, name or "")
         if dump is not None:
@@ -613,12 +668,31 @@ def repair_tender_3ds_installs(home: Path) -> int:
         for row in rows:
             dump = None
             if row["file_path"]:
-                dump = pick_launchable_dump(Path(row["file_path"]))
-            if dump is None and row["rom_dir"]:
-                dump = pick_launchable_dump(Path(row["rom_dir"]))
+                dump = resolve_azahar_rom(Path(row["file_path"]), home=home)
             if dump is None:
                 dump = _3ds_dump_for_tender_row(home, row["fs_name"], row["name"])
             if dump is None:
+                existing = con.execute(
+                    "SELECT rom_id FROM rom_installs WHERE rom_id = ?",
+                    (row["rom_id"],),
+                ).fetchone()
+                applied = row["applied_launch_options"] or ""
+                cia = (row["file_path"] or row["fs_name"] or "").lower().endswith(".cia")
+                if existing or row["launchable"] == 1 or applied.strip() or cia:
+                    if existing:
+                        con.execute(
+                            "DELETE FROM rom_installs WHERE rom_id = ?",
+                            (row["rom_id"],),
+                        )
+                    con.execute(
+                        "UPDATE roms SET applied_launch_options = '' WHERE rom_id = ?",
+                        (row["rom_id"],),
+                    )
+                    print(
+                        f"tender rom_id={row['rom_id']} cleared 3ds cache "
+                        f"(no bootable .3ds for {row['name']})"
+                    )
+                    fixed += 1
                 continue
             # Tender / RetroDECK Play the n3ds dest (symlink is fine).
             n3ds = home / "retrodeck/roms/n3ds" / dump.name
@@ -695,6 +769,19 @@ def main() -> int:
             return 1
         print(lo)
         return 0
+    if len(sys.argv) >= 2 and sys.argv[1] == "--resolve-azahar-rom":
+        if len(sys.argv) != 3:
+            print(f"usage: {sys.argv[0]} --resolve-azahar-rom PATH", file=sys.stderr)
+            return 2
+        dump = resolve_azahar_rom(Path(sys.argv[2]), home=Path.home())
+        if dump is None:
+            print(
+                f"no bootable .3ds matching {sys.argv[2]}",
+                file=sys.stderr,
+            )
+            return 1
+        print(dump)
+        return 0
     if len(sys.argv) == 2 and sys.argv[1] == "--repair-tender":
         home = Path.home()
         stash_switch_rars(home)
@@ -707,8 +794,9 @@ def main() -> int:
         print(
             f"usage: {sys.argv[0]} /path/to/shortcuts.vdf\n"
             f"       {sys.argv[0]} --rom-for-appid APPID\n"
-            f"       {sys.argv[0]} --launch-options-for-appid APPID\n"
-            f"       {sys.argv[0]} --repair-tender",
+          f"       {sys.argv[0]} --launch-options-for-appid APPID\n"
+          f"       {sys.argv[0]} --resolve-azahar-rom PATH\n"
+          f"       {sys.argv[0]} --repair-tender",
             file=sys.stderr,
         )
         return 2
@@ -802,6 +890,77 @@ def _self_test() -> None:
         assert move_3ds_emulation_into_n3ds(home) == 0
         assert _3ds_dump_for_name(n3ds, "Fire Emblem Awakening") == dest
         assert _fold_3ds_name("Pokémon Ultra Sun") == "pokemon ultra sun"
+        ultra = n3ds / "Pokemon Ultra Sun (USA).3ds"
+        ultra.write_bytes(b"u" * 40)
+        missing_cia = n3ds / "Luigi's Mansion.cia"
+        assert resolve_azahar_rom(missing_cia, home=home) is None
+        luigi_3ds = n3ds / "Luigi's Mansion (USA).3ds"
+        luigi_3ds.write_bytes(b"l" * 8)
+        assert resolve_azahar_rom(missing_cia, home=home) == luigi_3ds
+        leftover_cia = n3ds / "Metroid Samus Returns.cia"
+        leftover_cia.write_bytes(b"c" * 4)
+        assert resolve_azahar_rom(leftover_cia, home=home) is None
+        assert dest.suffix.lower() == ".3ds"
+        assert resolve_azahar_rom(dest, home=home) == dest
+        assert _3ds_dump_for_tender_row(home, leftover_cia.name, "Metroid Samus Returns") is None
+        assert _3ds_dump_for_tender_row(home, missing_cia.name, "Luigi's Mansion") == luigi_3ds
+        db = home / TENDER_DB
+        db.parent.mkdir(parents=True)
+        con = sqlite3.connect(db)
+        con.executescript(
+            """
+            CREATE TABLE roms (
+              rom_id INTEGER PRIMARY KEY,
+              name TEXT,
+              fs_name TEXT,
+              platform_slug TEXT,
+              applied_launch_options TEXT,
+              fs_size_bytes INTEGER
+            );
+            CREATE TABLE rom_installs (
+              rom_id INTEGER PRIMARY KEY,
+              file_path TEXT,
+              rom_dir TEXT,
+              platform_slug TEXT,
+              system TEXT,
+              installed_at TEXT,
+              launchable INTEGER
+            );
+            """
+        )
+        con.execute(
+            "INSERT INTO roms VALUES (105, \"Luigi's Mansion\", \"Luigi's Mansion.cia\", "
+            "'3ds', 'flatpak run cia', 1)"
+        )
+        con.execute(
+            "INSERT INTO rom_installs VALUES (105, ?, ?, '3ds', 'n3ds', '2026-01-01', 1)",
+            (str(missing_cia), str(n3ds)),
+        )
+        con.execute(
+            "INSERT INTO roms VALUES (104, 'Metroid: Samus Returns', "
+            "'Metroid Samus Returns.cia', '3ds', 'flatpak run cia', 1)"
+        )
+        con.execute(
+            "INSERT INTO rom_installs VALUES (104, ?, ?, '3ds', 'n3ds', '2026-01-01', 1)",
+            (str(leftover_cia), str(n3ds)),
+        )
+        con.commit()
+        con.close()
+        assert repair_tender_3ds_installs(home) >= 2
+        con = sqlite3.connect(db)
+        # Matching .3ds is adopted onto the CIA row — never Ultra Sun.
+        assert con.execute(
+            "SELECT file_path, launchable FROM rom_installs WHERE rom_id=105"
+        ).fetchone() == (str(luigi_3ds), 1)
+        assert "Luigi" in con.execute(
+            "SELECT applied_launch_options FROM roms WHERE rom_id=105"
+        ).fetchone()[0]
+        # Leftover CIA with no cart: drop Tender's Play cache.
+        assert con.execute("SELECT COUNT(*) FROM rom_installs WHERE rom_id=104").fetchone()[0] == 0
+        assert con.execute(
+            "SELECT applied_launch_options FROM roms WHERE rom_id=104"
+        ).fetchone()[0] == ""
+        con.close()
 
 
 if __name__ == "__main__":

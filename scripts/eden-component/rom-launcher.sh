@@ -177,15 +177,16 @@ for arg in "$@"; do
 done
 
 pick_3ds_rom() {
-  local dir="$1"
-  local match
-  match="$(find "$dir" -type f \( -iname '*.3ds' -o -iname '*.cci' -o -iname '*.cxi' \
-    -o -iname '*.cia' \) -printf '%s %p\n' 2>/dev/null \
-    | sort -nr | awk '{print substr($0, index($0," ")+1); exit}' || true)"
-  printf '%s' "${match:-}"
+  local hint="$1"
+  local lo_py="$PLAYBOOK/scripts/eden-component/set-steam-launch-options.py"
+  if [ ! -f "$lo_py" ]; then
+    return 0
+  fi
+  python3 "$lo_py" --resolve-azahar-rom "$hint" 2>/dev/null || true
 }
 
 is_azahar=0
+azahar_hint=""
 azahar_rom=""
 for arg in "$@"; do
   case "$arg" in
@@ -194,20 +195,39 @@ for arg in "$@"; do
       ;;
     *.3ds|*.3DS|*.cci|*.CCI|*.cxi|*.CXI|*.cia|*.CIA)
       is_azahar=1
-      if [ -f "$arg" ]; then
-        azahar_rom="$arg"
-      elif [ -d "$(dirname "$arg")" ]; then
-        azahar_rom="$(pick_3ds_rom "$(dirname "$arg")")"
-      fi
+      azahar_hint="$arg"
+      azahar_rom="$(pick_3ds_rom "$arg")"
       ;;
-    */3ds/*|*/3DS/*)
+    */3ds/*|*/3DS/*|*/n3ds/*|*/n3DS/*)
       is_azahar=1
-      if [ -z "$azahar_rom" ] && [ -d "$arg" ]; then
+      if [ -z "$azahar_hint" ]; then
+        azahar_hint="$arg"
         azahar_rom="$(pick_3ds_rom "$arg")"
       fi
       ;;
   esac
 done
+
+if [ "$is_azahar" -eq 1 ] && [ -n "$azahar_hint" ]; then
+  if [ -z "$azahar_rom" ] || [ ! -f "$azahar_rom" ]; then
+    echo "rom-launcher: no bootable .3ds matching ${azahar_hint} (CIA installers are not launched; will not pick another cart from n3ds)" >&2
+    exit 1
+  fi
+  if [ -n "$azahar_hint" ] && [ "$azahar_rom" != "$azahar_hint" ]; then
+    echo "rom-launcher: ${azahar_hint} -> $azahar_rom" >&2
+    AZAHAR_NEW_ARGS=()
+    replaced=0
+    for arg in "$@"; do
+      if [ "$replaced" -eq 0 ] && [ "$arg" = "$azahar_hint" ]; then
+        AZAHAR_NEW_ARGS+=("$azahar_rom")
+        replaced=1
+      else
+        AZAHAR_NEW_ARGS+=("$arg")
+      fi
+    done
+    set -- "${AZAHAR_NEW_ARGS[@]}"
+  fi
+fi
 
 # Live Auto / Dual-screen / HDMI-only from mux.json + :48200 BUSY + sidecar +
 # who is watching the bottom. Capture JSON once so Play logs why Auto chose

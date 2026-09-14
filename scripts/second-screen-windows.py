@@ -18,6 +18,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -78,6 +79,39 @@ def _playbook_env() -> dict[str, str]:
     env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
     env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
     return env
+
+
+def touch_sidecar_path() -> Path:
+    """Moonlight bottom taps inject here when GamePad View / Azahar Secondary is gone."""
+    env = os.environ.get("SECOND_SCREEN_TOUCH_FILE")
+    if env:
+        return Path(env)
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid() or 1000}"
+    if Path(runtime).name == "0":
+        runtime = "/run/user/1000"
+    return Path(runtime) / "second-screen-touch"
+
+
+def write_touch_sidecar(display: str, wid: str) -> None:
+    pad = pad_display()
+    if display.rstrip(".0") == pad.rstrip(".0") or display.rstrip(".0") == "2":
+        clear_touch_sidecar()
+        return
+    xid = wid.lower()
+    if xid.isdigit():
+        xid = hex(int(xid))
+    if not xid.startswith("0x"):
+        xid = "0x" + xid
+    path = touch_sidecar_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"display={display}\nxid={xid}\n", encoding="utf-8")
+
+
+def clear_touch_sidecar() -> None:
+    try:
+        touch_sidecar_path().unlink()
+    except OSError:
+        pass
 
 
 def sidecar_path() -> Path:
@@ -339,6 +373,7 @@ def kill_pad_x11grab(pad: str) -> None:
         MIRROR_PIDFILE.unlink()
     except OSError:
         pass
+    clear_touch_sidecar()
 
 
 def stop_pad_screensaver(pad: str) -> None:
@@ -497,6 +532,7 @@ def start_mirror(display: str, wid: str, pad: str) -> int:
         start_new_session=True,
     )
     MIRROR_PIDFILE.write_text(f"{proc.pid}\n", encoding="utf-8")
+    write_touch_sidecar(display, wid)
     return proc.pid
 
 
@@ -692,6 +728,20 @@ def self_test() -> int:
     ]
     assert pad_display("serial=92\npw_node=89\nx11=:2\n") == ":2"
     assert session_displays(":2") == [":0", ":1", ":2"]
+    with tempfile.TemporaryDirectory() as td:
+        os.environ["SECOND_SCREEN_TOUCH_FILE"] = str(Path(td) / "second-screen-touch")
+        os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"] = str(Path(td) / "virtual")
+        Path(os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"]).write_text(
+            "x11=:2\n", encoding="utf-8"
+        )
+        write_touch_sidecar(":0", "0x60000a")
+        text = touch_sidecar_path().read_text(encoding="utf-8")
+        assert "display=:0" in text
+        assert "xid=0x60000a" in text
+        write_touch_sidecar(":2", "0x400015")
+        assert not touch_sidecar_path().is_file()
+        os.environ.pop("SECOND_SCREEN_TOUCH_FILE", None)
+        os.environ.pop("SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE", None)
     assert wid_decimal("0x2200035") == str(int("0x2200035", 16))
     assert wid_decimal("35717173") == "35717173"
     visible = [w for w in parsed if window_visible(w)]

@@ -154,15 +154,60 @@ def session_root_size(display: str = ":0") -> tuple[int, int]:
     return 0, 0
 
 
+def steam_ui_blocks_scanout_from_props(overlay: bool, blur_mode: int) -> bool:
+    """Overlay / QAM need compose. Do not clip CEF or clear COMPOSITE_FORCE."""
+    return bool(overlay) or blur_mode != 0
+
+
+def steam_overlay_on(display: str = ":0") -> bool:
+    try:
+        proc = _run(["xwininfo", "-root", "-tree"], timeout=3, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    for win in parse_xwininfo_tree(proc.stdout or "", display):
+        name = (win.get("name") or "").lower()
+        cls = (win.get("class") or "").lower()
+        if "steam" not in name and "steam" not in cls:
+            continue
+        try:
+            prop = _run(["xprop", "-id", win["id"], "STEAM_OVERLAY"], timeout=2, display=display)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = prop.stdout or ""
+        if "= 1" in text or "=1" in text:
+            return True
+    return False
+
+
+def steam_qam_blur(display: str = ":0") -> int:
+    try:
+        proc = _run(["xprop", "-root", "GAMESCOPE_BLUR_MODE"], timeout=2, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    text = proc.stdout or ""
+    if "=" not in text:
+        return 0
+    first = text.split("=", 1)[1].split(",")[0].strip()
+    try:
+        return int(first)
+    except ValueError:
+        return 0
+
+
 def fix_4k_scanout(display: str = ":0") -> list[str]:
     """Let native 4K HDMI scan out. Steam CEF often maps 3840×2161.
 
     That 1px overflow plus GAMESCOPE_COMPOSITE_FORCE flickers on a 2160
-    panel. Do not touch :1 (games stay 1080p) or :2.
+    panel. Do not touch :1 (games stay 1080p) or :2. Do not run this while
+    Steam overlay / QAM is up — those surfaces need compose, and clipping
+    the 2161 CEF breaks the overlay.
     """
     messages: list[str] = []
     width, height = session_root_size(display)
     if width < 2560 or height < 1440:
+        return messages
+    if steam_ui_blocks_scanout_from_props(steam_overlay_on(display), steam_qam_blur(display)):
+        messages.append("Skipped 4K scanout clip (Steam overlay or QAM is up)")
         return messages
     try:
         _run(
@@ -652,8 +697,6 @@ def current_mirror(pad: str) -> dict:
 def status_payload() -> dict:
     pad = pad_display()
     live = bind_json(["second-screen-streaming"])
-    if live.get("busy"):
-        fix_4k_scanout(":0")
     windows = list_windows(pad)
     clients = live.get("clients") if isinstance(live.get("clients"), list) else []
     sidecar = sidecar_path()
@@ -898,6 +941,9 @@ def self_test() -> int:
     assert "Steam Big Picture Mode" in names
     assert "GamePad View" in names
     assert "mangoapp overlay window" not in names
+    assert steam_ui_blocks_scanout_from_props(True, 0) is True
+    assert steam_ui_blocks_scanout_from_props(False, 1) is True
+    assert steam_ui_blocks_scanout_from_props(False, 0) is False
     print("second-screen-windows self-test ok")
     return 0
 

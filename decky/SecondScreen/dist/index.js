@@ -297,7 +297,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.7, fontSize: "0.82em" },
               children:
-                "On = 4K TV + 1080p Odin/Thor GamePad. Set Odin Moonlight to 60 FPS while the TV is 4K. Pause = TV only.",
+                "4K TV + 1080p GamePad can coexist. Both streams encode at 60 (min of HDMI and :2). Pause = TV only.",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {

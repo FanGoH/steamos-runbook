@@ -393,22 +393,29 @@ find_tv_wid() {
 }
 
 steam_overlay_active() {
-  local wid val
+  local d wid val
   command -v xprop >/dev/null 2>&1 || return 1
-  wid="$(DISPLAY="$TV_DISPLAY" xwininfo -root -tree 2>/dev/null | awk '/Steam Big Picture Mode/{print $1; exit}')"
-  if [ -n "${wid:-}" ]; then
-    val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
-    if [ "${val:-0}" = "1" ]; then
-      return 0
+  # BPM / overlay live on :0. Cemu TV is often :1 — do not look only there.
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    wid="$(DISPLAY="$d" xwininfo -root -tree 2>/dev/null | awk '/Steam Big Picture Mode/{print $1; exit}')"
+    if [ -n "${wid:-}" ]; then
+      val="$(DISPLAY="$d" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
+      if [ "${val:-0}" = "1" ]; then
+        return 0
+      fi
     fi
-  fi
+  done
   command -v xdotool >/dev/null 2>&1 || return 1
-  for wid in $(DISPLAY="$TV_DISPLAY" xdotool search --class steam 2>/dev/null || true) \
-             $(DISPLAY="$TV_DISPLAY" xdotool search --class steamwebhelper 2>/dev/null || true); do
-    val="$(DISPLAY="$TV_DISPLAY" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
-    if [ "${val:-0}" = "1" ]; then
-      return 0
-    fi
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    for wid in $(DISPLAY="$d" xdotool search --class steam 2>/dev/null || true) \
+               $(DISPLAY="$d" xdotool search --class steamwebhelper 2>/dev/null || true); do
+      val="$(DISPLAY="$d" xprop -id "$wid" STEAM_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}')"
+      if [ "${val:-0}" = "1" ]; then
+        return 0
+      fi
+    done
   done
   return 1
 }

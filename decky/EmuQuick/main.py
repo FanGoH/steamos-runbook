@@ -173,12 +173,81 @@ class Plugin:
             "--value",
             value,
         ]
+        live = bool(kwargs.get("live")) if kwargs else False
+        if live:
+            cmd.append("--live")
         if title:
             cmd.extend(["--title", title])
         try:
             proc = _run_as_deck(cmd, timeout=25)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "emu-quick-settings set timed out"}
+        data = _json_from(proc)
+        if not data.get("messages") and data.get("message"):
+            data["messages"] = [data["message"]]
+        return data
+
+    async def apply_live(
+        self,
+        emu: str = "eden",
+        scope: str = "global",
+        title: str = "",
+        key: str = "",
+        value: str = "",
+        **kwargs: object,
+    ) -> dict:
+        if kwargs:
+            emu = str(kwargs.get("emu", emu) or emu)
+            scope = str(kwargs.get("scope", scope) or scope)
+            title = str(kwargs.get("title", title) or title)
+            key = str(kwargs.get("key", key) or key)
+            value = str(kwargs.get("value", value) or value)
+        return await self.set_setting(emu, scope, title, key, value, live=True)
+
+    async def save_settings(
+        self,
+        emu: str = "eden",
+        scope: str = "global",
+        title: str = "",
+        values: str = "{}",
+        **kwargs: object,
+    ) -> dict:
+        if kwargs:
+            emu = str(kwargs.get("emu", emu) or emu)
+            scope = str(kwargs.get("scope", scope) or scope)
+            title = str(kwargs.get("title", title) or title)
+            values = str(kwargs.get("values", values) if kwargs.get("values") is not None else values)
+        script = _script()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        emu = (emu or "eden").strip().lower()
+        scope = (scope or "global").strip().lower()
+        title = (title or "").strip()
+        if emu not in ("eden", "azahar", "cemu"):
+            return {"ok": False, "message": f"Unknown emu {emu}"}
+        if scope not in ("global", "game"):
+            return {"ok": False, "message": f"Unknown scope {scope}"}
+        if isinstance(values, dict):
+            payload = json.dumps(values)
+        else:
+            payload = str(values or "{}")
+        cmd = [
+            "python3",
+            script,
+            "save",
+            "--emu",
+            emu,
+            "--scope",
+            scope,
+            "--values",
+            payload,
+        ]
+        if title:
+            cmd.extend(["--title", title])
+        try:
+            proc = _run_as_deck(cmd, timeout=25)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "emu-quick-settings save timed out"}
         data = _json_from(proc)
         if not data.get("messages") and data.get("message"):
             data["messages"] = [data["message"]]

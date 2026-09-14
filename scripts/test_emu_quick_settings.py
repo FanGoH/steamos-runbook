@@ -355,6 +355,66 @@ def test_status_marks_live_settings() -> None:
         )
         assert docked["hotswap"] == "live"
         assert res["hotswap"] == "restart"
+        assert docked["widget"] == "toggle"
+        assert res["widget"] == "slider"
+
+
+def test_live_only_does_not_write_until_save() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        proc = home / "proc"
+        rom = str(home / "games/Fire Emblem Engage[0100A6301214E000].xci")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", rom])
+        live = mod.do_set(
+            "eden",
+            "global",
+            "",
+            "use_docked_mode",
+            "false",
+            home,
+            proc_root=proc,
+            live_only=True,
+        )
+        assert live["wrote"] is False
+        assert live["hotswap_keys"] == ["F10"]
+        text = mod.eden_ini(home).read_text()
+        assert "use_docked_mode=1" in text
+        saved = mod.do_save("eden", "global", "", {"use_docked_mode": "false"}, home)
+        assert saved["wrote"] is True
+        assert "use_docked_mode=false" in mod.eden_ini(home).read_text()
+
+
+def test_live_session_tracks_filter_steps() -> None:
+    with _home() as td:
+        home = Path(td)
+        _write(mod.eden_ini(home), GLOBAL_EDEN)
+        proc = home / "proc"
+        rom = str(home / "games/Fire Emblem Engage[0100A6301214E000].xci")
+        _fake_proc(proc, "42", "eden", ["eden", "-f", "-g", rom])
+        first = mod.do_set(
+            "eden",
+            "global",
+            "",
+            "scaling_filter",
+            "3",
+            home,
+            proc_root=proc,
+            live_only=True,
+        )
+        assert first["hotswap_keys"] == ["F8", "F8"]
+        second = mod.do_set(
+            "eden",
+            "global",
+            "",
+            "scaling_filter",
+            "4",
+            home,
+            proc_root=proc,
+            live_only=True,
+        )
+        assert second["hotswap_keys"] == ["F8"]
+        assert "scaling_filter=1" in mod.eden_ini(home).read_text()
 
 
 if __name__ == "__main__":
@@ -376,6 +436,8 @@ if __name__ == "__main__":
         test_do_set_hotswap_skipped_with_proc,
         test_hotswap_skips_other_game_and_override,
         test_status_marks_live_settings,
+        test_live_only_does_not_write_until_save,
+        test_live_session_tracks_filter_steps,
     ]
     for fn in tests:
         fn()

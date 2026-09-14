@@ -10,22 +10,27 @@ Install: `scripts/ensure-emu-quick-decky.sh`. PluginLoader is root — `main.py`
 - **Azahar:** internal resolution, VSync, frame limit, texture filter, renderer, async shaders, accurate mul, New 3DS. Per-game `custom/<titleid>.ini`. Does **not** touch `layout_option` (dual-screen Separate Windows).
 - **Cemu:** VSync, upscale filter, FPS overlay, async compile in standalone + RetroDECK `settings.xml`. Does **not** touch `fullscreen` / GamePad geometry.
 
-INI/XML writes always happen. While Eden is running, Emu Quick also sends the matching Eden hotkey (focus the window, then `xdotool key` without `--window` — gamescope drops `--window`):
+Sliders and toggles stay **unsaved** until **Save this game**. A toast appears only on Save (or Reset).
+
+## Live apply (Eden)
+
+Live rows send the Eden hotkey immediately and **do not write INI**. Session state tracks the in-memory value so a second F8/F10 is computed from what was actually applied, not from disk. Save later writes the draft.
 
 | Setting | Live | How |
 |---|---|---|
-| Console (docked / handheld) | yes | F10 toggle (`Change Docked Mode`) |
-| Scaling filter | yes | F8 cycles from the current value |
+| Docked | yes | F10 toggle (`Change Docked Mode`) |
+| Scaling filter | yes | F8 cycles from the live session value |
 | GPU accuracy Normal ↔ High | yes | F9. **Extreme still needs an Eden restart** |
 | Limit speed | yes | Ctrl+U toggle |
-| Resolution scale | no | this Eden build has no resolution hotkey; **close and reopen Eden** (F6 restart-emulation keeps in-memory Settings) |
+| Resolution scale | no | no hotkey; Save then **close and reopen Eden** (F6 keeps in-memory Settings) |
 
-Hotkeys are read from `qt-config.ini` so a rebound F10 still works. Live apply only if the running title matches (or global while that game does not override the key). Overlay / QAM can stay open; do not SIGSTOP the emulator. Needs `xdotool`.
+Hotkeys come from `qt-config.ini`. Apply tries `xdotool key --window` first so QAM can keep focus; if gamescope drops that, it focuses Eden, sends the key, then restores the previous window. Live apply only if the running title matches. Do not SIGSTOP the emulator. Needs `xdotool`.
 
 ## CLI
 
 ```bash
 python3 scripts/emu-quick-settings.py status
-python3 scripts/emu-quick-settings.py set --emu eden --scope game --title 0100A6301214E000 --key resolution_setup --value 2
+python3 scripts/emu-quick-settings.py set --live --emu eden --scope game --title 0100A6301214E000 --key use_docked_mode --value false
+python3 scripts/emu-quick-settings.py save --emu eden --scope game --title 0100A6301214E000 --values '{"use_docked_mode":"false"}'
 python3 scripts/emu-quick-settings.py reset --emu eden --scope game --title 0100A6301214E000
 ```

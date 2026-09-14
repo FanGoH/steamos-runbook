@@ -222,12 +222,13 @@ EDEN_SETTINGS = [
     {
         "key": "use_docked_mode",
         "section": "System",
-        "label": "Console",
-        "kind": "enum",
+        "label": "Docked",
+        "kind": "bool",
         "default": "true",
         "options": _enum([("false", "Handheld"), ("true", "Docked")]),
         "normalize": "bool",
         "hotswap": "live",
+        "widget": "toggle",
     },
     {
         "key": "resolution_setup",
@@ -249,6 +250,7 @@ EDEN_SETTINGS = [
             ]
         ),
         "hotswap": "restart",
+        "widget": "slider",
     },
     {
         "key": "gpu_accuracy",
@@ -258,6 +260,7 @@ EDEN_SETTINGS = [
         "default": "0",
         "options": _enum([("0", "Normal"), ("1", "High"), ("2", "Extreme")]),
         "hotswap": "live",
+        "widget": "slider",
     },
     {
         "key": "use_vsync",
@@ -273,6 +276,7 @@ EDEN_SETTINGS = [
                 ("3", "FIFO Relaxed"),
             ]
         ),
+        "widget": "slider",
     },
     {
         "key": "scaling_filter",
@@ -292,6 +296,7 @@ EDEN_SETTINGS = [
             ]
         ),
         "hotswap": "live",
+        "widget": "slider",
     },
     {
         "key": "anti_aliasing",
@@ -300,6 +305,7 @@ EDEN_SETTINGS = [
         "kind": "enum",
         "default": "0",
         "options": _enum([("0", "None"), ("1", "FXAA"), ("2", "SMAA")]),
+        "widget": "slider",
     },
     {
         "key": "max_anisotropy",
@@ -317,6 +323,7 @@ EDEN_SETTINGS = [
                 ("5", "16x"),
             ]
         ),
+        "widget": "slider",
     },
     {
         "key": "use_speed_limit",
@@ -326,6 +333,7 @@ EDEN_SETTINGS = [
         "default": "true",
         "normalize": "bool",
         "hotswap": "live",
+        "widget": "toggle",
     },
     {
         "key": "speed_limit",
@@ -342,6 +350,7 @@ EDEN_SETTINGS = [
                 ("200", "200%"),
             ]
         ),
+        "widget": "slider",
     },
     {
         "key": "use_asynchronous_shaders",
@@ -363,6 +372,7 @@ AZAHAR_SETTINGS = [
         "options": _enum(
             [(str(i), f"{i}x") for i in range(1, 11)]
         ),
+        "widget": "slider",
     },
     {
         "key": "use_vsync",
@@ -371,6 +381,7 @@ AZAHAR_SETTINGS = [
         "kind": "bool",
         "default": "true",
         "normalize": "bool",
+        "widget": "toggle",
     },
     {
         "key": "frame_limit",
@@ -387,6 +398,7 @@ AZAHAR_SETTINGS = [
                 ("200", "200%"),
             ]
         ),
+        "widget": "slider",
     },
     {
         "key": "texture_filter",
@@ -404,6 +416,7 @@ AZAHAR_SETTINGS = [
                 ("5", "MMPX"),
             ]
         ),
+        "widget": "slider",
     },
     {
         "key": "graphics_api",
@@ -412,6 +425,7 @@ AZAHAR_SETTINGS = [
         "kind": "enum",
         "default": "2",
         "options": _enum([("1", "OpenGL"), ("2", "Vulkan")]),
+        "widget": "slider",
     },
     {
         "key": "async_shader_compilation",
@@ -523,6 +537,16 @@ def option_label(spec: dict, value: str) -> str:
     return value
 
 
+def widget_for(spec: dict) -> str:
+    if spec.get("widget"):
+        return spec["widget"]
+    if spec.get("kind") == "bool" or spec.get("normalize") == "bool":
+        return "toggle"
+    if spec.get("options"):
+        return "slider"
+    return "cycle"
+
+
 # --- Process / title detection ---------------------------------------------
 
 
@@ -565,6 +589,24 @@ def running_cmdlines(emu: str, proc_root: Path | None = None) -> list[list[str]]
 
 def emu_running(emu: str, proc_root: Path | None = None) -> bool:
     return bool(running_cmdlines(emu, proc_root))
+
+
+def eden_pid(proc_root: Path | None = None) -> str:
+    root = proc_root or Path("/proc")
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return ""
+    for pid in entries:
+        if not pid.name.isdigit():
+            continue
+        try:
+            comm = (pid / "comm").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _comm_ok(comm, "eden"):
+            return pid.name
+    return ""
 
 
 def rom_from_args(args: list[str]) -> str | None:
@@ -791,6 +833,7 @@ def pack_setting(spec: dict, value: str, *, use_global: bool) -> dict:
         "use_global": use_global,
         "default": spec["default"],
         "hotswap": spec.get("hotswap") or "restart",
+        "widget": widget_for(spec),
     }
     if spec.get("options"):
         out["options"] = spec["options"]
@@ -982,6 +1025,63 @@ def current_setting_value(emu: str, home: Path, title_id: str, key: str) -> str:
     return ""
 
 
+def live_state_path(home: Path, proc_root: Path | None = None) -> Path:
+    if proc_root is not None:
+        return home / "emu-quick-eden-live.json"
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "emu-quick-eden-live.json"
+
+
+def load_eden_live_state(home: Path, proc_root: Path | None = None) -> dict:
+    pid = eden_pid(proc_root)
+    path = live_state_path(home, proc_root)
+    data: dict = {"pid": pid, "values": {}}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        raw = {}
+    if str(raw.get("pid") or "") == str(pid) and pid:
+        values = raw.get("values") if isinstance(raw.get("values"), dict) else {}
+        data["values"] = {str(k): str(v) for k, v in values.items()}
+    return data
+
+
+def store_eden_live_value(
+    home: Path, key: str, value: str, proc_root: Path | None = None
+) -> None:
+    pid = eden_pid(proc_root)
+    if not pid:
+        return
+    path = live_state_path(home, proc_root)
+    data = load_eden_live_state(home, proc_root)
+    data["pid"] = pid
+    data.setdefault("values", {})[key] = value
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def live_old_value(
+    home: Path,
+    scope: str,
+    title_id: str,
+    key: str,
+    proc_root: Path | None = None,
+) -> str:
+    state = load_eden_live_state(home, proc_root)
+    if key in state.get("values", {}):
+        return str(state["values"][key])
+    read_title = title_id if scope == "game" else ""
+    return current_setting_value("eden", home, read_title, key)
+
+
+def clear_eden_live_state(home: Path, proc_root: Path | None = None) -> None:
+    path = live_state_path(home, proc_root)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def eden_running_title(home: Path, proc_root: Path | None) -> str:
     return (detect_title("eden", home, proc_root).get("title_id") or "").upper()
 
@@ -1055,35 +1155,45 @@ def send_eden_hotkeys(keys: list[str]) -> dict:
         return {"sent": False, "reason": "no_window"}
     display, wid = found
     env = _xdotool_env(display)
-    try:
-        # gamescope drops `xdotool key --window`; focus first like eden-from-retrodeck.sh.
-        subprocess.run(
-            [xdotool, "windowfocus", wid],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        subprocess.run(
-            [xdotool, "windowactivate", wid],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        proc = subprocess.run(
-            [xdotool, "key", "--delay", "80", *keys],
+
+    def run(args: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            args,
             env=env,
             capture_output=True,
             text=True,
             timeout=8,
         )
+
+    try:
+        # Prefer targeting the Eden window so QAM keeps focus / EmuPads mute.
+        direct = run([xdotool, "key", "--window", wid, "--delay", "80", *keys])
+        if direct.returncode == 0:
+            return {
+                "sent": True,
+                "display": display,
+                "window": wid,
+                "keys": keys,
+                "method": "window",
+            }
+        previous = _xdotool_lines(xdotool, display, ["getwindowfocus"])
+        run([xdotool, "windowfocus", wid])
+        run([xdotool, "windowactivate", wid])
+        proc = run([xdotool, "key", "--delay", "80", *keys])
+        if previous and previous[0] != wid:
+            run([xdotool, "windowfocus", previous[0]])
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"sent": False, "reason": "xdotool_failed", "error": str(exc)[:200]}
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "xdotool failed").strip()[:200]
         return {"sent": False, "reason": "xdotool_failed", "error": err}
-    return {"sent": True, "display": display, "window": wid, "keys": keys}
+    return {
+        "sent": True,
+        "display": display,
+        "window": wid,
+        "keys": keys,
+        "method": "focus",
+    }
 
 
 def apply_eden_hotswap(
@@ -1098,12 +1208,16 @@ def apply_eden_hotswap(
     spec = setting_by_key("eden", key)
     hotkeys = load_eden_hotkeys(_read(eden_ini(home)))
     filter_count = len(spec.get("options") or []) if key == "scaling_filter" else None
+    if old == "":
+        old = live_old_value(home, scope, title_id, key, proc_root)
     keys = eden_hotswap_keys(key, old, new, hotkeys, filter_count=filter_count)
     result: dict = {
         "hotswap": "none",
         "hotswap_keys": keys,
         "hotswap_reason": "unchanged" if old == new else "no_hotkey",
         "sent": False,
+        "live_from": old,
+        "live_to": new,
     }
     if not keys:
         if old == new:
@@ -1130,12 +1244,14 @@ def apply_eden_hotswap(
     if proc_root is not None:
         result["hotswap"] = "skipped"
         result["hotswap_reason"] = "test_proc"
+        store_eden_live_value(home, key, new, proc_root)
         return result
     sent = send_eden_hotkeys(keys)
     result.update(sent)
     if sent.get("sent"):
         result["hotswap"] = "live"
         result["hotswap_reason"] = "live"
+        store_eden_live_value(home, key, new, proc_root)
     else:
         result["hotswap"] = "skipped"
         result["hotswap_reason"] = sent.get("reason") or "send_failed"
@@ -1347,9 +1463,9 @@ def emu_payload(
         per_game = True
         note = (
             "Console, scaling filter, GPU Normal/High, and speed limit apply live "
-            "while Eden is running. Resolution needs a full Eden restart."
+            "while Eden is running (not written until Save). Resolution needs a full Eden restart after Save."
             if running
-            else "Edits apply on the next Eden launch."
+            else "Save writes settings for the next Eden launch. Live rows apply in-game without saving."
         )
     elif emu == "azahar":
         settings = read_azahar(home, title_id)
@@ -1405,42 +1521,104 @@ def do_set(
     value: str,
     home: Path,
     proc_root: Path | None = None,
+    *,
+    live_only: bool = False,
+    write: bool = True,
 ) -> dict:
     emu = emu.lower()
     scope = (scope or "global").lower()
     if scope not in {"global", "game"}:
         raise ValueError(f"Unknown scope {scope}")
+    if live_only:
+        write = False
     hotswap: dict = {"hotswap": "none", "hotswap_keys": [], "hotswap_reason": "not_eden"}
+    messages: list[str] = []
     if emu == "cemu":
-        messages = set_cemu(home, key, value)
+        if write:
+            messages = set_cemu(home, key, value)
         hotswap["hotswap_reason"] = "restart"
     elif emu == "eden":
-        read_title = title_id if scope == "game" else ""
-        old = current_setting_value("eden", home, read_title, key)
         spec = setting_by_key("eden", key)
         new = normalize_value(spec, value)
-        messages = set_eden(home, scope, title_id, key, value)
+        old = live_old_value(home, scope, title_id, key, proc_root)
+        if write:
+            messages = set_eden(home, scope, title_id, key, value)
         hotswap = apply_eden_hotswap(
-            home, scope, title_id, key, old, new, proc_root=proc_root
+            home,
+            scope,
+            title_id,
+            key,
+            old,
+            new,
+            proc_root=proc_root,
         )
         extra = hotswap_message(key, hotswap)
-        if extra:
+        if extra and write:
             messages.append(extra)
+        elif extra and live_only and hotswap.get("hotswap") not in {"live", "skipped"}:
+            messages.append(extra)
+        elif live_only and hotswap.get("hotswap") in {"live", "skipped"}:
+            messages.append(f"Live {key}={new}")
     elif emu == "azahar":
-        messages = set_azahar(home, scope, title_id, key, value)
+        if write:
+            messages = set_azahar(home, scope, title_id, key, value)
+            messages.append("Restart Azahar to apply.")
         hotswap["hotswap_reason"] = "restart"
-        messages.append("Restart Azahar to apply.")
     else:
         raise ValueError(f"Unknown emu {emu}")
+    if live_only and emu != "eden":
+        messages = ["Not a live Eden setting"]
+        hotswap["hotswap_reason"] = "not_eden"
     out = {"ok": True, "messages": messages, "message": " ".join(messages)}
     out.update(
         {
             "hotswap": hotswap.get("hotswap") or "none",
             "hotswap_keys": hotswap.get("hotswap_keys") or [],
             "hotswap_reason": hotswap.get("hotswap_reason") or "",
+            "wrote": write,
         }
     )
     return out
+
+
+def do_save(
+    emu: str,
+    scope: str,
+    title_id: str,
+    values: dict[str, str],
+    home: Path,
+) -> dict:
+    emu = emu.lower()
+    scope = (scope or "global").lower()
+    if scope not in {"global", "game"}:
+        raise ValueError(f"Unknown scope {scope}")
+    if not values:
+        return {"ok": True, "messages": ["Nothing to save"], "message": "Nothing to save", "wrote": False}
+    messages: list[str] = []
+    for key, value in values.items():
+        if emu == "cemu":
+            messages.extend(set_cemu(home, key, value))
+        elif emu == "eden":
+            messages.extend(set_eden(home, scope, title_id, key, value))
+        elif emu == "azahar":
+            messages.extend(set_azahar(home, scope, title_id, key, value))
+        else:
+            raise ValueError(f"Unknown emu {emu}")
+    hint = "Saved for the next launch."
+    if emu == "eden":
+        hint = "Saved. Live settings already match in-game; others apply after an Eden restart."
+    elif emu == "azahar":
+        hint = "Saved. Restart Azahar to apply."
+    else:
+        hint = "Saved. Restart Cemu to apply."
+    messages.append(hint)
+    return {
+        "ok": True,
+        "messages": messages,
+        "message": " ".join(messages),
+        "wrote": True,
+        "hotswap": "none",
+    }
 
 
 def do_reset(emu: str, scope: str, title_id: str, home: Path) -> dict:
@@ -1481,6 +1659,20 @@ def main(argv: list[str] | None = None) -> int:
     p_set.add_argument("--title", default="")
     p_set.add_argument("--key", required=True)
     p_set.add_argument("--value", required=True)
+    p_set.add_argument(
+        "--live",
+        action="store_true",
+        help="Send Eden hotkeys only; do not write INI",
+    )
+    p_save = sub.add_parser("save", parents=[shared])
+    p_save.add_argument("--emu", required=True, choices=("eden", "azahar", "cemu"))
+    p_save.add_argument("--scope", default="global", choices=("global", "game"))
+    p_save.add_argument("--title", default="")
+    p_save.add_argument(
+        "--values",
+        required=True,
+        help="JSON object of key -> value to write",
+    )
     p_reset = sub.add_parser("reset", parents=[shared])
     p_reset.add_argument("--emu", required=True, choices=("eden", "azahar", "cemu"))
     p_reset.add_argument("--scope", default="global", choices=("global", "game"))
@@ -1504,12 +1696,26 @@ def main(argv: list[str] | None = None) -> int:
                 args.value,
                 home,
                 proc_root=proc,
+                live_only=bool(getattr(args, "live", False)),
             )
+            data.update(status_payload(home, proc, emu=args.emu, title=args.title))
+            data["ok"] = True
+            return _print(data)
+        if args.cmd == "save":
+            try:
+                raw_values = json.loads(args.values)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid --values JSON: {exc}") from exc
+            if not isinstance(raw_values, dict):
+                raise ValueError("--values must be a JSON object")
+            values = {str(k): str(v) for k, v in raw_values.items()}
+            data = do_save(args.emu, args.scope, args.title, values, home)
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True
             return _print(data)
         if args.cmd == "reset":
             data = do_reset(args.emu, args.scope, args.title, home)
+            clear_eden_live_state(home, proc)
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True
             return _print(data)

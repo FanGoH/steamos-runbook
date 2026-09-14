@@ -20,7 +20,8 @@ const definePlugin = (fn) => {
 };
 
 const getStatus = callable("get_status");
-const setSetting = callable("set_setting");
+const applyLive = callable("apply_live");
+const saveSettings = callable("save_settings");
 const resetSettings = callable("reset_settings");
 
 const EMUS = [
@@ -29,20 +30,18 @@ const EMUS = [
   { key: "cemu", title: "Cemu" },
 ];
 
-function nextOption(setting, dir) {
+function displayOf(setting, value) {
   const options = setting?.options || [];
-  if (!options.length) {
-    if (setting?.kind === "bool") {
-      return setting.value === "true" ? "false" : "true";
-    }
-    return setting?.value;
-  }
-  const idx = Math.max(
-    0,
-    options.findIndex((opt) => opt.value === setting.value)
-  );
-  const next = (idx + dir + options.length) % options.length;
-  return options[next].value;
+  const match = options.find((opt) => opt.value === String(value));
+  if (match) return match.label;
+  if (setting?.kind === "bool") return value === "true" ? "On" : "Off";
+  return value;
+}
+
+function optionIndex(setting, value) {
+  const options = setting?.options || [];
+  const idx = options.findIndex((opt) => opt.value === String(value));
+  return idx < 0 ? 0 : idx;
 }
 
 function Content() {
@@ -52,8 +51,10 @@ function Content() {
   const [titleId, setTitleId] = SP_REACT.useState("");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const [draft, setDraft] = SP_REACT.useState({});
   const emuTouched = SP_REACT.useRef(false);
   const titleTouched = SP_REACT.useRef(false);
+  const liveTimers = SP_REACT.useRef({});
 
   const refresh = SP_REACT.useCallback(
     async (opts) => {
@@ -86,7 +87,7 @@ function Content() {
 
   const block = status?.emus?.[emu] || {};
   const games = block.games || [];
-  const settings = block.settings || [];
+  const diskSettings = block.settings || [];
   const canPerGame = block.per_game !== false && emu !== "cemu";
   const effectiveTitle = titleId || block.title_id || "";
   const gameName =
@@ -95,36 +96,43 @@ function Content() {
     effectiveTitle ||
     "No game selected";
 
-    const toastResult = (title, result) => {
-      const hotswap = result?.hotswap;
-      const reason = result?.hotswap_reason || "";
-      const body = (result?.messages || [result?.message || ""])
-        .filter(Boolean)
-        .join(" ")
-        .slice(0, 220);
-      let fallback = "Restart the emulator to apply.";
-      if (hotswap === "live") fallback = "Applied live in Eden.";
-      else if (reason === "no_hotkey")
-        fallback = "Saved. Close and reopen Eden to apply.";
-      else if (reason === "not_running") fallback = "Saved for the next launch.";
-      toaster.toast({
-        title:
-          result?.ok === false
-            ? "Save failed"
-            : hotswap === "live"
-              ? "Applied live"
-              : title,
-        body: body || fallback,
-        duration: result?.ok === false ? 7000 : 4000,
-      });
+  const settings = diskSettings.map((setting) => {
+    if (draft[setting.key] === undefined) return setting;
+    const value = String(draft[setting.key]);
+    return {
+      ...setting,
+      value,
+      display: displayOf(setting, value),
     };
+  });
+
+  const dirtyEntries = {};
+  for (const setting of diskSettings) {
+    if (draft[setting.key] !== undefined && String(draft[setting.key]) !== String(setting.value)) {
+      dirtyEntries[setting.key] = String(draft[setting.key]);
+    }
+  }
+  const dirty = Object.keys(dirtyEntries).length > 0;
+
+  const toastSave = (result) => {
+    const body = (result?.messages || [result?.message || ""])
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 220);
+    toaster.toast({
+      title: result?.ok === false ? "Save failed" : "Saved",
+      body: body || "Saved this game's settings.",
+      duration: result?.ok === false ? 7000 : 4000,
+    });
+  };
 
   const pickEmu = (key) => {
     emuTouched.current = true;
     titleTouched.current = false;
     setEmu(key);
     setTitleId("");
-    setScope(key === "cemu" ? "global" : "global");
+    setScope("global");
+    setDraft({});
     refresh({ emu: key, title: "" });
   };
 
@@ -136,11 +144,49 @@ function Content() {
     const next = ids[(idx + dir + ids.length) % ids.length];
     setTitleId(next);
     setScope("game");
+    setDraft({});
     refresh({ emu, title: next });
   };
 
-  const apply = async (key, value) => {
-    if (busy) return;
+  const queueLive = (setting, value) => {
+    if (setting.hotswap !== "live" || !block.running) return;
+    const key = setting.key;
+    if (liveTimers.current[key]) clearTimeout(liveTimers.current[key]);
+    const delay = setting.widget === "toggle" ? 0 : 280;
+    liveTimers.current[key] = setTimeout(async () => {
+      try {
+        const result = await applyLive(
+          emu,
+          canPerGame ? scope : "global",
+          effectiveTitle,
+          key,
+          String(value)
+        );
+        if (result?.ok === false) {
+          toaster.toast({
+            title: "Live apply failed",
+            body: String(result.message || "Could not send Eden hotkey").slice(0, 220),
+            duration: 5000,
+          });
+        }
+      } catch (err) {
+        toaster.toast({
+          title: "Live apply failed",
+          body: String(err).slice(0, 220),
+          duration: 5000,
+        });
+      }
+    }, delay);
+  };
+
+  const changeSetting = (setting, value) => {
+    const next = String(value);
+    setDraft((prev) => ({ ...prev, [setting.key]: next }));
+    queueLive(setting, next);
+  };
+
+  const save = async () => {
+    if (busy || !dirty) return;
     if (canPerGame && scope === "game" && !effectiveTitle) {
       toaster.toast({
         title: "Pick a game",
@@ -151,14 +197,14 @@ function Content() {
     }
     setBusy(true);
     try {
-      const result = await setSetting(
+      const result = await saveSettings(
         emu,
         canPerGame ? scope : "global",
         effectiveTitle,
-        key,
-        String(value)
+        JSON.stringify(dirtyEntries)
       );
-      toastResult("Saved", result);
+      toastSave(result);
+      setDraft({});
       await refresh({ emu, title: effectiveTitle });
     } catch (err) {
       toaster.toast({
@@ -177,7 +223,8 @@ function Content() {
     setBusy(true);
     try {
       const result = await resetSettings(emu, nextScope, effectiveTitle);
-      toastResult(nextScope === "game" ? "Game reset" : "Defaults restored", result);
+      toastSave(result);
+      setDraft({});
       await refresh({ emu, title: effectiveTitle });
     } catch (err) {
       toaster.toast({
@@ -194,8 +241,11 @@ function Content() {
     const extra = [];
     if (canPerGame && setting.use_global === false) extra.push("this game");
     if (setting.hotswap === "live") extra.push("live");
+    if (draft[setting.key] !== undefined && draft[setting.key] !== diskSettings.find((s) => s.key === setting.key)?.value)
+      extra.push("unsaved");
     const badge = extra.length ? ` · ${extra.join(" · ")}` : "";
-    if (setting.kind === "bool" && DFL.ToggleField) {
+    const widget = setting.widget || (setting.kind === "bool" ? "toggle" : "slider");
+    if (widget === "toggle" && DFL.ToggleField) {
       return SP_JSX.jsx(
         DFL.PanelSectionRow,
         {
@@ -203,7 +253,30 @@ function Content() {
             label: setting.label + badge,
             checked: setting.value === "true",
             disabled: busy,
-            onChange: (on) => apply(setting.key, on ? "true" : "false"),
+            onChange: (on) => changeSetting(setting, on ? "true" : "false"),
+          }),
+        },
+        setting.key
+      );
+    }
+    const options = setting.options || [];
+    if (widget === "slider" && DFL.SliderField && options.length) {
+      return SP_JSX.jsx(
+        DFL.PanelSectionRow,
+        {
+          children: SP_JSX.jsx(DFL.SliderField, {
+            label: `${setting.label}: ${setting.display || setting.value}${badge}`,
+            min: 0,
+            max: options.length - 1,
+            step: 1,
+            value: optionIndex(setting, setting.value),
+            notchCount: Math.min(options.length, 9),
+            showValue: false,
+            disabled: busy,
+            onChange: (idx) => {
+              const next = options[Math.max(0, Math.min(options.length - 1, Math.round(idx)))];
+              if (next) changeSetting(setting, next.value);
+            },
           }),
         },
         setting.key
@@ -225,13 +298,21 @@ function Content() {
                 SP_JSX.jsx(DFL.ButtonItem, {
                   layout: "below",
                   disabled: busy,
-                  onClick: () => apply(setting.key, nextOption(setting, -1)),
+                  onClick: () =>
+                    changeSetting(
+                      setting,
+                      options[Math.max(0, optionIndex(setting, setting.value) - 1)]?.value
+                    ),
                   children: "−",
                 }),
                 SP_JSX.jsx(DFL.ButtonItem, {
                   layout: "below",
                   disabled: busy,
-                  onClick: () => apply(setting.key, nextOption(setting, 1)),
+                  onClick: () =>
+                    changeSetting(
+                      setting,
+                      options[Math.min(options.length - 1, optionIndex(setting, setting.value) + 1)]?.value
+                    ),
                   children: "+",
                 }),
               ],
@@ -253,11 +334,9 @@ function Content() {
               style: { opacity: 0.8, fontSize: "0.88em" },
               children:
                 error ||
-                (block.note
-                  ? block.note
-                  : block.running
-                    ? `Running${block.title ? `: ${block.title}` : ""}.`
-                    : "No game running. Edits apply on the next launch."),
+                (block.running
+                  ? `Running${block.title ? `: ${block.title}` : ""}. Live rows apply now; Save writes this game.`
+                  : "No game running. Save writes settings for the next launch."),
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -291,12 +370,18 @@ function Content() {
                   children: [
                     SP_JSX.jsx(DFL.ButtonItem, {
                       layout: "below",
-                      onClick: () => setScope("global"),
+                      onClick: () => {
+                        setScope("global");
+                        setDraft({});
+                      },
                       children: scope === "global" ? "Global ✓" : "Global",
                     }),
                     SP_JSX.jsx(DFL.ButtonItem, {
                       layout: "below",
-                      onClick: () => setScope("game"),
+                      onClick: () => {
+                        setScope("game");
+                        setDraft({});
+                      },
                       children: scope === "game" ? "This game ✓" : "This game",
                     }),
                   ],
@@ -354,8 +439,16 @@ function Content() {
             ],
       }),
       SP_JSX.jsxs(DFL.PanelSection, {
-        title: "Reset",
+        title: "Save",
         children: [
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy || !dirty,
+              onClick: save,
+              children: dirty ? "Save this game" : "Saved",
+            }),
+          }),
           canPerGame
             ? SP_JSX.jsx(DFL.PanelSectionRow, {
                 children: SP_JSX.jsx(DFL.ButtonItem, {
@@ -378,7 +471,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.7, fontSize: "0.85em" },
               children:
-                "Leaves pad binds, dual-screen layout, and Engage 4GB memory alone. Eden console / filter / GPU Normal-High / speed limit can apply live (F10/F8/F9/Ctrl+U). Resolution still needs an Eden restart.",
+                "Live rows (docked, filter, GPU Normal/High, speed limit) apply in Eden now and stay unsaved until Save. Resolution still needs an Eden restart after Save.",
             }),
           }),
         ],

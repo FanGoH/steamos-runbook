@@ -483,6 +483,19 @@ else
 fi
 if flatpak ps 2>/dev/null | grep -qi 'syncthingtk\|syncthing-gtk'; then
   warn "Syncthing GTK Flatpak is running — stop it so it does not fight $ST_BIN"
+RD_SDMC="/home/$STEAMOS_USER/retrodeck/saves/n3ds/azahar/sdmc"
+if [ -L "$RD_SDMC" ]; then
+  fail "RetroDECK Azahar sdmc is a symlink — Game Mode cannot use another Flatpak data dir"
+  record_manual "Replace RetroDECK Azahar sdmc symlink with a real copy" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
+  ok "RetroDECK Azahar sdmc is a real directory"
+else
+  warn "RetroDECK Azahar sdmc missing — Game Mode will not see Syncthing saves until ensure-syncthing.sh copies it"
+fi
+
 fi
 DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
 if [ -f "$DECKY_ST_SETTINGS" ]; then

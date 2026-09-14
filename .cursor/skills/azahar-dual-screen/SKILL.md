@@ -54,3 +54,8 @@ Process `comm` is `azahar`. `resourceClass` is `Azahar`. Dual-screen windows hav
 - Hand-edit `qt-config.ini` GUIDs
 - Resize/kill the virtual-output helper
 - `sudo systemctl --user`, `kwin_wayland --replace`, `POST /api/restart`
+
+## Saves
+
+Dual-screen uses the **standalone** Flatpak sdmc (Syncthing mesh). Game Mode / Tender uses `~/retrodeck/saves/n3ds/azahar/sdmc`. Do **not** symlink those together — RetroDECK cannot use another Flatpak data dir and will reset to an empty fallback sdmc. Skill `.cursor/skills/emu-save-mesh/SKILL.md`.
+

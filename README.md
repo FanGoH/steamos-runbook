@@ -35,7 +35,7 @@ git pull
 - Cursor Agent worker user service (`agent worker start` against `CURSOR_WORKER_DIR`)
 - Switch 2 wireless controllers (`~/code/switch2-controllers-linux` BLE → uinput bridge)
 - Eden RetroDECK component + Tender wrap (huge Switch dumps skip RetroDECK and boot host Eden)
-- Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman)
+- Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Copies standalone Azahar sdmc into RetroDECK Game Mode — never a cross-Flatpak symlink (`.cursor/skills/emu-save-mesh/`)
 - RPCS3 player 1 bound to the current pad (not Steam Deck Controller)
 
 Manual follow-ups (printed when needed):
@@ -79,8 +79,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin) |
-| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden/Azahar save folders |
+| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden/Azahar folders, copy Azahar sdmc into RetroDECK Game Mode |
 | `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share `eden-saves` / `azahar-saves`) |
+| `.cursor/skills/emu-save-mesh/` | Eden/Azahar Syncthing mesh vs Game Mode Azahar copies (never symlink RetroDECK sdmc into another Flatpak) |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | Bind standalone Cemu/Azahar to a named pad; `profile` prints `GAMESTREAM_PAD_PROFILE` |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |

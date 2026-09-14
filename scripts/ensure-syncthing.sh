@@ -196,4 +196,66 @@ export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
 export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
+# Game Mode / Tender Azahar cannot see another Flatpak's ~/.var/app tree.
+# Copy the meshed standalone sdmc; never symlink into org.azahar_emu.Azahar.
+sync_azahar_into_retrodeck() {
+  local src="/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc"
+  local dest="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar/sdmc"
+  local fallback="/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
+  local cfg="/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/config/azahar-emu/qt-config.ini"
+
+  if [ ! -d "$src/Nintendo 3DS" ]; then
+    echo "Standalone Azahar sdmc not present; skip RetroDECK copy."
+    return 0
+  fi
+
+  if [ -L "$dest" ]; then
+    echo "Replacing symlink $dest with a real copy (RetroDECK cannot use another Flatpak data dir)."
+    rm -f "$dest"
+  fi
+
+  mkdir -p "$dest" "$fallback"
+  if ! command -v rsync >/dev/null 2>&1; then
+    record_manual "Install rsync to copy Azahar sdmc into RetroDECK Game Mode" <<EOF
+# Need rsync, then:
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    return 0
+  fi
+  rsync -a "$src/" "$dest/"
+  rsync -a "$src/" "$fallback/"
+  echo "Copied standalone Azahar sdmc -> $dest and $fallback"
+
+  if [ -f "$cfg" ]; then
+    python3 - "$cfg" "$dest" <<'PY'
+from pathlib import Path
+import sys
+cfg_path = Path(sys.argv[1])
+sdmc = sys.argv[2]
+if not sdmc.endswith("/"):
+    sdmc += "/"
+text = cfg_path.read_text(encoding="utf-8")
+out = []
+found = False
+for line in text.splitlines(True):
+    if line.strip().startswith("sdmc_directory="):
+        out.append(f"sdmc_directory={sdmc}\n")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f"sdmc_directory={sdmc}\n")
+new = "".join(out)
+if new != text:
+    cfg_path.write_text(new, encoding="utf-8")
+    print(f"Set RetroDECK sdmc_directory={sdmc}")
+else:
+    print(f"RetroDECK sdmc_directory already {sdmc}")
+PY
+  fi
+}
+
+sync_azahar_into_retrodeck
+
 echo "Syncthing save mesh OK."

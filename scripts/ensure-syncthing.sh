@@ -205,14 +205,21 @@ if not sdmc.endswith("/"):
 text = cfg_path.read_text(encoding="utf-8")
 out = []
 found = False
+found_default = False
 for line in text.splitlines(True):
-    if line.strip().startswith("sdmc_directory="):
+    stripped = line.strip()
+    if stripped.startswith("sdmc_directory="):
         out.append(f"sdmc_directory={sdmc}\n")
         found = True
+    elif stripped.startswith("sdmc_directory\\default="):
+        out.append("sdmc_directory\\default=false\n")
+        found_default = True
     else:
         out.append(line)
 if not found:
     out.append(f"sdmc_directory={sdmc}\n")
+if not found_default:
+    out.append("sdmc_directory\\default=false\n")
 new = "".join(out)
 if new != text:
     cfg_path.write_text(new, encoding="utf-8")
@@ -241,7 +248,7 @@ unify_azahar_onto_retrodeck() {
 
   if command -v flatpak >/dev/null 2>&1; then
     local azahar_fs="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar"
-    if flatpak override --user --filesystem="$azahar_fs" org.azahar_emu.Azahar; then
+    if flatpak override --user --filesystem="$azahar_fs:rw" org.azahar_emu.Azahar; then
       echo "Standalone Azahar may write $azahar_fs (Flatpak host:ro needs this)."
     else
       record_manual "Allow standalone Azahar to write RetroDECK sdmc" <<EOF

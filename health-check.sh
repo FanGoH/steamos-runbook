@@ -523,6 +523,23 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 EOF
 elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
   ok "RetroDECK Azahar sdmc is the Syncthing mesh (real directory)"
+  want_sdmc="${RD_SDMC%/}/"
+  for cfg in \
+    "/home/$STEAMOS_USER/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" \
+    "/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini"
+  do
+    [ -f "$cfg" ] || continue
+    got="$(awk -F= '/^sdmc_directory=/ {print $2; exit}' "$cfg")"
+    if [ "${got%/}/" = "$want_sdmc" ]; then
+      ok "$(basename "$(dirname "$(dirname "$cfg")")") sdmc_directory -> mesh"
+    else
+      fail "Azahar sdmc_directory is $got (want $want_sdmc)"
+      record_manual "Point every Azahar at RetroDECK sdmc" <<EOF
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  done
 else
   warn "RetroDECK Azahar sdmc missing — Game Mode will not share saves until ensure-syncthing.sh creates it"
 fi

@@ -38,7 +38,7 @@ Title folder `10143500` is **The Wind Waker HD**.
 
 ## One Azahar sdmc on this box
 
-Game Mode, standalone Flatpak (dual-screen), and Syncthing all use **`~/retrodeck/saves/n3ds/azahar/sdmc`**. `ensure-syncthing.sh` sets both `qt-config.ini` `sdmc_directory`s there and `flatpak override --user --filesystem=/home/deck/retrodeck/saves/n3ds/azahar` because standalone Azahar ships `host:ro`.
+Game Mode, standalone Flatpak (dual-screen), and Syncthing all use **`~/retrodeck/saves/n3ds/azahar/sdmc`**. `ensure-syncthing.sh` sets both `qt-config.ini` `sdmc_directory`s there and `flatpak override --user --filesystem=/home/deck/retrodeck/saves/n3ds/azahar:rw` because standalone Azahar ships `host:ro`. Dual-screen scripts re-pin `sdmc_directory` every launch so Azahar cannot drift back to `~/.var/app/org.azahar_emu.Azahar/...`.
 
 Do **not** symlink `~/retrodeck/saves/n3ds/azahar/sdmc` into `~/.var/app/org.azahar_emu.Azahar/…`. RetroDECK cannot use another app’s data dir; Azahar then resets to `~/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc/` and creates empty title folders.
 

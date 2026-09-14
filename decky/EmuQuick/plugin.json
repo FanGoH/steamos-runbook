@@ -1,0 +1,10 @@
+{
+  "name": "Emu Quick",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["eden", "yuzu", "cemu", "azahar", "citra", "graphics", "resolution"],
+    "description": "Quick Eden / Azahar / Cemu graphics: global or per-game resolution, docked/handheld, VSync, reset. Restart the game to apply."
+  }
+}

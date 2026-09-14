@@ -400,6 +400,14 @@ if [ -e "$HOMEBREW_DIR/services/PluginLoader" ] || [ -d "$HOMEBREW_DIR" ]; then
 else
   warn "Decky files not found (optional)"
 fi
+if [ -f "$HOMEBREW_DIR/plugins/EmuQuick/main.py" ]; then
+  ok "Decky Emu Quick plugin installed"
+else
+  warn "Decky Emu Quick plugin not installed"
+  record_manual "Install Emu Quick Decky plugin" <<EOF
+./scripts/ensure-emu-quick-decky.sh
+EOF
+fi
 echo
 
 echo "[Switch 2 controllers]"

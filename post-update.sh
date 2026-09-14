@@ -88,6 +88,7 @@ run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.
 run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
 run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "ensure-emu-quick-decky" "$ROOT/scripts/ensure-emu-quick-decky.sh" warn
+run_step "ensure-second-screen-decky" "$ROOT/scripts/ensure-second-screen-decky.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn
 

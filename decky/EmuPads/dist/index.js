@@ -22,7 +22,6 @@ const definePlugin = (fn) => {
 const getStatus = callable("get_status");
 const applyBinds = callable("apply");
 const setMuxMode = callable("set_mode");
-const setDualScreen = callable("set_dual_screen");
 
 function asPads(raw) {
   if (Array.isArray(raw)) return raw;
@@ -73,7 +72,6 @@ function Content() {
   const [included, setIncluded] = SP_REACT.useState({});
   const [mode, setMode] = SP_REACT.useState("shared");
   const [cemuP1, setCemuP1] = SP_REACT.useState("gamepad");
-  const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
   const modeTouched = SP_REACT.useRef(false);
@@ -97,10 +95,6 @@ function Content() {
         setCemuP1(next.mux.cemu_p1);
       } else if (next?.cemu_p1 === "pro" || next?.cemu_p1 === "gamepad") {
         setCemuP1(next.cemu_p1);
-      }
-      const ds = next?.mux?.dual_screen || next?.dual_screen;
-      if (ds === "auto" || ds === "on" || ds === "off") {
-        setDualScreenMode(ds);
       }
       setIncluded((prev) => {
         const out = { ...prev };
@@ -137,19 +131,6 @@ function Content() {
       copy[j] = tmp;
       return copy;
     });
-  };
-
-  const persistDualScreen = async (nextMode) => {
-    setDualScreenMode(nextMode);
-    try {
-      const result = await setDualScreen(nextMode);
-      if (result?.ok === false) {
-        return;
-      }
-      await refresh();
-    } catch (_err) {
-      // set_dual_screen is missing until Decky reloads main.py.
-    }
   };
 
   const persistMode = async (nextMode) => {
@@ -316,37 +297,6 @@ function Content() {
                   layout: "below",
                   onClick: () => persistMode("multi"),
                   children: mode === "multi" ? "Multiplayer ✓" : "Multiplayer",
-                }),
-              ],
-            }),
-          }),
-          SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsxs("div", {
-              style: { opacity: 0.75, fontSize: "0.88em" },
-              children: [
-                status?.dual_screen_live?.reason ||
-                  "Auto dual-screen: Cemu/Azahar GamePad layout only when Moonlight is watching the bottom.",
-              ],
-            }),
-          }),
-          SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsxs("div", {
-              style: { display: "flex", gap: 8, flexWrap: "wrap" },
-              children: [
-                SP_JSX.jsx(DFL.ButtonItem, {
-                  layout: "below",
-                  onClick: () => persistDualScreen("auto"),
-                  children: dualScreen === "auto" ? "Auto DS ✓" : "Auto DS",
-                }),
-                SP_JSX.jsx(DFL.ButtonItem, {
-                  layout: "below",
-                  onClick: () => persistDualScreen("on"),
-                  children: dualScreen === "on" ? "Dual-screen ✓" : "Dual-screen",
-                }),
-                SP_JSX.jsx(DFL.ButtonItem, {
-                  layout: "below",
-                  onClick: () => persistDualScreen("off"),
-                  children: dualScreen === "off" ? "HDMI only ✓" : "HDMI only",
                 }),
               ],
             }),

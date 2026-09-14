@@ -601,6 +601,14 @@ else
 ./scripts/ensure-emu-pads-decky.sh
 EOF
 fi
+if [ -f "$HOMEBREW_DIR/plugins/SecondScreen/main.py" ]; then
+  ok "Decky Second Screen plugin installed"
+else
+  warn "Decky Second Screen plugin not installed"
+  record_manual "Install Second Screen Decky plugin" <<EOF
+./scripts/ensure-second-screen-decky.sh
+EOF
+fi
 if systemctl --user is-enabled emupads-mux.service >/dev/null 2>&1; then
   ok "emupads-mux.service enabled"
 else

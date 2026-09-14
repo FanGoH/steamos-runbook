@@ -107,6 +107,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
 | `scripts/ensure-emupads-mux.sh` | Always-on `emupads-mux.service` (EmuPads P1/P2 uinput). Vanilla Sunshine pads are sources too |
 | `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
+| `scripts/second-screen-windows.py` | List gamescope windows; show one on `:2`; Auto dual-screen. Called by Decky **Second Screen** |
+| `scripts/ensure-second-screen-decky.sh` | Install Decky **Second Screen** (dual-screen toggle + window list). `~/homebrew/plugins` may need sudo |
+| `decky/SecondScreen/` | Second Screen plugin source |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |

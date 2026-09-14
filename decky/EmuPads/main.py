@@ -204,24 +204,6 @@ class Plugin:
             return {"ok": False, "message": "bind-gamepad set-mode timed out"}
         return _json_from(proc)
 
-    async def set_dual_screen(self, mode: str = "auto", **kwargs: object) -> dict:
-        if kwargs:
-            mode = str(kwargs.get("mode", mode) or mode)
-        script = _bind_py()
-        if not os.path.isfile(script):
-            return {"ok": False, "message": f"Missing {script}"}
-        mode = (mode or "auto").strip().lower()
-        if mode not in ("auto", "on", "off"):
-            return {"ok": False, "message": f"Unknown dual-screen mode {mode}"}
-        try:
-            proc = _run_as_deck(
-                ["python3", script, "set-dual-screen", "--mode", mode],
-                timeout=10,
-            )
-        except subprocess.TimeoutExpired:
-            return {"ok": False, "message": "bind-gamepad set-dual-screen timed out"}
-        return _json_from(proc)
-
     async def apply(
         self,
         emu: str = "all",

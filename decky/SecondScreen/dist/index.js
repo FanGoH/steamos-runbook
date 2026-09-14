@@ -21,6 +21,7 @@ const definePlugin = (fn) => {
 
 const getStatus = callable("get_status");
 const setDualScreen = callable("set_dual_screen");
+const setVirtualOutput = callable("set_virtual_output");
 const showWindow = callable("show_window");
 const idleClock = callable("idle_clock");
 
@@ -126,6 +127,7 @@ function PluginTitle() {
 function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
+  const [virtualOutput, setVirtualOutputMode] = SP_REACT.useState("on");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
   const lastModeSig = SP_REACT.useRef(null);
@@ -138,6 +140,10 @@ function Content() {
       const ds = next?.dual_screen || next?.dual_screen_live?.mode;
       if (ds === "auto" || ds === "on" || ds === "off") {
         setDualScreenMode(ds);
+      }
+      const vo = next?.virtual_output;
+      if (vo === "on" || vo === "off") {
+        setVirtualOutputMode(vo);
       }
       const nextClients = asClients(next);
       const sig = `${next?.dual_screen_live?.wanted ? "1" : "0"}|${clientsSignature(nextClients)}`;
@@ -162,6 +168,36 @@ function Content() {
     const id = setInterval(refresh, 4000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  const persistVirtualOutput = async (nextMode) => {
+    setVirtualOutputMode(nextMode);
+    try {
+      const result = await setVirtualOutput(nextMode);
+      if (result?.ok === false) {
+        toaster.toast({
+          title: "Second Screen",
+          body: result.message || "virtual display toggle failed",
+          duration: 5000,
+        });
+      } else {
+        toaster.toast({
+          title: nextMode === "off" ? "Second display paused" : "Second display on",
+          body:
+            nextMode === "off"
+              ? "Headless :2 is stopped. HDMI resolution is unchanged."
+              : "Moonlight bottom / GamePad virtual is back.",
+          duration: 4000,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      toaster.toast({
+        title: "Second Screen",
+        body: String(err).slice(0, 220),
+        duration: 5000,
+      });
+    }
+  };
 
   const persistDualScreen = async (nextMode) => {
     setDualScreenMode(nextMode);
@@ -239,6 +275,50 @@ function Content() {
                   "no-clients"
                 ),
               ]),
+        ],
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
+        title: "Virtual second display",
+        children: [
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.Field, {
+              label: status?.virtual_output_live
+                ? "Live on :2"
+                : virtualOutput === "off"
+                  ? "Paused"
+                  : "Not running",
+              children:
+                virtualOutput === "off"
+                  ? "Headless gamescope is off. HDMI / TV stay at Steam's output size. Turn On before Odin/Thor GamePad."
+                  : "1080p :2 for Odin/Thor GamePad. HDMI can stay 4K. Does not change TV resolution.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.7, fontSize: "0.82em" },
+              children:
+                "4K TV + 1080p GamePad can coexist. Both streams encode at 60 (min of HDMI and :2). Pause = TV only.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { display: "flex", gap: 8, flexWrap: "wrap" },
+              children: [
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  disabled: busy,
+                  onClick: () => persistVirtualOutput("on"),
+                  children: virtualOutput === "on" ? "On ✓" : "On",
+                }),
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  disabled: busy,
+                  onClick: () => persistVirtualOutput("off"),
+                  children: virtualOutput === "off" ? "Pause ✓" : "Pause",
+                }),
+              ],
+            }),
+          }),
         ],
       }),
       SP_JSX.jsxs(DFL.PanelSection, {

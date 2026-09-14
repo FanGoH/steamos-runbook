@@ -452,6 +452,29 @@ def kms_log_path() -> Path:
     return _playbook_root() / "logs" / "sunshine-ds-gamemode.log"
 
 
+def _ensure_virtual_sidecar() -> None:
+    """Start headless :2 when Moonlight is already BUSY and the sidecar is gone.
+
+    Do not block. Pause still wins when :48200 is FREE. Never pgrep sunshine.
+    """
+    script = _playbook_root() / "scripts" / "sunshine-ds-gamemode-virtual.sh"
+    if not script.is_file():
+        return
+    env = os.environ.copy()
+    env.pop("LD_PRELOAD", None)
+    try:
+        subprocess.Popen(
+            ["bash", str(script), "--start"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=env,
+        )
+    except OSError:
+        return
+
+
 def _sidecar_ready(path: Path) -> bool:
     if not path.is_file():
         return False
@@ -692,6 +715,10 @@ def second_screen_streaming_state(
     elif not side_ok:
         wanted = False
         reason = ":48200 is BUSY but gamescope-virtual sidecar is missing"
+        # Live Auto/status (not self-test): bring :2 back so Odin GamePad
+        # is not terminated. Pref=off still starts while BUSY.
+        if xml is None and log_text is None:
+            _ensure_virtual_sidecar()
     elif mode == "on":
         wanted = True
         reason = "Dual-screen forced (Emu Pads toggle)"

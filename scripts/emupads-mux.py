@@ -11,6 +11,10 @@ to P1 (no analog mix). Multi: first selected source → P1, second → P2.
 Overlay/QAM: ``$XDG_RUNTIME_DIR/emupads-mute`` present → sinks emit zeros.
 Steam still sees the real Sunshine pads. Do not EVIOCGRAB those.
 
+Native games (Dusklight, Steam titles) also see P1/P2 as extra pads, so
+Thor + the mux copy fire twice. Hide sinks unless Cemu / Azahar / Eden
+is running. Do not match Sunshine / Steam / gamescope.
+
 Never pgrep -f sunshine.
 """
 from __future__ import annotations
@@ -120,6 +124,22 @@ def is_steam_virtual(dev) -> bool:
     return pair == STEAM_VIRTUAL
 
 
+def is_sunshine_source(dev) -> bool:
+    low = (dev.name or "").lower()
+    return "sunshine" in low or "libvirtualhid" in low
+
+
+def is_local_usb_pad(dev) -> bool:
+    """Physical Xbox / xpad on the host — not a Sunshine Moonlight pad."""
+    if is_sunshine_source(dev) or is_steam_virtual(dev):
+        return False
+    pair = vid_pid(dev)
+    if pair is not None and pair[0] == 0x045E:
+        return True
+    name = (dev.name or "").lower()
+    return "x-box" in name or "xbox" in name
+
+
 def sink_capabilities() -> dict:
     return {
         ecodes.EV_KEY: list(_BTN),
@@ -211,6 +231,10 @@ def selected_sources(cfg: dict, devices: list[InputDevice]) -> list[InputDevice]
     non_steam = [dev for dev in eligible if not is_steam_virtual(dev)]
     if non_steam:
         eligible = non_steam
+    # Moonlight + a desk USB Xbox both feeding P1 made NMH3 / Eden fight
+    # itself (last-activity steal). Keep Sunshine; drop the local pad.
+    if any(is_sunshine_source(dev) for dev in eligible):
+        eligible = [dev for dev in eligible if not is_local_usb_pad(dev)]
     if not specs:
         return eligible
     out: list[InputDevice] = []
@@ -287,11 +311,16 @@ def forward_event(ui: UInput, ev, src=None) -> None:
 
 
 _STEAM_UI_CACHE = (0.0, False)
+_EMU_CACHE = (0.0, False)
 _STEAM_UI_ATOMS = (
     "GAMESCOPE_FOCUSED_APP",
     "STEAM_OVERLAY",
     "GAMESCOPE_BLUR_MODE",
 )
+# Linux comm is 15 chars (Flatpak Cemu → Cemu_relwithdeb). Do not match
+# Sunshine / Steam / gamescope. Native AppImages (dusklight) are not emus.
+_EMU_COMM_EXACT = {"azahar"}
+_EMU_COMM_PREFIXES = ("cemu", "eden")
 
 
 def parse_xprop_atoms(text: str) -> dict[str, str]:
@@ -335,6 +364,42 @@ def steam_ui_active(now: float | None = None) -> bool:
     active = steam_ui_from_props(xprop_root_atoms(":0", _STEAM_UI_ATOMS))
     _STEAM_UI_CACHE = (ts, active)
     return active
+
+
+def is_emulator_comm(comm: str) -> bool:
+    name = comm.strip().lower()
+    if not name or name.startswith("sunshine"):
+        return False
+    if name in _EMU_COMM_EXACT:
+        return True
+    return any(name.startswith(prefix) for prefix in _EMU_COMM_PREFIXES)
+
+
+def emulator_comms(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if is_emulator_comm(line)]
+
+
+def emulator_wants_sinks(now: float | None = None) -> bool:
+    """Cemu / Azahar / Eden read P1/P2. Dusklight and other native games must not."""
+    global _EMU_CACHE
+    ts = time.monotonic() if now is None else now
+    cached_at, cached = _EMU_CACHE
+    if ts - cached_at < 0.25:
+        return cached
+    try:
+        out = subprocess.check_output(["ps", "-eo", "comm="], timeout=0.2, text=True)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        out = ""
+    wanted = bool(emulator_comms(out))
+    _EMU_CACHE = (ts, wanted)
+    return wanted
+
+
+def hide_sinks_from_host(now: float | None = None) -> bool:
+    """Grab + mute P1/P2 unless an emulator needs them."""
+    if steam_ui_active(now):
+        return True
+    return not emulator_wants_sinks(now)
 
 
 def sink_event_reader(ui: UInput):
@@ -489,14 +554,14 @@ def loop() -> int:
                 devices = rescan_devices(devices, skip)
             selected = selected_sources(cfg, devices)
             fds = {dev.fd: dev for dev in selected}
-        steam_ui = steam_ui_active(now)
-        grab_sinks(sink_readers, steam_ui, sink_grabbed)
-        want_mute = mute_path().is_file() or steam_ui
+        hide = hide_sinks_from_host(now)
+        grab_sinks(sink_readers, hide, sink_grabbed)
+        want_mute = mute_path().is_file() or hide
         if want_mute and not muted:
             for ui in sinks:
                 zero_sink(ui)
             muted = True
-            log("muted (Steam UI / overlay)")
+            log("muted (no emulator / Steam UI)")
         elif not want_mute and muted:
             muted = False
             log("unmuted")
@@ -601,9 +666,10 @@ def self_test() -> int:
         Fake("Sunshine (libvirtualhid) AYN_Thor", "/dev/input/event10"),
         Fake("EmuPads P1", "/dev/input/event20", 0x1209, 0xE301),
         Fake("Sunshine (libvirtualhid) Mouse", "/dev/input/event11", 0x1209, 0x0003),
-        Fake("Odin2_Portal", "/dev/input/event12"),
+        Fake("Odin2_Portal", "/dev/input/event12", 0x37D7, 0x0001),
         Fake("ASRock LED Controller", "/dev/input/event13", 0x26CE, 0x01A2),
         Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF),
+        Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E),
     ]
     # selected_sources expects InputDevice; duck-type name/path
     got = selected_sources(cfg, devices)  # type: ignore[arg-type]
@@ -614,6 +680,10 @@ def self_test() -> int:
     assert "Sunshine (libvirtualhid) AYN_Thor" in names
     assert "Odin2_Portal" in names
     assert "Microsoft X-Box 360 pad 0" not in names
+    assert "Microsoft X-Box 360 pad" not in names
+    usb_only = [Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E)]
+    usb_got = selected_sources(cfg, usb_only)  # type: ignore[arg-type]
+    assert [d.name for d in usb_got] == ["Microsoft X-Box 360 pad"]
     steam_only = [Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF)]
     steam_got = selected_sources(cfg, steam_only)  # type: ignore[arg-type]
     assert [d.name for d in steam_got] == ["Microsoft X-Box 360 pad 0"]
@@ -634,7 +704,7 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
-    global _STEAM_UI_CACHE
+    global _STEAM_UI_CACHE, _EMU_CACHE
     parsed = parse_xprop_atoms(
         "GAMESCOPE_FOCUSED_APP(CARDINAL) = 769\n"
         "STEAM_OVERLAY:  not found.\n"
@@ -645,6 +715,25 @@ def self_test() -> int:
     assert steam_ui_from_props({"GAMESCOPE_FOCUSED_APP": "2896033129"}) is False
     _STEAM_UI_CACHE = (time.monotonic(), True)
     assert steam_ui_active() is True
+    assert is_emulator_comm("Cemu_relwithdeb")
+    assert is_emulator_comm("Cemu_relwithdebinfo")
+    assert is_emulator_comm("azahar")
+    assert is_emulator_comm("eden")
+    assert is_emulator_comm("eden.appimage")
+    assert not is_emulator_comm("dusklight")
+    assert not is_emulator_comm("steam")
+    assert not is_emulator_comm("sunshine-ds")
+    assert not is_emulator_comm("sunshine-ds-kms")
+    assert emulator_comms("steam\ndusklight\ngamescope\n") == []
+    assert emulator_comms("steam\nazahar\ndusklight\n") == ["azahar"]
+    _STEAM_UI_CACHE = (time.monotonic(), False)
+    _EMU_CACHE = (time.monotonic(), False)
+    assert hide_sinks_from_host() is True
+    _EMU_CACHE = (time.monotonic(), True)
+    assert hide_sinks_from_host() is False
+    _STEAM_UI_CACHE = (time.monotonic(), True)
+    _EMU_CACHE = (time.monotonic(), True)
+    assert hide_sinks_from_host() is True
 
     class Alive:
         def __init__(self, path):

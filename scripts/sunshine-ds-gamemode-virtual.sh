@@ -15,6 +15,9 @@
 # Does not touch :48100, sunshine-ds-dev, or the KWin helper.
 # Does not restart gamescope-session.
 #
+# Pref: ~/.config/sunshine-ds-gamemode/virtual-output (on|off). --start is a
+# no-op when off so a kms restart does not revive :2. HDMI / :0 stay put.
+#
 #   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + idle screensaver
 #   scripts/sunshine-ds-gamemode-virtual.sh --paint   # restart screensaver only (:2 stays)
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
@@ -37,6 +40,18 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-$HOME/.config/sunshine-ds-gamemode/virtual-output}"
+
+virtual_output_pref() {
+  local raw="on"
+  if [ -f "$PREF" ]; then
+    raw="$(tr -d '[:space:]' <"$PREF" | tr '[:upper:]' '[:lower:]')"
+  fi
+  case "$raw" in
+    off|0|false|no|pause) printf 'off\n' ;;
+    *) printf 'on\n' ;;
+  esac
+}
 
 DO_STATUS=0
 DO_STOP=0
@@ -287,6 +302,7 @@ print_status() {
   local pid wl x11 node
   pid="$(virtual_pid || true)"
   echo "headless gamescope pid: ${pid:-none}"
+  echo "virtual_output pref: $(virtual_output_pref)"
   echo "pidfile: $PIDFILE"
   echo "log: $LOG"
   echo "sidecar: $NODEFILE"
@@ -350,9 +366,11 @@ start_virtual() {
   : >"$LOG"
   # Isolated from the session compositor. Do not inherit WAYLAND_DISPLAY=gamescope-0
   # (that nests a window on the TV) or wayland-0 (missing in Game Mode).
+  # Pin :2 to 60. Uncapped headless gamescope presents as fast as the GPU
+  # allows; mangoapp on HDMI then reads ~66fps while the TV stays 60Hz.
   nohup env -u WAYLAND_DISPLAY -u DISPLAY \
-    gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" --xwayland-count 1 \
-    -- sleep infinity >>"$LOG" 2>&1 &
+    gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -r 60 -o 60 \
+    --xwayland-count 1 -- sleep infinity >>"$LOG" 2>&1 &
   pid=$!
   printf '%s\n' "$pid" >"$PIDFILE"
   local waited=0
@@ -437,6 +455,10 @@ fi
 
 if [ "$DO_STOP" -eq 1 ]; then
   stop_virtual
+  # Native 4K HDMI: Steam CEF 3840x2161 + COMPOSITE_FORCE flickers.
+  if [ -f "$ROOT/scripts/second-screen-windows.py" ]; then
+    python3 "$ROOT/scripts/second-screen-windows.py" fix-4k-scanout >/dev/null 2>&1 || true
+  fi
   print_status
   exit 0
 fi
@@ -481,6 +503,10 @@ paint_outside_steam_scope() {
 }
 
 if [ "$DO_PAINT" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Virtual second display pref=off; not painting."
+    exit 0
+  fi
   if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
     if paint_outside_steam_scope; then
       echo "Bottom screensaver armed outside Steam scope."
@@ -505,8 +531,32 @@ if [ "$DO_PAINT" -eq 1 ]; then
   exit 0
 fi
 
+kms_is_busy() {
+  python3 - <<'PY'
+import urllib.request
+try:
+    text = urllib.request.urlopen("http://127.0.0.1:48200/serverinfo", timeout=2).read().decode(
+        "utf-8", "replace"
+    )
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if "SUNSHINE_SERVER_BUSY" in text else 1)
+PY
+}
+
 if [ "$DO_START" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ] && ! kms_is_busy; then
+    echo "Virtual second display pref=off; leaving HDMI alone."
+    stop_virtual || true
+    exit 0
+  fi
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Virtual second display pref=off but :48200 is BUSY; starting :2 for Moonlight bottom."
+  fi
   start_virtual || exit $?
+  if [ -f "$ROOT/scripts/second-screen-windows.py" ]; then
+    python3 "$ROOT/scripts/second-screen-windows.py" fix-4k-scanout >/dev/null 2>&1 || true
+  fi
   exit 0
 fi
 

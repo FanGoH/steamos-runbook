@@ -59,3 +59,19 @@ Do **not** symlink `~/retrodeck/saves/wiiu/cemu` into `~/.var/app/info.cemu.Cemu
 5. Dusklight on Android: `Android/data/dev.twilitrealm.dusk/files` is empty (scoped storage). Point **Settings → Data Folder** at `/storage/emulated/0/Sync/Dusklight` so Card A is the mesh. RetroArch Dolphin `*.gci` under `RetroArch/saves/` is a **different** save — do not mix it into Dusklight.
 6. Cemu on Android cannot open `Sync/CemuMLC` (no all-files access). Syncthing watches Cemu’s default `Android/data/info.cemu.cemu/files/mlc01/usr/save/00050000`. Leave `mlc_path` empty. Do **not** share `00050010` or `system/`.
 7. NetherSX2 (`xyz.aethersx2.android`) memcards are the same PCSX2 `Mcd001.ps2` files. Syncthing watches `Android/data/xyz.aethersx2.android/files/memcards`. Do not mix folder memcards.
+
+## Tender vs Argosy vs this mesh
+
+Tender launches RetroDECK (and host Eden/Dusklight). Argosy (`EmulatorRegistry.kt`) launches Android packages. The mesh only joins matching save trees.
+
+Already meshed: Eden, Azahar, Cemu `00050000`, PCSX2 file memcards, Dusklight Card A.
+
+Not meshed (do not invent folders):
+
+- **NDS** — Tender has melonDS `.dsv` under `~/retrodeck/saves/nds`; handhelds have MelonDualDS. Confirm format before sharing.
+- **PS Vita** — RetroDECK Vita3K + Argosy `vita3k`; Odin only, not Thor.
+- **GameCube Dolphin** — Tender has Twilight Princess as NGC; Argosy lists Dolphin but the APK is not installed. Dusklight is a different save.
+- **RPCS3** — Steam Machine only.
+- **RetroArch cores** (GBA/GBC/NES/SNES/N64/PSX) — skip. DuckStation/PPSSPP APKs are not installed.
+
+Argosy does **not** list Dusklight (`dev.twilitrealm.dusk`). Tender `save_sync_enabled` and Argosy RomM save sync can fight Syncthing on the same files — one game, one device.

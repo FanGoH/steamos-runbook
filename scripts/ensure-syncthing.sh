@@ -263,10 +263,71 @@ DUSKLIGHT_PATH="${SYNCTHING_DUSKLIGHT_PATH:-/home/${STEAMOS_USER}/.local/share/T
 mkdir -p "$DUSKLIGHT_PATH"
 echo "Dusklight saves: $DUSKLIGHT_PATH"
 
+RD_CEMU_MLC="/home/${STEAMOS_USER}/retrodeck/bios/cemu"
+RD_CEMU_SAVES="/home/${STEAMOS_USER}/retrodeck/saves/wiiu/cemu"
+OLD_STANDALONE_CEMU="/home/${STEAMOS_USER}/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save/00050000"
+CEMU_PATH="${SYNCTHING_CEMU_PATH:-${RD_CEMU_SAVES}/00050000}"
+
+pin_xml_text() {
+  local cfg="$1"
+  local tag="$2"
+  local val="$3"
+  [ -f "$cfg" ] || return 0
+  python3 - "$cfg" "$tag" "$val" <<'PY'
+from pathlib import Path
+import sys
+cfg_path, tag, val = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = cfg_path.read_text(encoding="utf-8")
+import re
+pat = re.compile(rf"<{re.escape(tag)}>[^<]*</{re.escape(tag)}>")
+repl = f"<{tag}>{val}</{tag}>"
+new, n = pat.subn(repl, text, count=1)
+if n == 0:
+    # insert after <content>
+    new = text.replace("<content>", f"<content>\n    {repl}", 1) if "<content>" in text else text + repl
+if new != text:
+    cfg_path.write_text(new, encoding="utf-8")
+    print(f"Set {cfg_path} {tag}={val}")
+else:
+    print(f"{cfg_path.name} {tag} already {val}")
+PY
+}
+
+unify_cemu_onto_retrodeck() {
+  if [ -L "$RD_CEMU_SAVES" ]; then
+    echo "ERROR: $RD_CEMU_SAVES is a symlink. Do not point RetroDECK Cemu saves at another Flatpak data dir." >&2
+    return 1
+  fi
+  mkdir -p "$CEMU_PATH"
+  if [ -d "$OLD_STANDALONE_CEMU" ] && [ "$OLD_STANDALONE_CEMU" != "$CEMU_PATH" ]; then
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --update "$OLD_STANDALONE_CEMU/" "$CEMU_PATH/"
+      echo "Merged leftover standalone Cemu 00050000 into $CEMU_PATH (update-only)."
+    fi
+  fi
+  if command -v flatpak >/dev/null 2>&1; then
+    if flatpak override --user --filesystem="$RD_CEMU_MLC" --filesystem="$RD_CEMU_SAVES" info.cemu.Cemu; then
+      echo "Standalone Cemu may write RetroDECK mlc/saves (Flatpak host:ro needs this)."
+    else
+      record_manual "Allow standalone Cemu to write RetroDECK mlc" <<EOF
+flatpak override --user --filesystem=$RD_CEMU_MLC --filesystem=$RD_CEMU_SAVES info.cemu.Cemu
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  fi
+  pin_xml_text "/home/${STEAMOS_USER}/.var/app/info.cemu.Cemu/config/Cemu/settings.xml" "mlc_path" "$RD_CEMU_MLC"
+  pin_xml_text "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/Cemu/settings.xml" "mlc_path" "$RD_CEMU_MLC"
+  echo "Cemu saves: $CEMU_PATH"
+}
+
+unify_cemu_onto_retrodeck
+
 export SYNCTHING_GUI="$GUI"
 export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
 export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
 export SYNCTHING_DUSKLIGHT_PATH="$DUSKLIGHT_PATH"
+export SYNCTHING_CEMU_PATH="$CEMU_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

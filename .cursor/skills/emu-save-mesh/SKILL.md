@@ -1,10 +1,10 @@
 ---
 name: emu-save-mesh
 description: >-
-  Keep Eden, Azahar, and Dusklight saves on this Steam Machine in the official
-  Syncthing mesh with lab, Odin, and Thor. Use when the user mentions Syncthing,
-  EdenSaves, AzaharSaves, Dusklight, Twilight Princess recomp, Game Mode saves
-  not reaching a handheld, or ensure-syncthing.
+  Keep Eden, Azahar, Dusklight, and Cemu saves on this Steam Machine in the
+  official Syncthing mesh with lab, Odin, and Thor. Use when the user mentions
+  Syncthing, EdenSaves, AzaharSaves, Dusklight, Twilight Princess recomp, Cemu,
+  Wind Waker HD, Game Mode saves not reaching a handheld, or ensure-syncthing.
 ---
 
 # Emulator save mesh (Steam Machine)
@@ -25,10 +25,15 @@ Lab-wide device table and handheld ADB: on lab, `~/.cursor/skills/emu-save-mesh/
 - **Dusklight:** memory-card saves only  
   `~/.local/share/TwilitRealm/Dusklight/USA/Card A`  
   (`01-GZ2E-gczelda2.gci`). Do **not** share `config.json`, logs, shaders, or `.controller` files.
+- **Cemu:** user title saves only (`00050000`, not system `00050010`)  
+  `~/retrodeck/saves/wiiu/cemu/00050000`  
+  Standalone Flatpak `mlc_path` is RetroDECK `~/retrodeck/bios/cemu` (whose `usr/save` already symlinks at that RetroDECK saves dir).
 
-`ignorePerms: true`. Azahar `caseSensitiveFS: false`. One game on one device; close the emulator after a session.
+`ignorePerms: true`. Azahar/Cemu `caseSensitiveFS: false`. One game on one device; close the emulator after a session.
 
 Title folder `00033500` is **Ocarina of Time 3D** (`0004000000033500`), not Super Mario 3D Land. Slots: `save00.bin` File 1, `save01.bin` File 2, `save02.bin` File 3.
+
+Title folder `10143500` is **The Wind Waker HD**.
 
 ## One Azahar sdmc on this box
 
@@ -38,10 +43,17 @@ Do **not** symlink `~/retrodeck/saves/n3ds/azahar/sdmc` into `~/.var/app/org.aza
 
 Ignore `~/retrodeck/saves/n3ds/Azahar` (capital A) and `~/retrodeck/saves/n3ds/*.zip` (RomM dumps, not in-game saves). Leftover files under `~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc/` are **not** the mesh after unification.
 
+## One Cemu mlc on this box
+
+Game Mode, standalone Flatpak (dual-screen), and Syncthing all use **RetroDECK `bios/cemu` + `saves/wiiu/cemu`**. `ensure-syncthing.sh` pins both `settings.xml` `mlc_path`s to `/home/deck/retrodeck/bios/cemu` and `flatpak override --user --filesystem=/home/deck/retrodeck/bios/cemu --filesystem=/home/deck/retrodeck/saves/wiiu/cemu` because standalone Cemu ships `host:ro`.
+
+Do **not** symlink `~/retrodeck/saves/wiiu/cemu` into `~/.var/app/info.cemu.Cemu/…`. Keep RetroDECK’s own `bios/cemu/usr/save` → `~/retrodeck/saves/wiiu/cemu` symlink. Leftover files under `~/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save/00050000` are **not** the mesh after unification. `ensure-cemu-dual-screen.sh` must not clear `mlc_path`.
+
 ## Debug
 
-1. Syncthing folder path must be the RetroDECK inner `Nintendo 3DS/0000…/0000…` dir.
+1. Syncthing folder path must be the RetroDECK inner `Nintendo 3DS/0000…/0000…` dir (Azahar) or `saves/wiiu/cemu/00050000` (Cemu).
 2. Hash `title/00040000/00033500/data/00000001/save*.bin` on that path vs lab vs Thor.
 3. Empty title dir after a “fix” → cross-Flatpak symlink. Recover from lab `/mnt/storage/syncthing/azahar-saves`.
 4. If Game Mode saves still miss handhelds: Azahar rewrote `sdmc_directory` to the RetroDECK fallback — re-run `ensure-syncthing.sh`.
 5. Dusklight on Android: `Android/data/dev.twilitrealm.dusk/files` is empty (scoped storage). Point **Settings → Data Folder** at `/storage/emulated/0/Sync/Dusklight` so Card A is the mesh. RetroArch Dolphin `*.gci` under `RetroArch/saves/` is a **different** save — do not mix it into Dusklight.
+6. Cemu on Android: copy mlc to `/storage/emulated/0/Sync/CemuMLC`, set `mlc_path` there, share only `usr/save/00050000`. If the XML is ignored, set MLC in the Cemu app UI. Do **not** share `00050010` or `system/`.

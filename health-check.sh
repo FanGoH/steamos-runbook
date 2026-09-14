@@ -440,9 +440,9 @@ EOF
 fi
 ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
 if [ -f "$ST_CFG" ]; then
-  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" <<'PY'
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" <<'PY'
 import sys, xml.etree.ElementTree as ET, shlex
-cfg, eden_id, azahar_id, dusk_id = sys.argv[1:5]
+cfg, eden_id, azahar_id, dusk_id, cemu_id = sys.argv[1:6]
 root = ET.parse(cfg).getroot()
 folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
 gui_el = root.find("gui")
@@ -454,6 +454,7 @@ print(f"st_gui_addr={shlex.quote(address)}")
 print(f"st_eden_path={shlex.quote(folders.get(eden_id, ''))}")
 print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
 print(f"st_dusk_path={shlex.quote(folders.get(dusk_id, ''))}")
+print(f"st_cemu_path={shlex.quote(folders.get(cemu_id, ''))}")
 PY
 )"
   if [ "$st_gui_addr" = "$ST_GUI" ]; then
@@ -488,6 +489,15 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
   fi
+  if [[ "$st_cemu_path" == *"/saves/wiiu/cemu/00050000"* ]]; then
+    ok "cemu-saves -> $st_cemu_path"
+  else
+    warn "cemu-saves folder missing or not RetroDECK 00050000"
+    record_manual "Share Cemu 00050000 over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
 else
   warn "Syncthing config.xml not found yet"
 fi
@@ -505,6 +515,14 @@ elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
   ok "RetroDECK Azahar sdmc is the Syncthing mesh (real directory)"
 else
   warn "RetroDECK Azahar sdmc missing — Game Mode will not share saves until ensure-syncthing.sh creates it"
+fi
+RD_CEMU="/home/$STEAMOS_USER/retrodeck/saves/wiiu/cemu"
+if [ -L "$RD_CEMU" ]; then
+  fail "RetroDECK Cemu saves is a symlink — Game Mode cannot use another Flatpak data dir"
+elif [ -d "$RD_CEMU/00050000" ]; then
+  ok "RetroDECK Cemu 00050000 is a real directory"
+else
+  warn "RetroDECK Cemu 00050000 missing"
 fi
 DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
 if [ -f "$DECKY_ST_SETTINGS" ]; then

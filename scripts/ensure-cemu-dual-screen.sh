@@ -2,6 +2,8 @@
 # Place standalone Cemu for desktop dual-stream: TV on HDMI, GamePad on Virtual-sunshine-ds.
 # Binds player 0 with bind-gamepad.py (mappings on the named Sunshine pad only).
 # Launches a ROM only when CEMU_ROM is set and Cemu is not already running.
+# mlc_path is owned by ensure-syncthing.sh (RetroDECK bios/cemu). This script only
+# rewrites window/pad geometry, fullscreen, and open_pad — it must not clear mlc_path.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

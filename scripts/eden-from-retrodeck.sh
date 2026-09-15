@@ -136,6 +136,9 @@ atom_display() {
   printf '%s\n' "${DISPLAY:-:0}"
 }
 
+# Prints "<display> <xid>". Callers must parse that — assignment inside
+# this function is lost under $(eden_window_id) (TotK Launching: HDMI
+# stayed on :0 because EDEN_WIN_DISPLAY never became :1).
 eden_window_id() {
   local display id name
   command -v xdotool >/dev/null 2>&1 || return 1
@@ -145,14 +148,21 @@ eden_window_id() {
       name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null || true)"
       case "$name" in
         "Eden |"*)
-          EDEN_WIN_DISPLAY="$display"
-          printf '%s\n' "$id"
+          printf '%s %s\n' "$display" "$id"
           return 0
           ;;
       esac
     done
   done
   return 1
+}
+
+find_eden_window() {
+  local out
+  out="$(eden_window_id)" || return 1
+  EDEN_WIN_DISPLAY="${out%% *}"
+  EDEN_WIN_ID="${out#* }"
+  [ -n "$EDEN_WIN_DISPLAY" ] && [ -n "$EDEN_WIN_ID" ]
 }
 
 steam_bpm_window_id() {
@@ -224,7 +234,8 @@ eden_chrome_visible() {
 make_eden_fullscreen() {
   local display="${EDEN_WIN_DISPLAY:-${DISPLAY:-:0}}"
   local id sw sh
-  id="$(eden_window_id)" || return 1
+  find_eden_window || return 1
+  id="$EDEN_WIN_ID"
   display="${EDEN_WIN_DISPLAY:-$display}"
   sw=1920
   sh=1080
@@ -342,7 +353,8 @@ esde_window_id() {
 
 focus_eden_in_gamescope() {
   local display id esde esde_display
-  id="$(eden_window_id)" || return 1
+  find_eden_window || return 1
+  id="$EDEN_WIN_ID"
   display="${EDEN_WIN_DISPLAY:-${DISPLAY:-:0}}"
   DISPLAY="$display" xdotool windowmap "$id" windowmove "$id" 0 0 \
     windowraise "$id" windowactivate "$id" 2>/dev/null || true

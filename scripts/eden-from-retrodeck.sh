@@ -35,6 +35,12 @@ export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVE
 export SDL_HIDAPI_JOYSTICK="${SDL_HIDAPI_JOYSTICK:-0}"
 export SDL_JOYSTICK_HIDAPI="${SDL_JOYSTICK_HIDAPI:-0}"
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-1}"
+# Same as component_launcher: Eden must only see EmuPads. USB Xbox +
+# Sunshine both visible is the NMH3 double-bind (last-activity steal).
+unset SDL_GAMECONTROLLER_IGNORE_DEVICES
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0" ]; then
   export WAYLAND_DISPLAY=gamescope-0
   export GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}"
@@ -240,15 +246,34 @@ make_eden_fullscreen() {
   fi
 }
 
+# Same 3-tuple as cemu-gamescope-focus.sh. A single cardinal 1 is ignored;
+# gamescope keeps the middle display index (0 = Steam :0 Launching).
+set_focus_display() {
+  local middle="$1" atom
+  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
+    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "12346, $middle, 66" 2>/dev/null || true
+  done
+}
+
 set_gamescope_focus() {
   local id="$1"
   local app="$2"
-  local display
+  local display d
   display="$(atom_display)"
+  # Cemu hammer writes FOCUSED_APP on both Xwaylands. :1 staying on 769
+  # leaves HDMI compositing Steam Launching.
+  for d in :0 :1; do
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+  done
+  DISPLAY="${EDEN_WIN_DISPLAY:-$display}" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
   DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
-  DISPLAY="$display" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
   DISPLAY="$display" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  # Host Eden -g lands on :1 (same as Cemu). Middle 0 keeps HDMI on Steam
+  # Launching even when FOCUSED_APP is the shortcut.
+  if [ "${EDEN_WIN_DISPLAY:-}" = ":1" ]; then
+    set_focus_display 1
+  fi
 }
 
 # Cemu stays on :1. Host spawn only switches there when RetroDECK is the
@@ -278,7 +303,7 @@ eden_main_pids() {
   for pid in /proc/[0-9]*; do
     cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      /tmp/.mount_Eden*/bin/eden*) printf '%s\n' "${pid##*/}" ;;
+      /tmp/.mount_[Ee]den*/bin/eden*) printf '%s\n' "${pid##*/}" ;;
     esac
   done
 }
@@ -354,8 +379,8 @@ eden_bin_running() {
   for pid in /proc/[0-9]*; do
     cmd="$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      /tmp/.mount_Eden*/bin/eden*) return 0 ;;
-      /home/deck/Applications/Eden.appimage*) return 0 ;;
+      /tmp/.mount_[Ee]den*/bin/eden*) return 0 ;;
+      /home/deck/Applications/Eden.appimage*|*/AppImages/eden.appimage*) return 0 ;;
     esac
   done
   return 1
@@ -387,6 +412,21 @@ watch_eden_focus() {
     log "watch gave up waiting for Eden window"
     exit 1
   fi
+  # Cemu beats gamescope with a tight 30s hammer. A 0.2s tick loses:
+  # FOCUS_DISPLAY snaps back to middle 0 and HDMI stays Launching.
+  if [ "${EDEN_WIN_DISPLAY:-}" = ":1" ]; then
+    (
+      end=$((SECONDS + 20))
+      while [ "$SECONDS" -lt "$end" ]; do
+        set_focus_display 1
+        DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_APP_ID" 2>/dev/null || true
+        DISPLAY=:0 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_APP_ID" 2>/dev/null || true
+        DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$STEAM_APP_ID" 2>/dev/null || true
+        DISPLAY=:1 xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$STEAM_APP_ID" 2>/dev/null || true
+      done
+    ) &
+    log "hammer FOCUS_DISPLAY=1 for 20s"
+  fi
   while eden_bin_running; do
     if [ "$saw_retrodeck" -eq 1 ] && ! retrodeck_session_alive; then
       log "RetroDECK/reaper gone (Steam Exit) — stopping host Eden"
@@ -394,6 +434,12 @@ watch_eden_focus() {
       break
     fi
     app="$(focused_app)"
+    # Steam/gamescope rewrites FOCUS_DISPLAY to middle 0 while leaving
+    # FOCUSED_APP on the shortcut — HDMI stays Steam Launching. Refresh
+    # the Cemu 3-tuple every tick while the Eden window is on :1.
+    if [ "${EDEN_WIN_DISPLAY:-}" = ":1" ] && [ "$app" = "$STEAM_APP_ID" ]; then
+      set_focus_display 1
+    fi
     # Only STEAM_OVERLAY means the overlay is up. If Steam already moved
     # FOCUSED_APP to 769 (Cemu / in-tree), leave it. If it did not (host
     # Eden), apply the Cemu split: APP=769, GFX stays the game.

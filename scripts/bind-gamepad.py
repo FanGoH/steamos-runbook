@@ -364,6 +364,19 @@ def dual_screen_label(mode: str) -> str:
     return "Auto"
 
 
+def normalize_enabled(value: object, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raw = str(value).strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    return default
+
+
 def load_mux_config() -> dict:
     path = mux_config_path()
     empty = {
@@ -371,6 +384,7 @@ def load_mux_config() -> dict:
         "sources": [],
         "cemu_p1": "gamepad",
         "dual_screen": "auto",
+        "enabled": True,
     }
     if not path.is_file():
         return dict(empty)
@@ -391,6 +405,7 @@ def load_mux_config() -> dict:
         "sources": sources,
         "cemu_p1": normalize_cemu_p1(data.get("cemu_p1")),
         "dual_screen": normalize_dual_screen(data.get("dual_screen")),
+        "enabled": normalize_enabled(data.get("enabled"), True),
     }
 
 
@@ -399,6 +414,7 @@ def write_mux_routing(
     sources: list,
     cemu_p1: str | None = None,
     dual_screen: str | None = None,
+    enabled: bool | None = None,
 ) -> None:
     if mode not in ("shared", "multi"):
         raise SystemExit(f"unknown mux mode {mode!r} (shared|multi)")
@@ -411,6 +427,9 @@ def write_mux_routing(
         "cemu_p1": normalize_cemu_p1(cemu_p1 if cemu_p1 is not None else prev.get("cemu_p1")),
         "dual_screen": normalize_dual_screen(
             dual_screen if dual_screen is not None else prev.get("dual_screen")
+        ),
+        "enabled": normalize_enabled(
+            enabled if enabled is not None else prev.get("enabled"), True
         ),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -1664,6 +1683,8 @@ def status_payload(
     mux_up = mux_running()
     if pads:
         pad_hint = ""
+    elif mux_up and not mux_cfg.get("enabled", True):
+        pad_hint = "Emu Pads is off. P1/P2 are unplugged. Turn the toggle on to reconnect."
     elif mux_up:
         pad_hint = (
             "Moonlight Odin/Thor not connected. Mux is still up — Apply binds "
@@ -1678,6 +1699,7 @@ def status_payload(
         "profile": load_profile().name,
         "mux": {
             "running": mux_running(),
+            "enabled": bool(mux_cfg.get("enabled", True)),
             "muted": mux_muted(),
             "mode": mux_cfg.get("mode") or "shared",
             "sources": mux_cfg.get("sources") or [],
@@ -1887,6 +1909,7 @@ def cmd_set_mode(args: argparse.Namespace) -> int:
         "dual_screen": saved.get("dual_screen") or "auto",
         "mux": {
             "running": mux_running(),
+            "enabled": bool(saved.get("enabled", True)),
             "muted": mux_muted(),
             "mode": saved.get("mode") or mode,
             "sources": saved.get("sources") or [],
@@ -1894,6 +1917,40 @@ def cmd_set_mode(args: argparse.Namespace) -> int:
             "dual_screen": saved.get("dual_screen") or "auto",
         },
         "messages": [f"Mux mode {saved.get('mode') or mode}"],
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_set_enabled(args: argparse.Namespace) -> int:
+    enabled = normalize_enabled(getattr(args, "enabled", True), True)
+    cfg = load_mux_config()
+    write_mux_routing(
+        cfg.get("mode") or "shared",
+        cfg.get("sources") or [],
+        cemu_p1=cfg.get("cemu_p1"),
+        dual_screen=cfg.get("dual_screen"),
+        enabled=enabled,
+    )
+    saved = load_mux_config()
+    payload = {
+        "ok": True,
+        "enabled": bool(saved.get("enabled", True)),
+        "mux": {
+            "running": mux_running(),
+            "enabled": bool(saved.get("enabled", True)),
+            "muted": mux_muted(),
+            "mode": saved.get("mode") or "shared",
+            "sources": saved.get("sources") or [],
+            "cemu_p1": saved.get("cemu_p1") or "gamepad",
+            "dual_screen": saved.get("dual_screen") or "auto",
+        },
+        "messages": [
+            "EmuPads P1/P2 disconnected."
+            if not saved.get("enabled", True)
+            else "EmuPads P1/P2 connected."
+        ],
     }
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -2594,6 +2651,11 @@ def _self_test() -> int:
         assert json.loads(mux_cfg.read_text())["dual_screen"] == "off"
         assert json.loads(mux_cfg.read_text())["cemu_p1"] == "pro"
         write_mux_routing("shared", [], dual_screen="auto")
+        write_mux_routing("shared", [], enabled=False)
+        assert json.loads(mux_cfg.read_text())["enabled"] is False
+        assert json.loads(mux_cfg.read_text())["dual_screen"] == "auto"
+        write_mux_routing("shared", [], enabled=True)
+        assert json.loads(mux_cfg.read_text())["enabled"] is True
         both_log = (
             "Second display requested: 1920x1080@60 at 5600 Kbps\n"
             "CLIENT CONNECTED\n"
@@ -2719,6 +2781,10 @@ def main(argv: list[str] | None = None) -> int:
     p_mode = sub.add_parser("set-mode", help="Write mux shared/multi without rebinding emulators")
     p_mode.add_argument("--mode", required=True, help="shared or multi")
     p_mode.set_defaults(func=cmd_set_mode)
+
+    p_en = sub.add_parser("set-enabled", help="Connect or unplug EmuPads P1/P2 uinput sinks")
+    p_en.add_argument("--enabled", required=True, help="on/off or true/false")
+    p_en.set_defaults(func=cmd_set_enabled)
 
     p_ds = sub.add_parser(
         "set-dual-screen",

@@ -19,6 +19,19 @@ if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/dist/index.js" ] || [ ! -f "$SRC/plug
   exit 1
 fi
 
+RELOAD_NAME="$(python3 -c "import json; print(json.load(open('$SRC/plugin.json'))['name'])")"
+
+finish_install() {
+  echo "$1"
+  echo "Game Mode: Quick Access → Decky → Sunshine DS → Start Dual-Stream Desktop"
+  if decky_reload_plugin "$RELOAD_NAME"; then
+    echo "Reloaded $RELOAD_NAME in Decky (close and reopen QAM if it is already open)."
+  else
+    echo "Copied files; reload Decky plugins (or leave Game Mode and come back) to see the new QAM UI."
+  fi
+  exit 0
+}
+
 ZIP="$ROOT/decky/SunshineDS.zip"
 make_zip() {
   local tmp
@@ -53,20 +66,14 @@ fi
 
 if [ -w "$PLUGINS_DIR" ]; then
   install_files "$DEST"
-  echo "Installed Decky plugin $DEST"
-  echo "Game Mode: Quick Access → Decky → Sunshine DS → Start Dual-Stream Desktop"
-  echo "Restart PluginLoader if the tile is missing."
-  exit 0
+  finish_install "Installed Decky plugin $DEST"
 fi
 
 if sudo -n true 2>/dev/null; then
   sudo mkdir -p "$DEST/dist"
   sudo cp -f "$SRC/main.py" "$SRC/plugin.json" "$SRC/package.json" "$DEST/"
   sudo cp -f "$SRC/dist/index.js" "$DEST/dist/index.js"
-  echo "Installed Decky plugin $DEST (sudo)."
-  echo "Game Mode: Quick Access → Decky → Sunshine DS → Start Dual-Stream Desktop"
-  echo "Restart PluginLoader if the tile is missing."
-  exit 0
+  finish_install "Installed Decky plugin $DEST (sudo)."
 fi
 
 echo "Decky plugins dir is not writable."

@@ -83,7 +83,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 ## Script conventions
 
 - Small focused scripts; orchestrators collect `MANUAL_ACTIONS_FILE` and print a summary
-- Decky plugins: `.cursor/rules/decky-plugins.mdc` — PluginLoader is root, `runuser -u deck`, never `sudo systemctl --user`, source in `decky/<Name>/`, install via `ensure-*-decky.sh`. Call playbook scripts instead of duplicating emulator INI/XML edits in `main.py`.
+- Decky plugins: `.cursor/rules/decky-plugins.mdc` and skill `.cursor/skills/decky-plugins/SKILL.md` — PluginLoader is root, `runuser -u deck`, never `sudo systemctl --user`, source in `decky/<Name>/`, install via `ensure-*-decky.sh`. **Reload after every edit** (copying files is not enough; QAM still runs the old bundle). Call playbook scripts instead of duplicating emulator INI/XML edits in `main.py`.
 - Exit `0` OK, `2` for “needs manual / warn”, other non-zero for hard failure
 - NIC, Headscale URL, hostname, Flatpak IDs come from `.env` — no personal URLs or hostnames as code defaults
 - `TAILSCALE_LOGIN_SERVER` must be set in `.env` (no hardcoded Headscale URL in repo)
@@ -94,7 +94,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 |------|---------|----------|
 | `AGENTS.md` | yes | This file — general agent/playbook behavior, including the proven Switch/Eden Game Mode recipe |
 | `README.md` | yes | Public setup/recovery docs (no personal infra) |
-| `.cursor/skills/` | yes | GameStream / Game Mode / bind / Cemu / Azahar recipes (edit these; `~/.cursor/skills/` on this box are copies) |
+| `.cursor/skills/` | yes | GameStream / Game Mode / bind / Cemu / Azahar / Decky reload recipes (edit these; `~/.cursor/skills/` on this box are copies) |
 | `decky/EmuPads/README.md` | yes | Mux P1/P2, mute, Cemu-only GamePad/Pro, install |
 | `rules_of_the_land.md` | **no** (gitignored) | Personal hostname, hardware, LAN, Headscale URL, incident notes |
 | `.env` | **no** (gitignored) | Real `TAILSCALE_LOGIN_SERVER`, NIC, etc. |

@@ -20,6 +20,8 @@
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
 #   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # one PNG from the PipeWire node
 #   scripts/sunshine-ds-gamemode-virtual.sh --stop
+# QAM Second screen Off writes ~/.config/sunshine-ds-gamemode/virtual-output
+# (off) so --start is a no-op until the toggle is on again.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +39,7 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+VIRTUAL_OUTPUT_PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/virtual-output}"
 
 DO_STATUS=0
 DO_STOP=0
@@ -62,6 +65,19 @@ for arg in "$@"; do
 done
 
 mkdir -p "$ROOT/logs"
+
+virtual_output_pref() {
+  local raw
+  if [ ! -f "$VIRTUAL_OUTPUT_PREF" ]; then
+    echo on
+    return 0
+  fi
+  raw="$(tr -d '[:space:]' <"$VIRTUAL_OUTPUT_PREF" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    off|0|false|no|pause) echo off ;;
+    *) echo on ;;
+  esac
+}
 
 virtual_pid() {
   local pid
@@ -287,6 +303,7 @@ print_status() {
   local pid wl x11 node
   pid="$(virtual_pid || true)"
   echo "headless gamescope pid: ${pid:-none}"
+  echo "second screen: $(virtual_output_pref)"
   echo "pidfile: $PIDFILE"
   echo "log: $LOG"
   echo "sidecar: $NODEFILE"
@@ -506,6 +523,12 @@ if [ "$DO_PAINT" -eq 1 ]; then
 fi
 
 if [ "$DO_START" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Second screen disabled; not starting headless :2."
+    stop_virtual || true
+    print_status
+    exit 0
+  fi
   start_virtual || exit $?
   exit 0
 fi

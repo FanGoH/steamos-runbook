@@ -204,6 +204,29 @@ class Plugin:
             return {"ok": False, "message": "bind-gamepad set-mode timed out"}
         return _json_from(proc)
 
+    async def set_enabled(self, enabled: object = True, **kwargs: object) -> dict:
+        if kwargs:
+            enabled = kwargs.get("enabled", enabled)
+        script = _bind_py()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        flag = "on"
+        if enabled is False or str(enabled).strip().lower() in (
+            "0",
+            "false",
+            "no",
+            "off",
+        ):
+            flag = "off"
+        try:
+            proc = _run_as_deck(
+                ["python3", script, "set-enabled", "--enabled", flag],
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "bind-gamepad set-enabled timed out"}
+        return _json_from(proc)
+
     async def apply(
         self,
         emu: str = "all",

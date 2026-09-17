@@ -42,8 +42,10 @@ def _session_uid() -> int:
 
 
 def _bind_has_apply(script: str) -> bool:
+    # apply lives near the argparse tail (~95k). An 8k prefix miss makes
+    # fallback the last ~/worktrees/* copy, which has no set-enabled.
     try:
-        text = open(script, encoding="utf-8", errors="replace").read(8000)
+        text = open(script, encoding="utf-8", errors="replace").read()
     except OSError:
         return False
     return 'add_parser("apply"' in text or "add_parser('apply'" in text
@@ -53,10 +55,11 @@ def _playbook() -> str:
     home = _user_home()
     env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
     bind = os.path.join("scripts", "bind-gamepad.py")
+    playbook = os.path.join(home, "steamos-playbook")
     candidates: list[str] = []
     if env:
         candidates.append(env)
-    candidates.append(os.path.join(home, "steamos-playbook"))
+    candidates.append(playbook)
     wt = os.path.join(home, "worktrees")
     if os.path.isdir(wt):
         try:
@@ -65,12 +68,12 @@ def _playbook() -> str:
             names = []
         for name in names:
             candidates.append(os.path.join(wt, name))
-    fallback = candidates[0] if candidates else os.path.join(home, "steamos-playbook")
+    fallback = playbook
     for cand in candidates:
         script = os.path.join(cand, bind)
         if os.path.isfile(script) and _bind_has_apply(script):
             return cand
-        if os.path.isfile(script):
+        if os.path.isfile(script) and cand == playbook:
             fallback = cand
     return fallback
 
@@ -202,6 +205,29 @@ class Plugin:
             proc = _run_as_deck(["python3", script, "set-mode", "--mode", mode], timeout=10)
         except subprocess.TimeoutExpired:
             return {"ok": False, "message": "bind-gamepad set-mode timed out"}
+        return _json_from(proc)
+
+    async def set_enabled(self, enabled: object = True, **kwargs: object) -> dict:
+        if kwargs:
+            enabled = kwargs.get("enabled", enabled)
+        script = _bind_py()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        flag = "on"
+        if enabled is False or str(enabled).strip().lower() in (
+            "0",
+            "false",
+            "no",
+            "off",
+        ):
+            flag = "off"
+        try:
+            proc = _run_as_deck(
+                ["python3", script, "set-enabled", "--enabled", flag],
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "bind-gamepad set-enabled timed out"}
         return _json_from(proc)
 
     async def apply(

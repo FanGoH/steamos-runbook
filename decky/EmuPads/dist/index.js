@@ -22,6 +22,7 @@ const definePlugin = (fn) => {
 const getStatus = callable("get_status");
 const applyBinds = callable("apply");
 const setMuxMode = callable("set_mode");
+const setMuxEnabled = callable("set_enabled");
 
 function asPads(raw) {
   if (Array.isArray(raw)) return raw;
@@ -131,6 +132,34 @@ function Content() {
       copy[j] = tmp;
       return copy;
     });
+  };
+
+  const persistEnabled = async (on) => {
+    try {
+      const result = await setMuxEnabled(Boolean(on));
+      if (result?.ok === false) {
+        toaster.toast({
+          title: "Emu Pads",
+          body: result.message || "toggle failed",
+          duration: 5000,
+        });
+      } else {
+        toaster.toast({
+          title: on ? "Emu Pads on" : "Emu Pads off",
+          body: on
+            ? "EmuPads P1/P2 are connected. Restart Cemu/Azahar/Eden if a game is running."
+            : "EmuPads P1/P2 unplugged from the system.",
+          duration: 4000,
+        });
+      }
+      await refresh({ syncMode: true });
+    } catch (err) {
+      toaster.toast({
+        title: "Emu Pads",
+        body: String(err).slice(0, 220),
+        duration: 5000,
+      });
+    }
   };
 
   const persistMode = async (nextMode) => {
@@ -255,8 +284,26 @@ function Content() {
     });
   };
 
+  const muxEnabled = status?.mux?.enabled !== false;
+
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
+      SP_JSX.jsxs(DFL.PanelSection, {
+        title: "EmuPads",
+        children: [
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ToggleField, {
+              label: "EmuPads P1 / P2",
+              description: muxEnabled
+                ? "On: virtual controllers are plugged in. Off unplugs them."
+                : "Off: P1/P2 are unplugged. Native games only see Thor/Odin.",
+              checked: muxEnabled,
+              disabled: busy,
+              onChange: (on) => persistEnabled(on),
+            }),
+          }),
+        ],
+      }),
       SP_JSX.jsxs(DFL.PanelSection, {
         title: "Controllers",
         children: [
@@ -278,7 +325,9 @@ function Content() {
             children: SP_JSX.jsxs("div", {
               style: { opacity: 0.75, fontSize: "0.88em" },
               children: [
-                `Mux ${status?.mux?.running ? "up" : "down"} · ${status?.mux?.mode || mode}${
+                `Mux ${status?.mux?.running ? "up" : "down"} · ${
+                  muxEnabled ? "connected" : "unplugged"
+                } · ${status?.mux?.mode || mode}${
                   status?.mux?.muted ? " · muted" : ""
                 }`,
               ],

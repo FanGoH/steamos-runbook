@@ -68,6 +68,7 @@ load_env() {
   SUNSHINE_DS_KMS_UI_URL="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:48201}"
   SUNSHINE_DS_KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
   SUNSHINE_DS_KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
+  SUNSHINE_DS_KMS_RECOVER_SERVICE="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-/home/${STEAMOS_USER}/.local/bin/agent}"
   CURSOR_WORKER_SERVICE="${CURSOR_WORKER_SERVICE:-cursor-agent-worker.service}"
   CURSOR_WORKER_DIR="${CURSOR_WORKER_DIR:-${STEAMOS_PLAYBOOK_DIR:-/home/${STEAMOS_USER}/steamos-playbook}}"
@@ -1041,4 +1042,149 @@ x11_resize_if_needed() {
     return 0
   fi
   DISPLAY="$display" xdotool windowsize "$id" "$w" "$h" 2>/dev/null || true
+}
+
+x11_window_xy() {
+  local display="$1" id="$2"
+  DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/Absolute upper-left X:/{x=$4} /Absolute upper-left Y:/{y=$4} END{if (x != "" && y != "") print x, y}'
+}
+
+x11_move_if_needed() {
+  local display="$1" id="$2" x="$3" y="$4"
+  local cur cx cy
+  cur="$(x11_window_xy "$display" "$id")"
+  cx="${cur%% *}"
+  cy="${cur##* }"
+  if [ -n "$cx" ] && [ -n "$cy" ] && [ "$cx" = "$x" ] && [ "$cy" = "$y" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xdotool windowmove "$id" "$x" "$y" 2>/dev/null || true
+}
+
+# GamePad / Azahar Secondary stay at 0,0 on nested :1. Parking past HDMI
+# width puts XWarpPointer off the nested root (gamescope clamps) and Cemu
+# wx ignores send_event — bottom taps die. Hide from HDMI with
+# GAMESCOPE_EXTERNAL_OVERLAY + opacity 0, not by moving off-screen.
+x11_pad_park_xy() {
+  printf '0 0\n'
+}
+
+x11_park_xid_off_hdmi() {
+  local display="$1" wid="$2" px py
+  [ -n "$wid" ] || return 0
+  read -r px py <<<"$(x11_pad_park_xy)"
+  x11_move_if_needed "$display" "$wid" "$px" "$py"
+}
+
+# Nested game Xwayland (:1) must match HDMI. Shrinking it to 1080p so a
+# 1080p GamePad fills the nested buffer also shrinks Steam's game layer
+# and 1/4-flashes the Steam menu on a 4K TV.
+gamescope_nested_app_size() {
+  gamescope_hdmi_tv_size
+}
+
+# Four cardinals on session :0 root: server_idx, width, height, allowSuperRes.
+# Session game Xwayland is idx 1 (:1). Do not set idx 2 — headless GamePad
+# :2 is a separate gamescope. Steam :0 stays HDMI native.
+gamescope_set_xwayland_mode() {
+  local idx="$1" w="$2" h="$3" super="${4:-0}"
+  DISPLAY=:0 xprop -root -f GAMESCOPE_XWAYLAND_MODE_CONTROL 32c -set GAMESCOPE_XWAYLAND_MODE_CONTROL "$idx, $w, $h, $super" 2>/dev/null || true
+}
+
+# Put nested :1 back to HDMI native. Call when Cemu/Azahar exits so the
+# Steam menu is not left on a leftover 1080p game xwayland.
+# Do not resize mangoapp — that is Steam's performance overlay (detail slider).
+gamescope_restore_nested_hdmi_mode() {
+  local w h
+  read -r w h <<<"$(gamescope_hdmi_tv_size)"
+  gamescope_set_xwayland_mode 1 "$w" "$h" 0
+}
+
+x11_set_window_opacity() {
+  local display="$1" wid="$2" value="$3" cur
+  [ -n "$wid" ] || return 0
+  cur="$(DISPLAY="$display" xprop -id "$wid" _NET_WM_WINDOW_OPACITY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "${cur:-}" = "$value" ]; then
+    return 0
+  fi
+  if [ "$value" = "0" ] && { [ "${cur:-}" = "0x0" ] || [ "${cur:-}" = "0x00000000" ]; }; then
+    return 0
+  fi
+  DISPLAY="$display" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY "$value" 2>/dev/null || true
+}
+
+# steamcompmgr on :1 is SteamControlled. Every opaque InputOutput window is
+# a HDMI focus candidate (appID falls back to the xid). Tag as an external
+# overlay so it is skipped, then opacity 0 so it is not painted as overlay.
+x11_mark_gamescope_overlay() {
+  local display="$1" wid="$2" cur
+  [ -n "$wid" ] || return 0
+  cur="$(DISPLAY="$display" xprop -id "$wid" GAMESCOPE_EXTERNAL_OVERLAY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "${cur:-}" = "1" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xprop -id "$wid" -f GAMESCOPE_EXTERNAL_OVERLAY 32c -set GAMESCOPE_EXTERNAL_OVERLAY 1 2>/dev/null || true
+}
+
+x11_xid_and_children() {
+  local display="$1" wid="$2"
+  [ -n "$wid" ] || return 0
+  printf '%s\n' "$wid"
+  DISPLAY="$display" xwininfo -id "$wid" -tree 2>/dev/null | awk '/^[[:space:]]+0x[0-9a-fA-F]+/{print $1}'
+}
+
+# Keep the frame mapped at 0,0 for x11grab + XWarpPointer, but drop it from
+# HDMI scanout. Overlay-tag children so they are not the HDMI layer, but do
+# not set opacity 0 on them — that child is the wx inject target.
+# windowactivate would steal gamescope focus and flash HDMI.
+x11_hide_xid_from_hdmi() {
+  local display="$1" wid="$2" id
+  [ -n "$wid" ] || return 0
+  x11_mark_gamescope_overlay "$display" "$wid"
+  x11_set_window_opacity "$display" "$wid" 0
+  DISPLAY="$display" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
+  while read -r id; do
+    [ -n "$id" ] || continue
+    [ "$id" = "$wid" ] && continue
+    x11_mark_gamescope_overlay "$display" "$id"
+    DISPLAY="$display" xprop -id "$id" -remove _NET_WM_WINDOW_OPACITY 2>/dev/null || true
+  done < <(x11_xid_and_children "$display" "$wid")
+}
+
+x11_raise_xid() {
+  local display="$1" wid="$2"
+  [ -n "$wid" ] || return 0
+  DISPLAY="$display" xdotool windowraise "$wid" 2>/dev/null || true
+}
+
+# GAMESCOPE_FOCUS_DISPLAY is session ids + nested index, e.g. 12602, 0, 68.
+# Middle 0 = Steam :0, middle 1 = Cemu/Azahar :1. First/third change across
+# gamescope restarts. Writing stale 12346,1,66 after the live tuple moved
+# drops mouse/touch on dead xwayland ids (HDMI/GamePad taps look dead).
+gamescope_focus_display_tuple() {
+  local middle="${1:-0}" cur a c
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  a="${cur%%,*}"
+  c="${cur##*,}"
+  case "$a" in
+    ''|*[!0-9]*) a=12346 ;;
+  esac
+  case "$c" in
+    ''|*[!0-9]*) c=66 ;;
+  esac
+  printf '%s, %s, %s\n' "$a" "$middle" "$c"
+}
+
+gamescope_set_focus_display_middle() {
+  local middle="${1:-0}" tuple cur want atom
+  tuple="$(gamescope_focus_display_tuple "$middle")"
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  want="$(printf '%s' "$tuple" | tr -d ' ')"
+  cur="$(printf '%s' "$cur" | tr -d ' ')"
+  if [ "$cur" = "$want" ]; then
+    return 0
+  fi
+  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
+    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "$tuple" 2>/dev/null || true
+  done
 }

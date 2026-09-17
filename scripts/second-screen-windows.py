@@ -6,6 +6,10 @@ Showing a :0/:1 window on the bottom stream is the same Cemu/Azahar path:
 keep the source mapped, ``ffplay`` ``x11grab`` onto :2 at 1920×1080, then
 ``GAMESCOPECTRL_BASELAYER_WINDOW``. A window already on :2 is maximized
 in place. Dual-screen Auto/On/Off is ``bind-gamepad.py set-dual-screen``.
+QAM **Second screen** Off writes ``~/.config/sunshine-ds-gamemode/virtual-output``
+and runs ``sunshine-ds-gamemode-virtual.sh --stop`` (HDMI stays put).
+QAM **Screensaver** Off writes ``~/.config/sunshine-ds-gamemode/screensaver``
+and kills the idle clock on ``:2`` without stopping headless gamescope.
 
 Never ``pgrep -f`` / ``pkill -f`` sunshine. Never ``sudo systemctl --user``.
 """
@@ -18,6 +22,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -51,6 +56,18 @@ MIRROR_PIDFILE = Path(
 MIRROR_LOG = ROOT / "logs" / "second-screen-mirror.log"
 PAD_W = 1920
 PAD_H = 1080
+VIRTUAL_OUTPUT_PREF = Path(
+    os.environ.get("SUNSHINE_DS_VIRTUAL_OUTPUT_PREF")
+    or (Path.home() / ".config" / "sunshine-ds-gamemode" / "virtual-output")
+)
+SCREENSAVER_PREF = Path(
+    os.environ.get("SUNSHINE_DS_SCREENSAVER_PREF")
+    or (Path.home() / ".config" / "sunshine-ds-gamemode" / "screensaver")
+)
+PAINT_PIDFILE = Path(
+    os.environ.get("SUNSHINE_DS_KMS_VIRTUAL_PAINT_PIDFILE")
+    or (ROOT / "logs" / "sunshine-ds-gamemode-virtual-paint.pid")
+)
 
 TREE_LINE = re.compile(
     r"^\s*(0x[0-9a-fA-F]+)\s+"
@@ -78,6 +95,46 @@ def _playbook_env() -> dict[str, str]:
     env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
     env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
     return env
+
+
+def on_off_pref(path: Path) -> str:
+    try:
+        raw = path.read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return "on"
+    if raw in ("off", "0", "false", "no", "pause"):
+        return "off"
+    return "on"
+
+
+def write_on_off_pref(mode: str, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(("off" if mode == "off" else "on") + "\n", encoding="utf-8")
+
+
+def virtual_output_pref(path: Path | None = None) -> str:
+    return on_off_pref(path or VIRTUAL_OUTPUT_PREF)
+
+
+def write_virtual_output_pref(mode: str, path: Path | None = None) -> None:
+    write_on_off_pref(mode, path or VIRTUAL_OUTPUT_PREF)
+
+
+def screensaver_pref(path: Path | None = None) -> str:
+    return on_off_pref(path or SCREENSAVER_PREF)
+
+
+def write_screensaver_pref(mode: str, path: Path | None = None) -> None:
+    write_on_off_pref(mode, path or SCREENSAVER_PREF)
+
+
+def screensaver_live(path: Path | None = None) -> bool:
+    pidfile = path or PAINT_PIDFILE
+    try:
+        pid = int(pidfile.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    return Path(f"/proc/{pid}").is_dir()
 
 
 def sidecar_path() -> Path:
@@ -341,7 +398,24 @@ def kill_pad_x11grab(pad: str) -> None:
         pass
 
 
+def stop_paint_process() -> None:
+    try:
+        pid = int(PAINT_PIDFILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        pid = None
+    if pid is not None:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    try:
+        PAINT_PIDFILE.unlink()
+    except OSError:
+        pass
+
+
 def stop_pad_screensaver(pad: str) -> None:
+    stop_paint_process()
     _run(
         ["xdotool", "search", "--name", "sunshine-ds-kms-virtual", "windowkill"],
         timeout=2,
@@ -532,6 +606,10 @@ def status_payload() -> dict:
         "ok": True,
         "pad_display": pad,
         "sidecar": sidecar_path().is_file(),
+        "virtual_output": virtual_output_pref(),
+        "virtual_output_live": sidecar_path().is_file(),
+        "screensaver": screensaver_pref(),
+        "screensaver_live": screensaver_live(),
         "dual_screen": live.get("mode") or "auto",
         "dual_screen_live": live,
         "mirror": current_mirror(pad),
@@ -559,7 +637,109 @@ def cmd_set_dual_screen(args: argparse.Namespace) -> int:
     return 0 if data.get("ok") is not False else 1
 
 
+def cmd_set_virtual_output(args: argparse.Namespace) -> int:
+    mode = "off" if str(args.mode).strip().lower() in ("off", "pause", "0", "false", "no") else "on"
+    write_virtual_output_pref(mode)
+    pad = pad_display()
+    if mode == "off":
+        kill_pad_x11grab(pad)
+        stop_pad_screensaver(pad)
+    if not PAINT_SH.is_file():
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = f"Missing {PAINT_SH}"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    flag = "--stop" if mode == "off" else "--start"
+    try:
+        proc = _run(["bash", str(PAINT_SH), flag], timeout=30)
+    except subprocess.TimeoutExpired:
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = f"virtual output {flag} timed out"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    payload = status_payload()
+    err = (proc.stderr or "").strip()
+    if mode == "off":
+        payload["messages"] = ["Second screen rendering stopped. HDMI is unchanged."]
+    else:
+        payload["messages"] = ["Second screen rendering on (:2 1080p). HDMI is unchanged."]
+    if proc.returncode not in (0, None) and err:
+        payload["ok"] = False
+        payload["message"] = err[:400]
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_set_screensaver(args: argparse.Namespace) -> int:
+    mode = "off" if str(args.mode).strip().lower() in ("off", "pause", "0", "false", "no") else "on"
+    write_screensaver_pref(mode)
+    pad = pad_display()
+    if mode == "off":
+        stop_pad_screensaver(pad)
+        payload = status_payload()
+        payload["messages"] = ["Screensaver off. :2 stays up; HDMI is unchanged."]
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if virtual_output_pref() == "off":
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = "Second screen is off. Turn Render second screen on first."
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    if not PAINT_SH.is_file():
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = f"Missing {PAINT_SH}"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    try:
+        proc = _run(["bash", str(PAINT_SH), "--paint"], timeout=20)
+    except subprocess.TimeoutExpired:
+        payload = status_payload()
+        payload["ok"] = False
+        payload["message"] = "screensaver --paint timed out"
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    err = (proc.stderr or "").strip()
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and not screensaver_live():
+        time.sleep(0.15)
+    payload = status_payload()
+    payload["messages"] = ["Screensaver on (idle clock on :2)."]
+    if proc.returncode not in (0, None) and err:
+        payload["ok"] = False
+        payload["message"] = err[:400]
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 1
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
 def cmd_show(args: argparse.Namespace) -> int:
+    if virtual_output_pref() == "off":
+        json.dump(
+            {
+                "ok": False,
+                "message": "Second screen is off. Turn the toggle on to render :2.",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        return 1
     pad = pad_display()
     win = find_window(args.display or "", args.window_id)
     if win is None:
@@ -623,6 +803,26 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 
 def cmd_idle(_args: argparse.Namespace) -> int:
+    if virtual_output_pref() == "off":
+        json.dump(
+            {
+                "ok": False,
+                "message": "Second screen is off. Turn the toggle on to render :2.",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        return 1
+    if screensaver_pref() == "off":
+        json.dump(
+            {
+                "ok": False,
+                "message": "Screensaver is off. Turn the Screensaver toggle on.",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        return 1
     pad = pad_display()
     kill_pad_x11grab(pad)
     time.sleep(0.3)
@@ -697,6 +897,19 @@ def self_test() -> int:
     assert "Steam Big Picture Mode" in names
     assert "GamePad View" in names
     assert "mangoapp overlay window" not in names
+    with tempfile.TemporaryDirectory() as td:
+        pref = Path(td) / "virtual-output"
+        assert virtual_output_pref(pref) == "on"
+        write_virtual_output_pref("off", pref)
+        assert virtual_output_pref(pref) == "off"
+        write_virtual_output_pref("on", pref)
+        assert virtual_output_pref(pref) == "on"
+        saver = Path(td) / "screensaver"
+        assert screensaver_pref(saver) == "on"
+        write_screensaver_pref("off", saver)
+        assert screensaver_pref(saver) == "off"
+        write_screensaver_pref("on", saver)
+        assert screensaver_pref(saver) == "on"
     print("second-screen-windows self-test ok")
     return 0
 
@@ -709,6 +922,12 @@ def main() -> int:
     p_ds = sub.add_parser("set-dual-screen")
     p_ds.add_argument("--mode", required=True, choices=("auto", "on", "off"))
     p_ds.set_defaults(func=cmd_set_dual_screen)
+    p_vo = sub.add_parser("set-virtual-output")
+    p_vo.add_argument("--mode", required=True, choices=("on", "off", "pause"))
+    p_vo.set_defaults(func=cmd_set_virtual_output)
+    p_ss = sub.add_parser("set-screensaver")
+    p_ss.add_argument("--mode", required=True, choices=("on", "off"))
+    p_ss.set_defaults(func=cmd_set_screensaver)
     p_show = sub.add_parser("show")
     p_show.add_argument("--display", default="")
     p_show.add_argument("--id", dest="window_id", required=True)

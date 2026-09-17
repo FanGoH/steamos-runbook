@@ -17,9 +17,16 @@
 #
 #   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + idle screensaver
 #   scripts/sunshine-ds-gamemode-virtual.sh --paint   # restart screensaver only (:2 stays)
+#   scripts/sunshine-ds-gamemode-virtual.sh --recover # one-shot: start :2 / paint clock if prefs on
+#   scripts/sunshine-ds-gamemode-virtual.sh --watch   # loop --recover (Game Mode user unit)
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
 #   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # one PNG from the PipeWire node
 #   scripts/sunshine-ds-gamemode-virtual.sh --stop
+# QAM Second screen Off writes ~/.config/sunshine-ds-gamemode/virtual-output
+# (off) so --start is a no-op until the toggle is on again.
+# Empty :2 (no clock, no ffplay) encodes dummy-black; --watch paints it back.
+# Start headless from its own cwd with a `mangoapp` ftok file so it does not
+# share Steam's mangoapp SysV queue (1080p outputWidth 1/4-flashes preset 2).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,31 +44,62 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+# ftok("mangoapp") is cwd-relative. Steam mangoapp uses the session cwd; this
+# file gives headless a different IPC key so 1080p frames do not resize HDMI HUD.
+HEADLESS_CWD="${SUNSHINE_DS_KMS_VIRTUAL_CWD:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-headless}"
+WATCH_SECS="${SUNSHINE_DS_KMS_VIRTUAL_WATCH_SECS:-3}"
+VIRTUAL_OUTPUT_PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/virtual-output}"
+SCREENSAVER_PREF="${SUNSHINE_DS_SCREENSAVER_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/screensaver}"
 
 DO_STATUS=0
 DO_STOP=0
 DO_START=0
 DO_SMOKE=0
 DO_PAINT=0
+DO_RECOVER=0
+DO_WATCH=0
 for arg in "$@"; do
   case "$arg" in
     --status) DO_STATUS=1 ;;
     --stop) DO_STOP=1 ;;
     --start) DO_START=1 ;;
     --paint) DO_PAINT=1 ;;
+    --recover) DO_RECOVER=1 ;;
+    --watch) DO_WATCH=1 ;;
     --smoke) DO_SMOKE=1 ;;
     -h|--help)
-      sed -n '2,22p' "$0"
+      sed -n '2,26p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
+      echo "usage: $0 [--start] [--paint] [--recover] [--watch] [--status] [--smoke] [--stop]" >&2
       exit 2
       ;;
   esac
 done
 
 mkdir -p "$ROOT/logs"
+
+_on_off_pref() {
+  local file="$1" raw
+  if [ ! -f "$file" ]; then
+    echo on
+    return 0
+  fi
+  raw="$(tr -d '[:space:]' <"$file" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    off|0|false|no|pause) echo off ;;
+    *) echo on ;;
+  esac
+}
+
+virtual_output_pref() {
+  _on_off_pref "$VIRTUAL_OUTPUT_PREF"
+}
+
+screensaver_pref() {
+  _on_off_pref "$SCREENSAVER_PREF"
+}
 
 virtual_pid() {
   local pid
@@ -191,6 +229,10 @@ stop_paint() {
 # sunshine-ds-kms-virtual so existing windowkill paths still work.
 start_paint() {
   local gs_pid x11 saver pid
+  if [ "$(screensaver_pref)" = off ]; then
+    echo "Screensaver disabled; not painting :2."
+    return 0
+  fi
   gs_pid="$(virtual_pid || true)"
   if [ -z "${gs_pid:-}" ]; then
     echo "No headless gamescope; not starting screensaver."
@@ -257,6 +299,116 @@ present_idle_screensaver() {
   return 1
 }
 
+pad_has_ffplay() {
+  local x11="${1:-}"
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  command -v xdotool >/dev/null 2>&1 || return 1
+  timeout 1 env DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1
+}
+
+emu_running() {
+  pgrep -x cemu >/dev/null 2>&1 && return 0
+  pgrep -x azahar >/dev/null 2>&1 && return 0
+  pgrep -x Cemu-wrapper >/dev/null 2>&1 && return 0
+  return 1
+}
+
+xid_dec() {
+  printf '%d' "$1" 2>/dev/null || printf '%s' "$1"
+}
+
+baselayer_xid() {
+  DISPLAY="${1:-:2}" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null \
+    | awk -F'= ' '{print $2}' | tr -d ' '
+}
+
+idle_clock_present() {
+  local x11="${1:-}" wid
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  paint_pid >/dev/null && return 0
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(timeout 1 env DISPLAY="$x11" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+  [ -n "${wid:-}" ]
+}
+
+present_ffplay_baselayer() {
+  local x11="${1:-}" wid want cur
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(timeout 1 env DISPLAY="$x11" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
+  [ -n "${wid:-}" ] || return 1
+  want="$(xid_dec "$wid")"
+  cur="$(baselayer_xid "$x11")"
+  if [ -n "$cur" ] && [ "$cur" = "$want" ]; then
+    return 0
+  fi
+  DISPLAY="$x11" xdotool windowmap "$wid" windowraise "$wid" 2>/dev/null || true
+  DISPLAY="$x11" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$want" 2>/dev/null || true
+  DISPLAY="$x11" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$want" 2>/dev/null || true
+}
+
+# Pref on + :2 missing → start. Pref on + empty :2 (no ffplay, no clock) → paint.
+# Live Cemu/Azahar ffplay: drop a competing Tk clock (withdrawn windows still
+# trip the Cemu watcher) and keep ffplay as BASELAYER. Leftover x11grab with
+# no emu → kill, then paint. Screensaver Off stops a leftover clock.
+# Never --start kms. Never pgrep -f sunshine.
+recover_virtual() {
+  if [ "$(virtual_output_pref)" != on ]; then
+    return 0
+  fi
+  local pid x11
+  pid="$(virtual_pid || true)"
+  if [ -z "${pid:-}" ] || ! is_headless_gamescope "$pid"; then
+    echo "Recover: headless :2 gone; starting."
+    start_virtual || return 1
+    return 0
+  fi
+  write_nodefile || true
+  x11="$(x11_display || true)"
+  x11="${x11:-:2}"
+  if pad_has_ffplay "$x11"; then
+    if emu_running; then
+      if idle_clock_present "$x11"; then
+        echo "Recover: live GamePad mirror; dropping idle clock."
+        stop_paint
+      fi
+      present_ffplay_baselayer "$x11" || true
+      return 0
+    fi
+    echo "Recover: leftover x11grab on $x11 with no Cemu/Azahar; painting."
+    kill_x11grab_ffplay "$x11"
+    if command -v xdotool >/dev/null 2>&1; then
+      timeout 1 env DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
+    fi
+    start_paint || true
+    return 0
+  fi
+  if [ "$(screensaver_pref)" = off ]; then
+    if paint_pid >/dev/null; then
+      echo "Recover: screensaver pref off; stopping leftover clock."
+      stop_paint
+    fi
+    return 0
+  fi
+  if paint_pid >/dev/null; then
+    present_idle_screensaver "$x11" || true
+    return 0
+  fi
+  echo "Recover: idle clock missing on $x11; painting."
+  start_paint || true
+}
+
+watch_virtual() {
+  echo "Watching :2 / idle clock every ${WATCH_SECS}s."
+  while true; do
+    recover_virtual || true
+    sleep "$WATCH_SECS"
+  done
+}
+
 write_nodefile() {
   local pid node_info node serial
   pid="$(virtual_pid || true)"
@@ -287,6 +439,8 @@ print_status() {
   local pid wl x11 node
   pid="$(virtual_pid || true)"
   echo "headless gamescope pid: ${pid:-none}"
+  echo "second screen: $(virtual_output_pref)"
+  echo "screensaver: $(screensaver_pref)"
   echo "pidfile: $PIDFILE"
   echo "log: $LOG"
   echo "sidecar: $NODEFILE"
@@ -306,32 +460,55 @@ print_status() {
 }
 
 stop_virtual() {
-  local pid
+  local pid p i
   stop_paint
   pid="$(virtual_pid || true)"
-  if [ -z "${pid:-}" ]; then
-    echo "No headless gamescope virtual display."
-    rm -f "$PIDFILE"
-    return 0
-  fi
-  if ! is_headless_gamescope "$pid"; then
-    echo "Refusing to kill pid $pid (not --backend headless)."
-    return 1
-  fi
-  echo "Stopping headless gamescope pid $pid."
-  kill "$pid" 2>/dev/null || true
-  local i=0
+  # Reap every --backend headless gamescope. Recover --watch can start a
+  # second copy on the next display while pidfile still points at the first.
+  for p in $(pgrep -x gamescope || true); do
+    if is_headless_gamescope "$p"; then
+      echo "Stopping headless gamescope pid $p."
+      kill "$p" 2>/dev/null || true
+    fi
+  done
+  i=0
   while [ "$i" -lt 20 ]; do
-    [ ! -d "/proc/$pid" ] && break
+    leftover=0
+    for p in $(pgrep -x gamescope || true); do
+      if is_headless_gamescope "$p"; then
+        leftover=1
+        break
+      fi
+    done
+    [ "$leftover" -eq 0 ] && break
     sleep 0.2
     i=$((i + 1))
   done
-  if [ -d "/proc/$pid" ]; then
-    kill -9 "$pid" 2>/dev/null || true
+  for p in $(pgrep -x gamescope || true); do
+    if is_headless_gamescope "$p"; then
+      kill -9 "$p" 2>/dev/null || true
+    fi
+  done
+  if [ -n "${pid:-}" ] && [ -d "/proc/$pid" ] && ! is_headless_gamescope "$pid"; then
+    echo "Refusing to kill pid $pid (not --backend headless)."
+    return 1
   fi
   rm -f "$PIDFILE"
   rm -f "$NODEFILE"
   return 0
+}
+
+# A new headless gamescope gets a new PipeWire object.serial. Live kms keeps
+# AUTOCONNECT on the old serial; PipeWire then negotiates session gamescope-0
+# (HDMI 4K) and Thor bottom duplicates the TV. Restart kms only — never
+# --start (that KillModes :2).
+rebind_kms_video1() {
+  local unit="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+  if ! systemctl --user is-active "$unit" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Rebinding $unit video/1 to sidecar serial (keep :2)."
+  systemctl --user restart "$unit"
 }
 
 start_virtual() {
@@ -348,9 +525,12 @@ start_virtual() {
     return 1
   fi
   : >"$LOG"
+  mkdir -p "$HEADLESS_CWD"
+  : >"$HEADLESS_CWD/mangoapp"
   # Isolated from the session compositor. Do not inherit WAYLAND_DISPLAY=gamescope-0
   # (that nests a window on the TV) or wayland-0 (missing in Game Mode).
-  nohup env -u WAYLAND_DISPLAY -u DISPLAY \
+  # cwd + mangoapp file: separate ftok key from Steam's mangoapp queue.
+  nohup env -u WAYLAND_DISPLAY -u DISPLAY -u STEAM_USE_MANGOAPP --chdir="$HEADLESS_CWD" \
     gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" --xwayland-count 1 \
     -- sleep infinity >>"$LOG" 2>&1 &
   pid=$!
@@ -361,6 +541,7 @@ start_virtual() {
       echo "Started headless gamescope pid $pid."
       start_paint || true
       print_status
+      rebind_kms_video1 || true
       return 0
     fi
     if [ ! -d "/proc/$pid" ]; then
@@ -374,6 +555,7 @@ start_virtual() {
   echo "headless gamescope pid $pid started; PipeWire line not seen yet. See $LOG"
   start_paint || true
   print_status
+  rebind_kms_video1 || true
   return 0
 }
 
@@ -481,16 +663,16 @@ paint_outside_steam_scope() {
 }
 
 if [ "$DO_PAINT" -eq 1 ]; then
-  if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
+  # Hop out of Steam tiles only. QAM / agent --paint must stay in-process
+  # (setsid + disown) so the clock actually maps; systemd-run --no-block
+  # used to return before Tk existed and Thor stayed dummy-black.
+  if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ] && in_steam_tile_cgroup self; then
     if paint_outside_steam_scope; then
       echo "Bottom screensaver armed outside Steam scope."
       exit 0
     fi
-    echo "systemd-run --paint unavailable; starting in-process."
-    if in_steam_tile_cgroup self; then
-      echo "Refusing in-process --paint inside a Steam tile (reaper would hang on Exiting)."
-      exit 1
-    fi
+    echo "systemd-run --paint unavailable; refusing in-process --paint inside a Steam tile."
+    exit 1
   fi
   # Frozen GamePad after Cemu exit is leftover x11grab on :2. Kill it
   # before start_paint's "ffplay already here" skip.
@@ -500,15 +682,37 @@ if [ "$DO_PAINT" -eq 1 ]; then
     timeout 1 env DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
   fi
   stop_paint
+  if [ "$(screensaver_pref)" = off ]; then
+    echo "Screensaver disabled; not painting :2."
+    print_status
+    exit 0
+  fi
   start_paint || exit $?
   print_status
   exit 0
 fi
 
 if [ "$DO_START" -eq 1 ]; then
+  if [ "$(virtual_output_pref)" = off ]; then
+    echo "Second screen disabled; not starting headless :2."
+    stop_virtual || true
+    print_status
+    exit 0
+  fi
   start_virtual || exit $?
   exit 0
 fi
 
-echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
+if [ "$DO_RECOVER" -eq 1 ]; then
+  recover_virtual || exit $?
+  print_status
+  exit 0
+fi
+
+if [ "$DO_WATCH" -eq 1 ]; then
+  watch_virtual
+  exit 0
+fi
+
+echo "usage: $0 [--start] [--paint] [--recover] [--watch] [--status] [--smoke] [--stop]" >&2
 exit 2

@@ -129,14 +129,15 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-ds-on-desktop.sh` | Called by that plugin: start desktop dual-stream DS and switch to Plasma |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
 | `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/ensure-mangohud-presets.sh` | Steam QAM performance overlay preset 2: horizontal bar stretched to HDMI (`horizontal_stretch=1`). Headless `:2` gamescope uses a separate mangoapp ftok cwd so 1080p frames do not 1/4-flash the HUD. Other presets stay stock. |
 | `scripts/ensure-sunshine-ds-kms-setcap.sh` | Detect passwordless `setcap` for `sunshine-ds-kms` / `.new`. Drop-in must be `zzz-sunshine-ds-kms-setcap` (after `wheel`). Prints sudo lines after a SteamOS update. |
-| `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
+| `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; `--recover` / `--watch` restore empty `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-14-gamemode-fill-exit`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-17-hdmi-hud`; Cemu/Azahar fill+Exit: `checkpoint-2026-09-14-gamemode-fill-exit`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

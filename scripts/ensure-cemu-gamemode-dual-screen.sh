@@ -382,6 +382,10 @@ cover_gamepad_under_tv() {
   cur="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
   if [ "$cur" != "$tv_dec" ]; then
     set_gamescope_focus "$TV_WID" "$APPID"
+  else
+    # kms restart / Steam can flip FOCUS_DISPLAY back to middle 0 while
+    # Cemu stays focused. GamePad XSendEvent then looks dead.
+    gamescope_set_focus_display_middle 1
   fi
 }
 

@@ -349,15 +349,46 @@ wait_pad_wid() {
 }
 
 place_pad_for_capture() {
-  local wid="$1"
+  local wid="$1" absx absy
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  # 1080p GamePad at 0,0 is the top-left quarter of a 4K TV window. Resizing
+  # or moving it every watcher tick flashes that quarter on HDMI.
+  x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
+  absx="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left X:/{print $4; exit}')"
+  absy="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left Y:/{print $4; exit}')"
+  if [ "${absx:-}" != "0" ] || [ "${absy:-}" != "0" ]; then
+    DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  fi
   # Do not activate GamePad — that puts it on HDMI. Keep it under the TV for
   # x11grab; ffplay on :2 is the bottom Moonlight panel.
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
+}
+
+# If gamescope BASELAYER slips to the 1080p GamePad on a 4K TV, HDMI shows
+# that window in the top-left quarter. Restore TV BASELAYER without raising
+# or resizing — those ConfigureNotifys were the flicker.
+cover_gamepad_under_tv() {
+  local pad_dec tv_dec cur
+  find_pad_wid || return 0
+  find_tv_wid || return 0
+  DISPLAY="$TV_DISPLAY" xdotool windowlower "$PAD_WID" 2>/dev/null || true
+  pad_dec="$(printf '%d' "$PAD_WID" 2>/dev/null || printf '%s' "$PAD_WID")"
+  tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
+  cur="$(DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$cur" = "$pad_dec" ]; then
+    DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$tv_dec" 2>/dev/null || true
+    DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$tv_dec" 2>/dev/null || true
+  fi
+}
+
+idle_clock_mapped() {
+  local wid
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+  [ -n "${wid:-}" ] || return 1
+  DISPLAY="$PAD_DISPLAY" xwininfo -id "$wid" 2>/dev/null | grep -q 'Map State: IsViewable'
 }
 
 find_tv_wid() {
@@ -487,15 +518,10 @@ present_dual_layout() {
 }
 
 needs_virtual_gamepad() {
-  local focus name ff vfocus
-  focus="$(DISPLAY="$TV_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
-  if [ -n "${focus:-}" ]; then
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$focus" 2>/dev/null || true)"
-    case "$name" in
-      GamePad*) return 0 ;;
-    esac
-  fi
-  if DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' >/dev/null 2>&1; then
+  local ff vfocus
+  # GamePad X focus is cover_gamepad_under_tv, not a full relayout (4K
+  # HDMI 1/4 flicker). A withdrawn Tk still matches xdotool search.
+  if idle_clock_mapped; then
     return 0
   fi
   ff="$(find_ffplay_wid || true)"
@@ -546,6 +572,7 @@ watch_cemu_focus_loop() {
     else
       steam_ticks=0
       overlay=0
+      cover_gamepad_under_tv || true
       if needs_virtual_gamepad; then
         echo "Cemu focused — placing GamePad on $PAD_DISPLAY"
         present_dual_layout || true

@@ -17,11 +17,14 @@
 #
 #   scripts/sunshine-ds-gamemode-virtual.sh --start   # gamescope + idle screensaver
 #   scripts/sunshine-ds-gamemode-virtual.sh --paint   # restart screensaver only (:2 stays)
+#   scripts/sunshine-ds-gamemode-virtual.sh --recover # one-shot: start :2 / paint clock if prefs on
+#   scripts/sunshine-ds-gamemode-virtual.sh --watch   # loop --recover (Game Mode user unit)
 #   scripts/sunshine-ds-gamemode-virtual.sh --status
 #   scripts/sunshine-ds-gamemode-virtual.sh --smoke   # one PNG from the PipeWire node
 #   scripts/sunshine-ds-gamemode-virtual.sh --stop
 # QAM Second screen Off writes ~/.config/sunshine-ds-gamemode/virtual-output
 # (off) so --start is a no-op until the toggle is on again.
+# Empty :2 (no clock, no ffplay) encodes dummy-black; --watch paints it back.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,6 +42,7 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+WATCH_SECS="${SUNSHINE_DS_KMS_VIRTUAL_WATCH_SECS:-3}"
 VIRTUAL_OUTPUT_PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/virtual-output}"
 SCREENSAVER_PREF="${SUNSHINE_DS_SCREENSAVER_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/screensaver}"
 
@@ -47,19 +51,23 @@ DO_STOP=0
 DO_START=0
 DO_SMOKE=0
 DO_PAINT=0
+DO_RECOVER=0
+DO_WATCH=0
 for arg in "$@"; do
   case "$arg" in
     --status) DO_STATUS=1 ;;
     --stop) DO_STOP=1 ;;
     --start) DO_START=1 ;;
     --paint) DO_PAINT=1 ;;
+    --recover) DO_RECOVER=1 ;;
+    --watch) DO_WATCH=1 ;;
     --smoke) DO_SMOKE=1 ;;
     -h|--help)
-      sed -n '2,22p' "$0"
+      sed -n '2,26p' "$0"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
+      echo "usage: $0 [--start] [--paint] [--recover] [--watch] [--status] [--smoke] [--stop]" >&2
       exit 2
       ;;
   esac
@@ -284,6 +292,116 @@ present_idle_screensaver() {
     sleep 0.1
   done
   return 1
+}
+
+pad_has_ffplay() {
+  local x11="${1:-}"
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  command -v xdotool >/dev/null 2>&1 || return 1
+  timeout 1 env DISPLAY="$x11" xdotool search --class ffplay >/dev/null 2>&1
+}
+
+emu_running() {
+  pgrep -x cemu >/dev/null 2>&1 && return 0
+  pgrep -x azahar >/dev/null 2>&1 && return 0
+  pgrep -x Cemu-wrapper >/dev/null 2>&1 && return 0
+  return 1
+}
+
+xid_dec() {
+  printf '%d' "$1" 2>/dev/null || printf '%s' "$1"
+}
+
+baselayer_xid() {
+  DISPLAY="${1:-:2}" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null \
+    | awk -F'= ' '{print $2}' | tr -d ' '
+}
+
+idle_clock_present() {
+  local x11="${1:-}" wid
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  paint_pid >/dev/null && return 0
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(timeout 1 env DISPLAY="$x11" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+  [ -n "${wid:-}" ]
+}
+
+present_ffplay_baselayer() {
+  local x11="${1:-}" wid want cur
+  [ -n "$x11" ] || x11="$(x11_display || true)"
+  [ -n "$x11" ] || x11=":2"
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(timeout 1 env DISPLAY="$x11" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
+  [ -n "${wid:-}" ] || return 1
+  want="$(xid_dec "$wid")"
+  cur="$(baselayer_xid "$x11")"
+  if [ -n "$cur" ] && [ "$cur" = "$want" ]; then
+    return 0
+  fi
+  DISPLAY="$x11" xdotool windowmap "$wid" windowraise "$wid" 2>/dev/null || true
+  DISPLAY="$x11" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$want" 2>/dev/null || true
+  DISPLAY="$x11" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$want" 2>/dev/null || true
+}
+
+# Pref on + :2 missing → start. Pref on + empty :2 (no ffplay, no clock) → paint.
+# Live Cemu/Azahar ffplay: drop a competing Tk clock (withdrawn windows still
+# trip the Cemu watcher) and keep ffplay as BASELAYER. Leftover x11grab with
+# no emu → kill, then paint. Screensaver Off stops a leftover clock.
+# Never --start kms. Never pgrep -f sunshine.
+recover_virtual() {
+  if [ "$(virtual_output_pref)" != on ]; then
+    return 0
+  fi
+  local pid x11
+  pid="$(virtual_pid || true)"
+  if [ -z "${pid:-}" ] || ! is_headless_gamescope "$pid"; then
+    echo "Recover: headless :2 gone; starting."
+    start_virtual || return 1
+    return 0
+  fi
+  write_nodefile || true
+  x11="$(x11_display || true)"
+  x11="${x11:-:2}"
+  if pad_has_ffplay "$x11"; then
+    if emu_running; then
+      if idle_clock_present "$x11"; then
+        echo "Recover: live GamePad mirror; dropping idle clock."
+        stop_paint
+      fi
+      present_ffplay_baselayer "$x11" || true
+      return 0
+    fi
+    echo "Recover: leftover x11grab on $x11 with no Cemu/Azahar; painting."
+    kill_x11grab_ffplay "$x11"
+    if command -v xdotool >/dev/null 2>&1; then
+      timeout 1 env DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
+    fi
+    start_paint || true
+    return 0
+  fi
+  if [ "$(screensaver_pref)" = off ]; then
+    if paint_pid >/dev/null; then
+      echo "Recover: screensaver pref off; stopping leftover clock."
+      stop_paint
+    fi
+    return 0
+  fi
+  if paint_pid >/dev/null; then
+    present_idle_screensaver "$x11" || true
+    return 0
+  fi
+  echo "Recover: idle clock missing on $x11; painting."
+  start_paint || true
+}
+
+watch_virtual() {
+  echo "Watching :2 / idle clock every ${WATCH_SECS}s."
+  while true; do
+    recover_virtual || true
+    sleep "$WATCH_SECS"
+  done
 }
 
 write_nodefile() {
@@ -552,5 +670,16 @@ if [ "$DO_START" -eq 1 ]; then
   exit 0
 fi
 
-echo "usage: $0 [--start] [--paint] [--status] [--smoke] [--stop]" >&2
+if [ "$DO_RECOVER" -eq 1 ]; then
+  recover_virtual || exit $?
+  print_status
+  exit 0
+fi
+
+if [ "$DO_WATCH" -eq 1 ]; then
+  watch_virtual
+  exit 0
+fi
+
+echo "usage: $0 [--start] [--paint] [--recover] [--watch] [--status] [--smoke] [--stop]" >&2
 exit 2

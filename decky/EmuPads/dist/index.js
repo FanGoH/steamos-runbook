@@ -286,22 +286,54 @@ function Content() {
 
   const muxEnabled = status?.mux?.enabled !== false;
 
+  const enableRow = () => {
+    const description = muxEnabled
+      ? "On: P1/P2 are plugged in. Off unplugs them from the system."
+      : "Off: P1/P2 are unplugged. Native games only see Thor/Odin.";
+    const toggle = DFL.ToggleField
+      ? SP_JSX.jsx(DFL.PanelSectionRow, {
+          children: SP_JSX.jsx(DFL.ToggleField, {
+            label: "Enable EmuPads P1 / P2",
+            description,
+            checked: muxEnabled,
+            disabled: busy,
+            onChange: (on) => persistEnabled(on),
+          }),
+        })
+      : null;
+    return [
+      toggle,
+      SP_JSX.jsx(DFL.PanelSectionRow, {
+        children: SP_JSX.jsxs("div", {
+          style: { display: "flex", gap: 8, flexWrap: "wrap" },
+          children: [
+            SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy || muxEnabled,
+              onClick: () => persistEnabled(true),
+              children: muxEnabled ? "Connected ✓" : "Connect P1/P2",
+            }),
+            SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy || !muxEnabled,
+              onClick: () => persistEnabled(false),
+              children: !muxEnabled ? "Unplugged ✓" : "Unplug P1/P2",
+            }),
+          ],
+        }),
+      }),
+    ].filter(Boolean);
+  };
+
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
       SP_JSX.jsxs(DFL.PanelSection, {
+        title: "EmuPads",
+        children: enableRow(),
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
         title: "Controllers",
         children: [
-          SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsx(DFL.ToggleField, {
-              label: "Emu Pads",
-              description: muxEnabled
-                ? "On: P1/P2 are connected. Off unplugs them from the system."
-                : "Off: P1/P2 are unplugged. Native games only see Thor/Odin.",
-              checked: muxEnabled,
-              disabled: busy,
-              onChange: (on) => persistEnabled(on),
-            }),
-          }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsxs("div", {
               style: { opacity: 0.75, fontSize: "0.88em" },

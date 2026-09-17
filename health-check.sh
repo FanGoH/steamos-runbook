@@ -367,6 +367,17 @@ systemctl --user is-enabled $kms_unit
 # sudo is only setcap after copy/patchelf, not for starting the unit
 EOF
 fi
+kms_recover="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
+if systemctl --user is-enabled "$kms_recover" >/dev/null 2>&1; then
+  ok "$kms_recover enabled (repaints empty :2)"
+else
+  warn "$kms_recover not enabled"
+  record_manual "Enable Game Mode :2 recover watcher" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --install-service
+systemctl --user is-enabled $kms_recover
+EOF
+fi
 if systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
   if [ "$kms_state" = "FREE" ] || [ "$kms_state" = "BUSY" ]; then
     ok "sunshine-ds-kms ${kms_state} (${kms_url})"

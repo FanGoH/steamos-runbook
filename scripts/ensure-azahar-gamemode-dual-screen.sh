@@ -390,15 +390,11 @@ start_focus_watch() {
 }
 
 place_secondary_for_capture() {
-  local wid="$1" absx absy
+  local wid="$1"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
-  absx="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left X:/{print $4; exit}')"
-  absy="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left Y:/{print $4; exit}')"
-  if [ "${absx:-}" != "0" ] || [ "${absy:-}" != "0" ]; then
-    DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
-  fi
-  # Same 4K HDMI 1/4 path as Cemu GamePad: hide frame + GL children.
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
+  # Frame only — opacity 0 on the GL child kills bottom-screen inject.
   x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
   present_primary || true
 }

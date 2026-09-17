@@ -1044,9 +1044,46 @@ x11_resize_if_needed() {
   DISPLAY="$display" xdotool windowsize "$id" "$w" "$h" 2>/dev/null || true
 }
 
-# gamescope steamcompmgr draws mapped GL children even when the wx/GTK frame
-# is _NET_WM_WINDOW_OPACITY 0. A 1080p GamePad / Azahar Secondary child at
-# 0,0 is the 4K HDMI top-left quarter flash. x11grab still reads the pixmap.
+x11_window_xy() {
+  local display="$1" id="$2"
+  DISPLAY="$display" xwininfo -id "$id" 2>/dev/null | awk '/Absolute upper-left X:/{x=$4} /Absolute upper-left Y:/{y=$4} END{if (x != "" && y != "") print x, y}'
+}
+
+x11_move_if_needed() {
+  local display="$1" id="$2" x="$3" y="$4"
+  local cur cx cy
+  cur="$(x11_window_xy "$display" "$id")"
+  cx="${cur%% *}"
+  cy="${cur##* }"
+  if [ -n "$cx" ] && [ -n "$cy" ] && [ "$cx" = "$x" ] && [ "$cy" = "$y" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xdotool windowmove "$id" "$x" "$y" 2>/dev/null || true
+}
+
+# 1080p GamePad at 0,0 is the 4K HDMI top-left quarter. Park it just past
+# HDMI width (3840,0 on a 4K TV). window_id x11grab still works there.
+# 1920,0 on a 1080p nested display is MIT-SHM BadMatch — keep 0,0 then.
+x11_pad_park_xy() {
+  local sw sh
+  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  if [ "${sw:-0}" -gt 1920 ] 2>/dev/null; then
+    printf '%s 0\n' "$sw"
+  else
+    printf '0 0\n'
+  fi
+}
+
+x11_park_xid_off_hdmi() {
+  local display="$1" wid="$2" px py
+  [ -n "$wid" ] || return 0
+  read -r px py <<<"$(x11_pad_park_xy)"
+  x11_move_if_needed "$display" "$wid" "$px" "$py"
+}
+
+# Opacity 0 on the GL child kills Cemu/wx GamePad taps (that child is the
+# inject target). Only the wx frame is hidden. Park off HDMI for the 1/4
+# flash; do not hide children.
 x11_set_window_opacity() {
   local display="$1" wid="$2" value="$3" cur
   [ -n "$wid" ] || return 0
@@ -1058,15 +1095,10 @@ x11_set_window_opacity() {
 }
 
 x11_hide_xid_from_hdmi() {
-  local display="$1" wid="$2" child
+  local display="$1" wid="$2"
   [ -n "$wid" ] || return 0
   x11_set_window_opacity "$display" "$wid" 0
   DISPLAY="$display" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
-  while read -r child; do
-    [ -n "$child" ] || continue
-    x11_set_window_opacity "$display" "$child" 0
-    DISPLAY="$display" xprop -id "$child" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
-  done < <(DISPLAY="$display" xwininfo -id "$wid" -children 2>/dev/null | awk '/^     0x/{print $1}')
 }
 
 # GAMESCOPE_FOCUS_DISPLAY is session ids + nested index, e.g. 12602, 0, 68.

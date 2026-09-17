@@ -235,8 +235,9 @@ set_xy(root, "window_position", 0, 0)
 # TV follows HDMI native (4K TV → 3840x2160) so the top fills. GamePad
 # / :2 stay 1920x1080; Moonlight stretches that onto Thor's bottom.
 set_xy(root, "window_size", tv_w, tv_h)
-# Off-screen pad (1920,0) cannot be x11grab'd (MIT-SHM BadMatch). Keep it
-# mapped on-screen under the TV; window_id grab still sees GamePad pixels.
+# Create the pad on-screen (Cemu maps it). Dual-screen parks it at
+# HDMI width,0 after map so 1080p is not the 4K top-left quarter.
+# 1920,0 on a 1080p nested display is MIT-SHM BadMatch.
 set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
 tree.write(path, encoding="UTF-8", xml_declaration=True)
@@ -349,28 +350,21 @@ wait_pad_wid() {
 }
 
 place_pad_for_capture() {
-  local wid="$1" absx absy
+  local wid="$1"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
-  # 1080p GamePad at 0,0 is the top-left quarter of a 4K TV window. Resizing
-  # or moving it every watcher tick flashes that quarter on HDMI.
   x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
-  absx="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left X:/{print $4; exit}')"
-  absy="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left Y:/{print $4; exit}')"
-  if [ "${absx:-}" != "0" ] || [ "${absy:-}" != "0" ]; then
-    DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
-  fi
-  # Do not activate GamePad — that puts it on HDMI. Keep it under the TV for
-  # x11grab; ffplay on :2 is the bottom Moonlight panel.
+  # 1080p at 0,0 is the 4K HDMI quarter flash. Park past HDMI width
+  # (3840,0). window_id x11grab still sees GamePad pixels there.
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
+  # Do not activate GamePad — that puts it on HDMI. ffplay on :2 is the
+  # bottom Moonlight panel.
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$wid" 2>/dev/null || true
   hide_gamepad_from_hdmi "$wid"
 }
 
-# GamePad stays mapped at 1920×1080+0+0 for x11grab. On a 4K TV that is the
-# top-left quarter. Opacity 0 on the wx frame is not enough — gamescope
-# still draws the GL child (no opacity). Hide frame + children. Do not
-# windowlower on the 0.4s watcher (restack flashes the quarter). x11grab
-# reads the pixmap, not the composited plane.
+# Frame opacity 0 only. Opacity 0 on the GL child (inject target) is what
+# killed bottom-screen taps. Parking off HDMI stops the 1/4 flash.
 hide_gamepad_from_hdmi() {
   local wid="${1:-}"
   [ -n "$wid" ] || return 0
@@ -379,11 +373,12 @@ hide_gamepad_from_hdmi() {
 
 # If gamescope BASELAYER slips to the 1080p GamePad on a 4K TV, HDMI shows
 # that window in the top-left quarter. Restore TV BASELAYER without raising
-# or resizing — those ConfigureNotifys were extra flicker.
+# or resizing. Re-park if Cemu snapped the pad back to 0,0.
 cover_gamepad_under_tv() {
   local pad_dec tv_dec cur
   find_pad_wid || return 0
   find_tv_wid || return 0
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$PAD_WID"
   hide_gamepad_from_hdmi "$PAD_WID"
   pad_dec="$(printf '%d' "$PAD_WID" 2>/dev/null || printf '%s' "$PAD_WID")"
   tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
@@ -391,7 +386,6 @@ cover_gamepad_under_tv() {
   if [ "$cur" = "$pad_dec" ]; then
     DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$tv_dec" 2>/dev/null || true
     DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$tv_dec" 2>/dev/null || true
-    DISPLAY="$TV_DISPLAY" xdotool windowlower "$PAD_WID" 2>/dev/null || true
   fi
 }
 

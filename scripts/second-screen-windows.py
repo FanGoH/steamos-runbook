@@ -712,8 +712,11 @@ def cmd_set_screensaver(args: argparse.Namespace) -> int:
         json.dump(payload, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 1
-    payload = status_payload()
     err = (proc.stderr or "").strip()
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and not screensaver_live():
+        time.sleep(0.15)
+    payload = status_payload()
     payload["messages"] = ["Screensaver on (idle clock on :2)."]
     if proc.returncode not in (0, None) and err:
         payload["ok"] = False

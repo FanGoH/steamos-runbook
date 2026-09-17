@@ -512,16 +512,16 @@ paint_outside_steam_scope() {
 }
 
 if [ "$DO_PAINT" -eq 1 ]; then
-  if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ]; then
+  # Hop out of Steam tiles only. QAM / agent --paint must stay in-process
+  # (setsid + disown) so the clock actually maps; systemd-run --no-block
+  # used to return before Tk existed and Thor stayed dummy-black.
+  if [ -z "${SUNSHINE_DS_PAINT_INNER:-}" ] && in_steam_tile_cgroup self; then
     if paint_outside_steam_scope; then
       echo "Bottom screensaver armed outside Steam scope."
       exit 0
     fi
-    echo "systemd-run --paint unavailable; starting in-process."
-    if in_steam_tile_cgroup self; then
-      echo "Refusing in-process --paint inside a Steam tile (reaper would hang on Exiting)."
-      exit 1
-    fi
+    echo "systemd-run --paint unavailable; refusing in-process --paint inside a Steam tile."
+    exit 1
   fi
   # Frozen GamePad after Cemu exit is leftover x11grab on :2. Kill it
   # before start_paint's "ffplay already here" skip.

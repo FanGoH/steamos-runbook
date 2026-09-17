@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Steam QAM performance overlay (mangoapp) preset 2. Stock horizontal
-# stretch paints a 1920-wide HUD on the 1080p overlay window, which
-# 1/4-flashes on 4K HDMI. Keep the bar/graphs; drop stretch and alpha.
+# Steam QAM performance overlay (mangoapp) preset 2. Horizontal bar
+# stretched to gamescope outputWidth (HDMI). Headless :2 gamescope must
+# not share the mangoapp queue (see sunshine-ds-gamemode-virtual.sh).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

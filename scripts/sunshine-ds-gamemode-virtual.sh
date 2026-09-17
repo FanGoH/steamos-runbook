@@ -25,6 +25,8 @@
 # QAM Second screen Off writes ~/.config/sunshine-ds-gamemode/virtual-output
 # (off) so --start is a no-op until the toggle is on again.
 # Empty :2 (no clock, no ffplay) encodes dummy-black; --watch paints it back.
+# Start headless from its own cwd with a `mangoapp` ftok file so it does not
+# share Steam's mangoapp SysV queue (1080p outputWidth 1/4-flashes preset 2).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,6 +44,9 @@ SMOKE_PNG="${SUNSHINE_DS_KMS_VIRTUAL_SMOKE:-$ROOT/logs/sunshine-ds-gamemode-virt
 NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-virtual}"
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
+# ftok("mangoapp") is cwd-relative. Steam mangoapp uses the session cwd; this
+# file gives headless a different IPC key so 1080p frames do not resize HDMI HUD.
+HEADLESS_CWD="${SUNSHINE_DS_KMS_VIRTUAL_CWD:-${XDG_RUNTIME_DIR}/sunshine-ds-gamemode-headless}"
 WATCH_SECS="${SUNSHINE_DS_KMS_VIRTUAL_WATCH_SECS:-3}"
 VIRTUAL_OUTPUT_PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/virtual-output}"
 SCREENSAVER_PREF="${SUNSHINE_DS_SCREENSAVER_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/screensaver}"
@@ -455,28 +460,38 @@ print_status() {
 }
 
 stop_virtual() {
-  local pid
+  local pid p i
   stop_paint
   pid="$(virtual_pid || true)"
-  if [ -z "${pid:-}" ]; then
-    echo "No headless gamescope virtual display."
-    rm -f "$PIDFILE"
-    return 0
-  fi
-  if ! is_headless_gamescope "$pid"; then
-    echo "Refusing to kill pid $pid (not --backend headless)."
-    return 1
-  fi
-  echo "Stopping headless gamescope pid $pid."
-  kill "$pid" 2>/dev/null || true
-  local i=0
+  # Reap every --backend headless gamescope. Recover --watch can start a
+  # second copy on the next display while pidfile still points at the first.
+  for p in $(pgrep -x gamescope || true); do
+    if is_headless_gamescope "$p"; then
+      echo "Stopping headless gamescope pid $p."
+      kill "$p" 2>/dev/null || true
+    fi
+  done
+  i=0
   while [ "$i" -lt 20 ]; do
-    [ ! -d "/proc/$pid" ] && break
+    leftover=0
+    for p in $(pgrep -x gamescope || true); do
+      if is_headless_gamescope "$p"; then
+        leftover=1
+        break
+      fi
+    done
+    [ "$leftover" -eq 0 ] && break
     sleep 0.2
     i=$((i + 1))
   done
-  if [ -d "/proc/$pid" ]; then
-    kill -9 "$pid" 2>/dev/null || true
+  for p in $(pgrep -x gamescope || true); do
+    if is_headless_gamescope "$p"; then
+      kill -9 "$p" 2>/dev/null || true
+    fi
+  done
+  if [ -n "${pid:-}" ] && [ -d "/proc/$pid" ] && ! is_headless_gamescope "$pid"; then
+    echo "Refusing to kill pid $pid (not --backend headless)."
+    return 1
   fi
   rm -f "$PIDFILE"
   rm -f "$NODEFILE"
@@ -497,9 +512,12 @@ start_virtual() {
     return 1
   fi
   : >"$LOG"
+  mkdir -p "$HEADLESS_CWD"
+  : >"$HEADLESS_CWD/mangoapp"
   # Isolated from the session compositor. Do not inherit WAYLAND_DISPLAY=gamescope-0
   # (that nests a window on the TV) or wayland-0 (missing in Game Mode).
-  nohup env -u WAYLAND_DISPLAY -u DISPLAY \
+  # cwd + mangoapp file: separate ftok key from Steam's mangoapp queue.
+  nohup env -u WAYLAND_DISPLAY -u DISPLAY -u STEAM_USE_MANGOAPP --chdir="$HEADLESS_CWD" \
     gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" --xwayland-count 1 \
     -- sleep infinity >>"$LOG" 2>&1 &
   pid=$!

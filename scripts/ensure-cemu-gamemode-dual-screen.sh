@@ -477,19 +477,20 @@ set_gamescope_focus() {
 }
 
 present_cemu_tv() {
-  local sw sh
+  local sw sh bl tv_dec
   find_tv_wid || return 1
   read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
-  # HDMI native (4K) on top, GamePad stays 1080p. Only resize when the
-  # TV window does not already match — that loop was the flicker.
+  # Do not FULLSCREEN / raise / activate on a loop. Cemu is windowed 4K
+  # (settings fullscreen=false); adding FULLSCREEN every tick fights the
+  # 1080p GamePad and HDMI shows a 1/4 window (Thor clip 2026-09-17).
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-  set_gamescope_focus "$TV_WID" "$APPID"
+  tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
+  bl="$(DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$bl" != "$tv_dec" ]; then
+    set_gamescope_focus "$TV_WID" "$APPID"
+  fi
 }
 
 find_ffplay_wid() {
@@ -497,7 +498,7 @@ find_ffplay_wid() {
 }
 
 present_virtual_gamepad() {
-  local ff
+  local ff want cur
   ff="$(find_ffplay_wid || true)"
   if [ -z "${ff:-}" ]; then
     return 1
@@ -505,13 +506,13 @@ present_virtual_gamepad() {
   stop_paint
   DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add FULLSCREEN "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add ABOVE "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowfocus "$ff" windowactivate "$ff" windowraise "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$ff" 2>/dev/null || true
+  x11_resize_if_needed "$PAD_DISPLAY" "$ff" 1920 1080
+  want="$(printf '%d' "$ff" 2>/dev/null || printf '%s' "$ff")"
+  cur="$(DISPLAY="$PAD_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$cur" != "$want" ]; then
+    DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$want" 2>/dev/null || true
+    DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$want" 2>/dev/null || true
+  fi
 }
 
 present_dual_layout() {
@@ -530,21 +531,15 @@ present_dual_layout() {
 }
 
 needs_virtual_gamepad() {
-  local ff vfocus
-  # GamePad X focus is cover_gamepad_under_tv, not a full relayout (4K
-  # HDMI 1/4 flicker). A withdrawn Tk still matches xdotool search.
+  local ff
+  # Only missing ffplay or a mapped idle clock. :2 getwindowfocus != ffplay
+  # was true every tick (steamcompmgr) and present_dual_layout FULLSCREEN'd
+  # the 4K TV against the 1080p GamePad — HDMI 1/4 flicker.
   if idle_clock_mapped; then
     return 0
   fi
   ff="$(find_ffplay_wid || true)"
-  if [ -z "${ff:-}" ]; then
-    return 0
-  fi
-  vfocus="$(DISPLAY="$PAD_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
-  if [ -n "${vfocus:-}" ] && [ "$vfocus" != "$ff" ]; then
-    return 0
-  fi
-  return 1
+  [ -z "${ff:-}" ]
 }
 
 watch_cemu_focus_loop() {
@@ -586,8 +581,12 @@ watch_cemu_focus_loop() {
       overlay=0
       cover_gamepad_under_tv || true
       if needs_virtual_gamepad; then
-        echo "Cemu focused — placing GamePad on $PAD_DISPLAY"
-        present_dual_layout || true
+        echo "Cemu focused — GamePad mirror missing on $PAD_DISPLAY"
+        if find_pad_wid && [ -z "$(find_ffplay_wid || true)" ]; then
+          start_mirror "$PAD_WID" || true
+        else
+          present_virtual_gamepad || true
+        fi
       fi
     fi
     sleep 0.4

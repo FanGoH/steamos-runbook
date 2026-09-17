@@ -367,15 +367,14 @@ place_pad_for_capture() {
 }
 
 # GamePad stays mapped at 1920×1080+0+0 for x11grab. On a 4K TV that is the
-# top-left quarter; gamescope still composites it (opaque region) even when
-# TV is BASELAYER — that is the 1/4 flicker. Opacity 0 hides it from HDMI;
-# x11grab reads the GL pixmap, not the composited plane.
+# top-left quarter. Opacity 0 on the wx frame is not enough — gamescope
+# still draws the GL child (no opacity). Hide frame + children. Do not
+# windowlower on the 0.4s watcher (restack flashes the quarter). x11grab
+# reads the pixmap, not the composited plane.
 hide_gamepad_from_hdmi() {
   local wid="${1:-}"
   [ -n "$wid" ] || return 0
-  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
+  x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
 }
 
 # If gamescope BASELAYER slips to the 1080p GamePad on a 4K TV, HDMI shows
@@ -392,6 +391,7 @@ cover_gamepad_under_tv() {
   if [ "$cur" = "$pad_dec" ]; then
     DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$tv_dec" 2>/dev/null || true
     DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$tv_dec" 2>/dev/null || true
+    DISPLAY="$TV_DISPLAY" xdotool windowlower "$PAD_WID" 2>/dev/null || true
   fi
 }
 

@@ -1043,3 +1043,60 @@ x11_resize_if_needed() {
   fi
   DISPLAY="$display" xdotool windowsize "$id" "$w" "$h" 2>/dev/null || true
 }
+
+# gamescope steamcompmgr draws mapped GL children even when the wx/GTK frame
+# is _NET_WM_WINDOW_OPACITY 0. A 1080p GamePad / Azahar Secondary child at
+# 0,0 is the 4K HDMI top-left quarter flash. x11grab still reads the pixmap.
+x11_set_window_opacity() {
+  local display="$1" wid="$2" value="$3" cur
+  [ -n "$wid" ] || return 0
+  cur="$(DISPLAY="$display" xprop -id "$wid" _NET_WM_WINDOW_OPACITY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "${cur:-}" = "$value" ]; then
+    return 0
+  fi
+  DISPLAY="$display" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY "$value" 2>/dev/null || true
+}
+
+x11_hide_xid_from_hdmi() {
+  local display="$1" wid="$2" child
+  [ -n "$wid" ] || return 0
+  x11_set_window_opacity "$display" "$wid" 0
+  DISPLAY="$display" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
+  while read -r child; do
+    [ -n "$child" ] || continue
+    x11_set_window_opacity "$display" "$child" 0
+    DISPLAY="$display" xprop -id "$child" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
+  done < <(DISPLAY="$display" xwininfo -id "$wid" -children 2>/dev/null | awk '/^     0x/{print $1}')
+}
+
+# GAMESCOPE_FOCUS_DISPLAY is session ids + nested index, e.g. 12602, 0, 68.
+# Middle 0 = Steam :0, middle 1 = Cemu/Azahar :1. First/third change across
+# gamescope restarts. Writing stale 12346,1,66 after the live tuple moved
+# drops mouse/touch on dead xwayland ids (HDMI/GamePad taps look dead).
+gamescope_focus_display_tuple() {
+  local middle="${1:-0}" cur a c
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  a="${cur%%,*}"
+  c="${cur##*,}"
+  case "$a" in
+    ''|*[!0-9]*) a=12346 ;;
+  esac
+  case "$c" in
+    ''|*[!0-9]*) c=66 ;;
+  esac
+  printf '%s, %s, %s\n' "$a" "$middle" "$c"
+}
+
+gamescope_set_focus_display_middle() {
+  local middle="${1:-0}" tuple cur want atom
+  tuple="$(gamescope_focus_display_tuple "$middle")"
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPE_FOCUS_DISPLAY 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  want="$(printf '%s' "$tuple" | tr -d ' ')"
+  cur="$(printf '%s' "$cur" | tr -d ' ')"
+  if [ "$cur" = "$want" ]; then
+    return 0
+  fi
+  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
+    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "$tuple" 2>/dev/null || true
+  done
+}

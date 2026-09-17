@@ -390,13 +390,16 @@ start_focus_watch() {
 }
 
 place_secondary_for_capture() {
-  local wid="$1"
+  local wid="$1" absx absy
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
+  x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
+  absx="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left X:/{print $4; exit}')"
+  absy="$(DISPLAY="$TV_DISPLAY" xwininfo -id "$wid" 2>/dev/null | awk '/Absolute upper-left Y:/{print $4; exit}')"
+  if [ "${absx:-}" != "0" ] || [ "${absy:-}" != "0" ]; then
+    DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  fi
+  # Same 4K HDMI 1/4 path as Cemu GamePad: hide frame + GL children.
+  x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
   present_primary || true
 }
 

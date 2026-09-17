@@ -40,6 +40,7 @@ NODEFILE="${SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE:-${XDG_RUNTIME_DIR}/sunshine-ds-g
 WIDTH="${SUNSHINE_DS_KMS_VIRTUAL_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_DS_KMS_VIRTUAL_HEIGHT:-1080}"
 VIRTUAL_OUTPUT_PREF="${SUNSHINE_DS_VIRTUAL_OUTPUT_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/virtual-output}"
+SCREENSAVER_PREF="${SUNSHINE_DS_SCREENSAVER_PREF:-${HOME:-/home/deck}/.config/sunshine-ds-gamemode/screensaver}"
 
 DO_STATUS=0
 DO_STOP=0
@@ -66,17 +67,25 @@ done
 
 mkdir -p "$ROOT/logs"
 
-virtual_output_pref() {
-  local raw
-  if [ ! -f "$VIRTUAL_OUTPUT_PREF" ]; then
+_on_off_pref() {
+  local file="$1" raw
+  if [ ! -f "$file" ]; then
     echo on
     return 0
   fi
-  raw="$(tr -d '[:space:]' <"$VIRTUAL_OUTPUT_PREF" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  raw="$(tr -d '[:space:]' <"$file" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
   case "$raw" in
     off|0|false|no|pause) echo off ;;
     *) echo on ;;
   esac
+}
+
+virtual_output_pref() {
+  _on_off_pref "$VIRTUAL_OUTPUT_PREF"
+}
+
+screensaver_pref() {
+  _on_off_pref "$SCREENSAVER_PREF"
 }
 
 virtual_pid() {
@@ -207,6 +216,10 @@ stop_paint() {
 # sunshine-ds-kms-virtual so existing windowkill paths still work.
 start_paint() {
   local gs_pid x11 saver pid
+  if [ "$(screensaver_pref)" = off ]; then
+    echo "Screensaver disabled; not painting :2."
+    return 0
+  fi
   gs_pid="$(virtual_pid || true)"
   if [ -z "${gs_pid:-}" ]; then
     echo "No headless gamescope; not starting screensaver."
@@ -304,6 +317,7 @@ print_status() {
   pid="$(virtual_pid || true)"
   echo "headless gamescope pid: ${pid:-none}"
   echo "second screen: $(virtual_output_pref)"
+  echo "screensaver: $(screensaver_pref)"
   echo "pidfile: $PIDFILE"
   echo "log: $LOG"
   echo "sidecar: $NODEFILE"
@@ -517,6 +531,11 @@ if [ "$DO_PAINT" -eq 1 ]; then
     timeout 1 env DISPLAY="$x11" xdotool search --class ffplay windowkill 2>/dev/null || true
   fi
   stop_paint
+  if [ "$(screensaver_pref)" = off ]; then
+    echo "Screensaver disabled; not painting :2."
+    print_status
+    exit 0
+  fi
   start_paint || exit $?
   print_status
   exit 0

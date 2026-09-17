@@ -22,6 +22,7 @@ const definePlugin = (fn) => {
 const getStatus = callable("get_status");
 const setDualScreen = callable("set_dual_screen");
 const setVirtualOutput = callable("set_virtual_output");
+const setScreensaver = callable("set_screensaver");
 const showWindow = callable("show_window");
 const idleClock = callable("idle_clock");
 
@@ -40,6 +41,7 @@ function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
   const [secondScreenOn, setSecondScreenOn] = SP_REACT.useState(true);
+  const [screensaverOn, setScreensaverOn] = SP_REACT.useState(true);
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
 
@@ -55,6 +57,10 @@ function Content() {
       const vo = next?.virtual_output;
       if (vo === "on" || vo === "off") {
         setSecondScreenOn(vo !== "off");
+      }
+      const ss = next?.screensaver;
+      if (ss === "on" || ss === "off") {
+        setScreensaverOn(ss !== "off");
       }
     } catch (err) {
       setError(String(err));
@@ -83,6 +89,35 @@ function Content() {
           body: on
             ? "Headless :2 rendering is back."
             : "Stopped :2 / GamePad rendering. HDMI is unchanged.",
+          duration: 4000,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      toaster.toast({
+        title: "Second Screen",
+        body: String(err).slice(0, 220),
+        duration: 5000,
+      });
+    }
+  };
+
+  const persistScreensaver = async (on) => {
+    setScreensaverOn(Boolean(on));
+    try {
+      const result = await setScreensaver(on ? "on" : "off");
+      if (result?.ok === false) {
+        toaster.toast({
+          title: "Second Screen",
+          body: result.message || "screensaver toggle failed",
+          duration: 5000,
+        });
+      } else {
+        toaster.toast({
+          title: on ? "Screensaver on" : "Screensaver off",
+          body: on
+            ? "Idle clock on :2 when nothing is mirrored."
+            : "Stopped the idle clock. :2 stays up.",
           duration: 4000,
         });
       }
@@ -163,6 +198,19 @@ function Content() {
               onChange: (on) => persistSecondScreen(on),
             }),
           }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ToggleField, {
+              label: "Screensaver",
+              description: screensaverOn
+                ? status?.screensaver_live
+                  ? "On: idle clock is on :2."
+                  : "On: idle clock when nothing is mirrored on :2."
+                : "Off: no idle clock. :2 stays up (black until you show a window).",
+              checked: screensaverOn,
+              disabled: busy || !secondScreenOn,
+              onChange: (on) => persistScreensaver(on),
+            }),
+          }),
         ],
       }),
       SP_JSX.jsxs(DFL.PanelSection, {
@@ -223,7 +271,7 @@ function Content() {
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx(DFL.ButtonItem, {
               layout: "below",
-              disabled: busy || !secondScreenOn,
+              disabled: busy || !secondScreenOn || !screensaverOn,
               onClick: () => run("Idle clock", () => idleClock()),
               children: "Moonlight Screensaver",
             }),

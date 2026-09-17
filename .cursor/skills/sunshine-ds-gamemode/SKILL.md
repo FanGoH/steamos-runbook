@@ -23,13 +23,13 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 - Mux must incremental-rescan on pad reconnect (do not close every source fd each second).
 - Mux mutes **and EVIOCGRAB**s P1/P2 while `FOCUSED_APP=769` / overlay / QAM so Steam’s menu only sees the Sunshine pad (glyph flicker was P1 duplicating Thor). Plugin `pads` list never includes sinks (`1209:e301` / `e302`) or Steam wraps (`28de:11ff`) when Thor/Odin are present. Shared / Multiplayer must persist; a status poll must not flip the toggle back to Shared P1.
 - **QAM Render second screen** Off `--stop`s headless `:2` (HDMI stays). If the toggle already looks On but Thor bottom is dead, turn it Off then On, or `python3 scripts/second-screen-windows.py set-virtual-output --mode on`. **Screensaver** Off kills the idle clock without stopping `:2`. `steamos-sunshine-ds-gamemode-recover.service` (`virtual.sh --watch`) restarts `:2` / paints the clock when those prefs are on and the bottom is empty. Live Cemu/Azahar `ffplay` is left alone (clock is dropped so it cannot compete). Leftover `ffplay` with no emu is killed then painted. Do not `--start` kms from that watcher.
-- **4K HDMI + 1080p GamePad 1/4 flicker** (Thor clip `screen-20260917-140731`): HDMI flips between a full 4K Cemu TV and the same 3D view in the top-left quarter. Opacity 0 on the wx frame does not hide the GL child; opacity 0 on that child **kills GamePad taps** (inject target). Park the 1080p GamePad at **HDMI width,0** (`3840,0` on 4K). `window_id` x11grab still works there. `1920,0` on a 1080p nested display is MIT-SHM BadMatch — keep `0,0` then. Do not relayout HDMI while Cemu is focused; do not `windowlower` / hide children every 0.4s. Launch `FOCUS_DISPLAY` hammer keeps live first/third cardinals.
+- **4K HDMI + 1080p GamePad 1/4 flicker** (Thor clip `screen-20260917-140731`): a 1080p GamePad on a **4K nested `:1`** is the top-left quarter of HDMI. Opacity 0 on the GL child kills taps; parking at `3840,0` puts `XWarpPointer` off the nested root (gamescope clamps) and Cemu wx ignores `send_event`. Fix: `GAMESCOPE_XWAYLAND_MODE_CONTROL` `1, 1920, 1080, 0` on session `:0` root (game xwayland idx **1**). Steam `:0` stays 4K; headless `:2` stays 1080p. TV + GamePad are both 1920×1080 at `0,0` on `:1`; HDMI integer-scales that nested buffer. Do not set idx 2. Stamp `GAMESCOPECTRL_BASELAYER_WINDOW` on **`:0`** (steamcompmgr), not only `:1`.
 
 ## What must be true
 
 | Surface | Idle (Desktop `958645192`) | Cemu playing |
 |---|---|---|
-| HDMI / Thor top (video/0) | Steam Big Picture / focused game | Cemu TV at **HDMI native** (`gamescope_hdmi_tv_size`). GamePad / `:2` stay 1920×1080; client stretches the bottom. |
+| HDMI / Thor top (video/0) | Steam Big Picture / focused game | Nested `:1` is **1920×1080** (`MODE_CONTROL` idx 1). Cemu TV + GamePad both fill that. HDMI 4K integer-scales it. `:2` stays 1920×1080. |
 | `:2` / Thor bottom (video/1) | Screensaver clock + moving bar (`sunshine-ds-bottom-screensaver.py`) | GamePad View via `ffplay` `x11grab` |
 | Overlay | Hold Select 0.5s → `STEAM_OVERLAY=1` on BPM + `FOCUSED_APP=769` | Same; hide restores Cemu TV. **QAM** is Quick Access (`...`): `GAMESCOPE_BLUR_MODE!=0`, FOCUSED_APP stays the game. Home / Library / other BPM menus are `FOCUSED_APP=769` with the game still running — **mute** sinks, do not `--quit`. Focus watcher must not reclaim while overlay, QAM, or Steam menus are up. Mute is `scripts/inhibit-emu-input-on-steam-ui.py`. Steam Exit `--quit`s only on SIGTERM pending — do not SIGSTOP. After the emulator dies, restore `FOCUSED_APP=769` on `:0` (leave `:1` if Cemu is still there). Steam keeps the Sunshine pad for overlay / QAM / menus. |
 | Audio | Pulse default HDMI (Steam UI; `STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1`). Cemu Cubeb → **Virtual Surround Sound** → that HDMI | Moonlight captures the **HDMI** sink monitor (leaf), not VSS and not `sink-sunshine-stereo`. Cemu on that sink is proven. **PENDING:** Steam menu / BPM nav clicks still silent on Thor after HDMI capture + unsuspend. Not a Moonlight record-stream bug (`sunshine-record` links; Cemu is audible). Steam has no UI playback stream. Check TV speakers while clicking menus: silent on TV = host/Steam (Game Mode **Settings → Audio**). Do **not** unmute WirePlumber `Notification` or edit Steam settings unless asked. |
@@ -94,13 +94,18 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 
 - `pgrep -x sunshine-ds-kms` only. Never `pgrep -f` / `pkill -f` sunshine.
 - getcap `sunshine-ds-kms` is `cap_sys_admin=ep`. `--replace-bin` / `cp` / `patchelf` strip it. Stage `sunshine-ds-kms.new`, `sudo setcap cap_sys_admin+ep` on **`.new`**, then `--promote-new` (mv keeps the xattr). Optional passwordless agent path: `sudoers/zzz-sunshine-ds-kms-setcap` → `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` (must sort after `wheel`). `scripts/ensure-sunshine-ds-kms-setcap.sh` from post-update. SteamOS readonly must be disabled to write that file; a SteamOS update can wipe it. Never `setcap` `sunshine-ds`. Never `LD_LIBRARY_PATH` (AT_SECURE).
-- Cemu TV ≥64×64 InputOutput on session **`:1`**, title has `Init` / `TitleId` / FPS. GamePad View is the sibling on `:1`, parked at **HDMI width,0** on 4K (`3840×1080+3840+0`) so it is not the HDMI quarter. Steam BPM stays on `:0`. A 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER. GamePad inject log must be `using :1`, not `no GamePad View … on :0`. HDMI / top taps are a **separate** display-0 inject: Cemu TV on `:1` while playing, Steam Big Picture on `:0` while hold-Select overlay is up (`HDMI inject: overlay on :0`). Do not route top taps through GamePad View. Odin GamePad-only (`primary_from_secondary`) must not take the HDMI path. Live WW HD 4K: TV frame 3840×2160, GL child ~3840×2131+0+29. GamePad GL child stays 1920×1080 **without** opacity 0 (inject target). Inject still opens `:1` then `:0` and maps unit coords onto the **current** GL child.
+- Cemu TV ≥64×64 InputOutput on session **`:1` at 1920×1080** (`GAMESCOPE_XWAYLAND_MODE_CONTROL` `1, 1920, 1080, 0`). GamePad View is the sibling at `0,0` 1920×1080 (inject target; no opacity 0 on the GL child). Steam BPM stays 4K on `:0`. HDMI output can still be 4K (integer 2×). A 10×10 InputOnly `Cemu_relwithdebinfo` is the hidden helper — do not make it HDMI BASELAYER. GamePad inject log must be `using :1`. HDMI / top taps are a **separate** display-0 inject onto the TV GL child (~1920×1051). Do not route top taps through GamePad View. Stamp BASELAYER on `:0`.
 - Thor screencap: top `local:4630946441858561667`, bottom `local:4630946482288158084`. Bottom ~8KB PNG is pitch black. Clock / GamePad is tens–hundreds of KB.
 - Title-screen GamePad often matches TV; unique pad UI is in-game.
 
 ## Do not
 
-- Shrink Cemu/Azahar TV to Steam `:0` 1080p on a 4K HDMI (letterbox/padding). Use `gamescope_hdmi_tv_size`. Keep GamePad / `:2` at 1920×1080 and stretch on the client.
+- Shrink Cemu/Azahar TV to Steam `:0` 1080p **without** `GAMESCOPE_XWAYLAND_MODE_CONTROL` on `:1` — a 1080p window on a 4K nested root is the HDMI quarter. Set `:1` to 1920×1080, then size TV+GamePad to match.
+- Park GamePad at HDMI width,0 on a 4K nested `:1` — `XWarpPointer` clamps and bottom taps die
+- Opacity 0 on the Cemu/Azahar **GL child** — that is the GamePad/Secondary inject target; frame-only is OK
+- `GAMESCOPE_XWAYLAND_MODE_CONTROL` idx 2 — that is not headless `:2`; leave the virtual gamescope at 1920×1080
+- Write stale `GAMESCOPE_FOCUS_DISPLAY` `12346, 1, 66` — preserve the live first/third cardinals and only change the middle index
+- `windowlower` GamePad / Azahar Secondary every watcher tick — restack flashes the 1080p quarter on 4K HDMI
 - Switch Game Mode ↔ Desktop to “fix” capture
 - Kill session gamescope (HDMI / `:0`/`:1`)
 - `--start` kms while headless `:2` is already up
@@ -118,9 +123,5 @@ If a **new** headless gamescope never logs `stream available on node ID` and sta
 - Start `steam-guide-from-select.py` as a watcher (`--hide` is debug-only)
 - Rewrite `shortcuts.vdf` while Game Mode is running (empty LaunchOptions / RomM-disconnected tiles recover via Tender DB)
 - Write Steam xpad 11-button `_X360_SDL_MAP` (`LB=b4` `Back=b6`) — libvirtualhid is 15-button
-- Opacity 0 on the Cemu/Azahar **GL child** — that is the GamePad/Secondary inject target; frame-only is OK
-- Force GamePad to `0,0` on a 4K TV — that is the HDMI quarter. Park at HDMI width,0
-- Write stale `GAMESCOPE_FOCUS_DISPLAY` `12346, 1, 66` — preserve the live first/third cardinals and only change the middle index
-- `windowlower` GamePad / Azahar Secondary every watcher tick — restack flashes the 1080p quarter on 4K HDMI
 - `XOpenDisplay(":0")` only for GamePad or HDMI inject — Cemu is on `:1`. Never `$DISPLAY` / `:2`
 - Change `inject_gamepad_view_*` / `abs_targets_gamepad_view` while fixing HDMI touch — HDMI is a parallel display-0 path

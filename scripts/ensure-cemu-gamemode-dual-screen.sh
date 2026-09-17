@@ -204,7 +204,7 @@ bind_cemu_pads() {
 
 write_rd_geometry() {
   local sw sh
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
   python3 - "$RD_SETTINGS" "$sw" "$sh" <<'PY'
 import sys, xml.etree.ElementTree as ET
 from pathlib import Path
@@ -232,12 +232,10 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
         node = ET.SubElement(root, tag)
     node.text = val
 set_xy(root, "window_position", 0, 0)
-# TV follows HDMI native (4K TV → 3840x2160) so the top fills. GamePad
-# / :2 stay 1920x1080; Moonlight stretches that onto Thor's bottom.
+# Nested :1 is 1920x1080 (MODE_CONTROL) so GamePad at 0,0 fills it.
+# HDMI 4K integer-scales that nested buffer. A 4K TV window + 1080p
+# GamePad on a 4K :1 is the quarter flash; off-screen pad kills taps.
 set_xy(root, "window_size", tv_w, tv_h)
-# Create the pad on-screen (Cemu maps it). Dual-screen parks it at
-# HDMI width,0 after map so 1080p is not the 4K top-left quarter.
-# 1920,0 on a 1080p nested display is MIT-SHM BadMatch.
 set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
 tree.write(path, encoding="UTF-8", xml_declaration=True)
@@ -353,8 +351,6 @@ place_pad_for_capture() {
   local wid="$1"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
-  # 1080p at 0,0 is the 4K HDMI quarter flash. Park past HDMI width
-  # (3840,0). window_id x11grab still sees GamePad pixels there.
   x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
   # Do not activate GamePad — that puts it on HDMI. ffplay on :2 is the
   # bottom Moonlight panel.
@@ -382,10 +378,9 @@ cover_gamepad_under_tv() {
   hide_gamepad_from_hdmi "$PAD_WID"
   pad_dec="$(printf '%d' "$PAD_WID" 2>/dev/null || printf '%s' "$PAD_WID")"
   tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
-  cur="$(DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
-  if [ "$cur" = "$pad_dec" ]; then
-    DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$tv_dec" 2>/dev/null || true
-    DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$tv_dec" 2>/dev/null || true
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$cur" != "$tv_dec" ]; then
+    set_gamescope_focus "$TV_WID" "$APPID"
   fi
 }
 
@@ -463,25 +458,28 @@ focused_app() {
 }
 
 set_gamescope_focus() {
-  local id="$1" app="$2"
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  local id="$1" app="$2" d
+  # steamcompmgr reads :0 root. Cemu windows live on :1.
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  done
 }
 
 present_cemu_tv() {
   local sw sh bl tv_dec
   find_tv_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
+  gamescope_set_xwayland_mode 1 "$sw" "$sh" 0
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
-  # Do not FULLSCREEN / raise / activate on a loop. Cemu is windowed 4K
-  # (settings fullscreen=false); adding FULLSCREEN every tick fights the
-  # 1080p GamePad and HDMI shows a 1/4 window (Thor clip 2026-09-17).
+  x11_move_if_needed "$TV_DISPLAY" "$TV_WID" 0 0
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
   DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
   tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
-  bl="$(DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  bl="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
   if [ "$bl" != "$tv_dec" ]; then
     set_gamescope_focus "$TV_WID" "$APPID"
   fi

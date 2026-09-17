@@ -1061,17 +1061,12 @@ x11_move_if_needed() {
   DISPLAY="$display" xdotool windowmove "$id" "$x" "$y" 2>/dev/null || true
 }
 
-# 1080p GamePad at 0,0 is the 4K HDMI top-left quarter. Park it just past
-# HDMI width (3840,0 on a 4K TV). window_id x11grab still works there.
-# 1920,0 on a 1080p nested display is MIT-SHM BadMatch — keep 0,0 then.
+# GamePad / Azahar Secondary stay at 0,0 on nested :1. Parking past HDMI
+# width puts XWarpPointer off the nested root (gamescope clamps) and Cemu
+# wx ignores send_event — bottom taps die. 1080p at 0,0 on a 4K nested :1
+# is the HDMI quarter; shrink :1 with gamescope_set_xwayland_mode instead.
 x11_pad_park_xy() {
-  local sw sh
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
-  if [ "${sw:-0}" -gt 1920 ] 2>/dev/null; then
-    printf '%s 0\n' "$sw"
-  else
-    printf '0 0\n'
-  fi
+  printf '0 0\n'
 }
 
 x11_park_xid_off_hdmi() {
@@ -1079,6 +1074,21 @@ x11_park_xid_off_hdmi() {
   [ -n "$wid" ] || return 0
   read -r px py <<<"$(x11_pad_park_xy)"
   x11_move_if_needed "$display" "$wid" "$px" "$py"
+}
+
+# Nested game Xwayland size for Cemu/Azahar dual-stream. HDMI output can
+# stay 4K; gamescope integer-scales this 1080p :1. A 4K :1 + 1080p GamePad
+# is the top-left quarter flash.
+gamescope_nested_app_size() {
+  printf '1920 1080\n'
+}
+
+# Four cardinals on session :0 root: server_idx, width, height, allowSuperRes.
+# Session game Xwayland is idx 1 (:1). Do not set idx 2 — headless GamePad
+# :2 is a separate gamescope. Steam :0 stays HDMI native.
+gamescope_set_xwayland_mode() {
+  local idx="$1" w="$2" h="$3" super="${4:-0}"
+  DISPLAY=:0 xprop -root -f GAMESCOPE_XWAYLAND_MODE_CONTROL 32c -set GAMESCOPE_XWAYLAND_MODE_CONTROL "$idx, $w, $h, $super" 2>/dev/null || true
 }
 
 # Opacity 0 on the GL child kills Cemu/wx GamePad taps (that child is the

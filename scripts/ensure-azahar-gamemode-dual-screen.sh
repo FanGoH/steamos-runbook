@@ -315,22 +315,24 @@ focused_app() {
 }
 
 set_gamescope_focus() {
-  local id="$1" app="$2"
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  local id="$1" app="$2" d
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  done
 }
 
 present_primary() {
   local sw sh
   find_primary_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
+  gamescope_set_xwayland_mode 1 "$sw" "$sh" 0
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$PRIMARY_WID" "$sw" "$sh"
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$PRIMARY_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$PRIMARY_WID" windowactivate "$PRIMARY_WID" windowraise "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$PRIMARY_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
   set_gamescope_focus "$PRIMARY_WID" "$APPID"
 }

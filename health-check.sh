@@ -399,6 +399,16 @@ EOF
 else
   ok "Plasma: $kms_unit stays down (desktop DS is :48100)"
 fi
+mango_presets="/home/$STEAMOS_USER/.config/MangoHud/presets.conf"
+if [ -f "$mango_presets" ] && grep -q 'horizontal_stretch=0' "$mango_presets"; then
+  ok "MangoHud preset 2 does not stretch (4K HDMI)"
+else
+  warn "MangoHud preset 2 stretch override missing"
+  record_manual "Install mangoapp preset 2 (no horizontal_stretch)" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-mangohud-presets.sh
+EOF
+fi
 echo
 
 echo "[Cursor Agent]"

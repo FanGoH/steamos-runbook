@@ -354,6 +354,7 @@ recover_virtual() {
   if [ "$(virtual_output_pref)" != on ]; then
     return 0
   fi
+  gamescope_hide_undersized_hdmi_overlays || true
   local pid x11
   pid="$(virtual_pid || true)"
   if [ -z "${pid:-}" ] || ! is_headless_gamescope "$pid"; then

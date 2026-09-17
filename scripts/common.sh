@@ -1097,6 +1097,25 @@ gamescope_restore_nested_hdmi_mode() {
   local w h
   read -r w h <<<"$(gamescope_hdmi_tv_size)"
   gamescope_set_xwayland_mode 1 "$w" "$h" 0
+  gamescope_hide_undersized_hdmi_overlays
+}
+
+# mangoapp is GAMESCOPE_EXTERNAL_OVERLAY. At 1920x1080 on a 4K HDMI it is
+# the Steam-menu 1/4 flash (no Cemu needed). windowsize does not stick;
+# zero-opacity overlays are not painted. Leave it mapped (Restart=always).
+gamescope_hide_undersized_hdmi_overlays() {
+  local tw th id w h
+  command -v xdotool >/dev/null 2>&1 || return 0
+  read -r tw th <<<"$(gamescope_hdmi_tv_size)"
+  [ -n "${tw:-}" ] && [ -n "${th:-}" ] || return 0
+  for id in $(DISPLAY=:0 xdotool search --name 'mangoapp overlay window' 2>/dev/null || true); do
+    [ -n "$id" ] || continue
+    read -r w h <<<"$(x11_window_wh :0 "$id")"
+    [ -n "${w:-}" ] && [ -n "${h:-}" ] || continue
+    if [ "$w" -lt "$tw" ] || [ "$h" -lt "$th" ]; then
+      x11_hide_xid_from_hdmi :0 "$id"
+    fi
+  done
 }
 
 x11_set_window_opacity() {

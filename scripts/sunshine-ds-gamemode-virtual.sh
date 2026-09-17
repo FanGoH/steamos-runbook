@@ -498,6 +498,19 @@ stop_virtual() {
   return 0
 }
 
+# A new headless gamescope gets a new PipeWire object.serial. Live kms keeps
+# AUTOCONNECT on the old serial; PipeWire then negotiates session gamescope-0
+# (HDMI 4K) and Thor bottom duplicates the TV. Restart kms only — never
+# --start (that KillModes :2).
+rebind_kms_video1() {
+  local unit="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+  if ! systemctl --user is-active "$unit" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Rebinding $unit video/1 to sidecar serial (keep :2)."
+  systemctl --user restart "$unit"
+}
+
 start_virtual() {
   local pid
   pid="$(virtual_pid || true)"
@@ -528,6 +541,7 @@ start_virtual() {
       echo "Started headless gamescope pid $pid."
       start_paint || true
       print_status
+      rebind_kms_video1 || true
       return 0
     fi
     if [ ! -d "/proc/$pid" ]; then
@@ -541,6 +555,7 @@ start_virtual() {
   echo "headless gamescope pid $pid started; PipeWire line not seen yet. See $LOG"
   start_paint || true
   print_status
+  rebind_kms_video1 || true
   return 0
 }
 

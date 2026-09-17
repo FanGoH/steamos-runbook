@@ -397,7 +397,13 @@ start_kms_unit_only() {
   write_kms_conf
   systemctl --user reset-failed "$KMS_SERVICE" 2>/dev/null || true
   echo "Starting $KMS_SERVICE only (virtual unit / headless :2 stay)."
-  systemctl --user start "$KMS_SERVICE"
+  if systemctl --user is-active "$KMS_SERVICE" >/dev/null 2>&1; then
+    # Already streaming: start is a no-op and video/1 keeps the old PW serial
+    # (Thor bottom then duplicates HDMI). Restart to re-read the sidecar.
+    systemctl --user restart "$KMS_SERVICE"
+  else
+    systemctl --user start "$KMS_SERVICE"
+  fi
 }
 
 write_kms_conf() {

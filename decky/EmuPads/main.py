@@ -42,8 +42,10 @@ def _session_uid() -> int:
 
 
 def _bind_has_apply(script: str) -> bool:
+    # apply lives near the argparse tail (~95k). An 8k prefix miss makes
+    # fallback the last ~/worktrees/* copy, which has no set-enabled.
     try:
-        text = open(script, encoding="utf-8", errors="replace").read(8000)
+        text = open(script, encoding="utf-8", errors="replace").read()
     except OSError:
         return False
     return 'add_parser("apply"' in text or "add_parser('apply'" in text
@@ -53,10 +55,11 @@ def _playbook() -> str:
     home = _user_home()
     env = os.environ.get("STEAMOS_PLAYBOOK_DIR")
     bind = os.path.join("scripts", "bind-gamepad.py")
+    playbook = os.path.join(home, "steamos-playbook")
     candidates: list[str] = []
     if env:
         candidates.append(env)
-    candidates.append(os.path.join(home, "steamos-playbook"))
+    candidates.append(playbook)
     wt = os.path.join(home, "worktrees")
     if os.path.isdir(wt):
         try:
@@ -65,12 +68,12 @@ def _playbook() -> str:
             names = []
         for name in names:
             candidates.append(os.path.join(wt, name))
-    fallback = candidates[0] if candidates else os.path.join(home, "steamos-playbook")
+    fallback = playbook
     for cand in candidates:
         script = os.path.join(cand, bind)
         if os.path.isfile(script) and _bind_has_apply(script):
             return cand
-        if os.path.isfile(script):
+        if os.path.isfile(script) and cand == playbook:
             fallback = cand
     return fallback
 

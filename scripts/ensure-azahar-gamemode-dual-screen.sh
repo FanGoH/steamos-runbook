@@ -394,6 +394,9 @@ place_secondary_for_capture() {
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
   present_primary || true
 }
 

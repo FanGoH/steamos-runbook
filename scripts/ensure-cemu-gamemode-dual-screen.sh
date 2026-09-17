@@ -363,17 +363,29 @@ place_pad_for_capture() {
   # x11grab; ffplay on :2 is the bottom Moonlight panel.
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$wid" 2>/dev/null || true
+  hide_gamepad_from_hdmi "$wid"
+}
+
+# GamePad stays mapped at 1920×1080+0+0 for x11grab. On a 4K TV that is the
+# top-left quarter; gamescope still composites it (opaque region) even when
+# TV is BASELAYER — that is the 1/4 flicker. Opacity 0 hides it from HDMI;
+# x11grab reads the GL pixmap, not the composited plane.
+hide_gamepad_from_hdmi() {
+  local wid="${1:-}"
+  [ -n "$wid" ] || return 0
+  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null || true
+  DISPLAY="$TV_DISPLAY" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
 }
 
 # If gamescope BASELAYER slips to the 1080p GamePad on a 4K TV, HDMI shows
 # that window in the top-left quarter. Restore TV BASELAYER without raising
-# or resizing — those ConfigureNotifys were the flicker.
+# or resizing — those ConfigureNotifys were extra flicker.
 cover_gamepad_under_tv() {
   local pad_dec tv_dec cur
   find_pad_wid || return 0
   find_tv_wid || return 0
-  DISPLAY="$TV_DISPLAY" xdotool windowlower "$PAD_WID" 2>/dev/null || true
+  hide_gamepad_from_hdmi "$PAD_WID"
   pad_dec="$(printf '%d' "$PAD_WID" 2>/dev/null || printf '%s' "$PAD_WID")"
   tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
   cur="$(DISPLAY="$TV_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"

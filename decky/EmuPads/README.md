@@ -7,7 +7,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 ## Routing
 
 - Config: `~/.config/emupads/mux.json`
-- **Emu Pads** QAM section (top of the plugin): **Enable EmuPads P1 / P2** plus **Connect P1/P2** / **Unplug P1/P2**. Off unplugs P1/P2 (`enabled: false`) — the mux process stays up, the uinput nodes disappear. On recreates them (restart Cemu/Azahar/Eden). Reload Decky after a plugin edit.
+- **Emu Pads** QAM (top): **EmuPads P1 / P2** toggle. Off unplugs P1/P2 (`enabled: false`) — the mux process stays up, the uinput nodes disappear. On recreates them (restart Cemu/Azahar/Eden). Reload Decky after a plugin edit.
 - Mute + grab: `$XDG_RUNTIME_DIR/emupads-mute` **or** Steam Home/Library/overlay/QAM (`FOCUSED_APP=769`). Sinks are hidden from Steam (EVIOCGRAB) and from the plugin pad list. Steam still reads the real Sunshine pad.
 - **Shared P1** (default): last pad that sent a press or stick is the only one copied (no analog mix).
 - **Multi**: first selected → P1, second → P2.

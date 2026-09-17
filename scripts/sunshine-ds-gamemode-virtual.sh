@@ -354,7 +354,6 @@ recover_virtual() {
   if [ "$(virtual_output_pref)" != on ]; then
     return 0
   fi
-  gamescope_show_mangoapp || true
   local pid x11
   pid="$(virtual_pid || true)"
   if [ -z "${pid:-}" ] || ! is_headless_gamescope "$pid"; then

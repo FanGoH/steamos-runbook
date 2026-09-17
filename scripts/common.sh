@@ -1093,30 +1093,11 @@ gamescope_set_xwayland_mode() {
 
 # Put nested :1 back to HDMI native. Call when Cemu/Azahar exits so the
 # Steam menu is not left on a leftover 1080p game xwayland.
+# Do not resize mangoapp — that is Steam's performance overlay (detail slider).
 gamescope_restore_nested_hdmi_mode() {
   local w h
   read -r w h <<<"$(gamescope_hdmi_tv_size)"
   gamescope_set_xwayland_mode 1 "$w" "$h" 0
-  gamescope_show_mangoapp
-}
-
-# mangoapp is Steam's performance overlay (Settings → Monitor performance),
-# not Hold-Select / QAM. Do not set opacity 0 on it. A leftover 1080p
-# mango window can 1/4-flash on 4K HDMI; size the mapped overlay to HDMI.
-gamescope_show_mangoapp() {
-  local tw th id w h
-  command -v xdotool >/dev/null 2>&1 || return 0
-  read -r tw th <<<"$(gamescope_hdmi_tv_size)"
-  for id in $(DISPLAY=:0 xdotool search --name 'mangoapp overlay window' 2>/dev/null || true); do
-    [ -n "$id" ] || continue
-    DISPLAY=:0 xprop -id "$id" -remove _NET_WM_WINDOW_OPACITY 2>/dev/null || true
-    read -r w h <<<"$(x11_window_wh :0 "$id")"
-    [ -n "${w:-}" ] && [ -n "${h:-}" ] || continue
-    [ -n "${tw:-}" ] && [ -n "${th:-}" ] || continue
-    if DISPLAY=:0 xwininfo -id "$id" 2>/dev/null | grep -q 'Map State: IsViewable'; then
-      x11_resize_if_needed :0 "$id" "$tw" "$th"
-    fi
-  done
 }
 
 x11_set_window_opacity() {
@@ -1152,17 +1133,21 @@ x11_xid_and_children() {
   DISPLAY="$display" xwininfo -id "$wid" -tree 2>/dev/null | awk '/^[[:space:]]+0x[0-9a-fA-F]+/{print $1}'
 }
 
-# Keep the window mapped at 0,0 for x11grab + XWarpPointer, but drop it from
-# HDMI scanout. Raise in X11 afterward so wx QueryPointer still hits the
-# GL child (windowactivate would steal gamescope focus and flash HDMI).
+# Keep the frame mapped at 0,0 for x11grab + XWarpPointer, but drop it from
+# HDMI scanout. Overlay-tag children so they are not the HDMI layer, but do
+# not set opacity 0 on them — that child is the wx inject target.
+# windowactivate would steal gamescope focus and flash HDMI.
 x11_hide_xid_from_hdmi() {
   local display="$1" wid="$2" id
   [ -n "$wid" ] || return 0
+  x11_mark_gamescope_overlay "$display" "$wid"
+  x11_set_window_opacity "$display" "$wid" 0
+  DISPLAY="$display" xprop -id "$wid" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
   while read -r id; do
     [ -n "$id" ] || continue
+    [ "$id" = "$wid" ] && continue
     x11_mark_gamescope_overlay "$display" "$id"
-    x11_set_window_opacity "$display" "$id" 0
-    DISPLAY="$display" xprop -id "$id" -remove _NET_WM_OPAQUE_REGION 2>/dev/null || true
+    DISPLAY="$display" xprop -id "$id" -remove _NET_WM_WINDOW_OPACITY 2>/dev/null || true
   done < <(x11_xid_and_children "$display" "$wid")
 }
 

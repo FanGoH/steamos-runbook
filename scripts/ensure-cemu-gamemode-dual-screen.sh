@@ -468,6 +468,7 @@ set_gamescope_focus() {
     DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
     DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
   done
+  gamescope_set_focus_display_middle 1
 }
 
 present_cemu_tv() {
@@ -483,6 +484,8 @@ present_cemu_tv() {
   bl="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
   if [ "$bl" != "$tv_dec" ]; then
     set_gamescope_focus "$TV_WID" "$APPID"
+  else
+    gamescope_set_focus_display_middle 1
   fi
 }
 

@@ -232,9 +232,9 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
         node = ET.SubElement(root, tag)
     node.text = val
 set_xy(root, "window_position", 0, 0)
-# Nested :1 is 1920x1080 (MODE_CONTROL) so GamePad at 0,0 fills it.
-# HDMI 4K integer-scales that nested buffer. A 4K TV window + 1080p
-# GamePad on a 4K :1 is the quarter flash; off-screen pad kills taps.
+# TV matches HDMI / nested :1. GamePad stays 1920x1080 at 0,0 and is
+# hidden from steamcompmgr (external overlay + opacity 0), not by
+# shrinking :1 (that 1/4-flashes the Steam menu on a 4K TV).
 set_xy(root, "window_size", tv_w, tv_h)
 set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
@@ -359,17 +359,18 @@ place_pad_for_capture() {
   hide_gamepad_from_hdmi "$wid"
 }
 
-# Frame opacity 0 only. Opacity 0 on the GL child (inject target) is what
-# killed bottom-screen taps. Parking off HDMI stops the 1/4 flash.
+# Overlay-tag + opacity 0 on the frame and GL children so steamcompmgr
+# does not scan the 1080p pad out on 4K HDMI. Then X11-raise so wx
+# QueryPointer still hits the child (do not windowactivate).
 hide_gamepad_from_hdmi() {
   local wid="${1:-}"
   [ -n "$wid" ] || return 0
   x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
+  x11_raise_xid "$TV_DISPLAY" "$wid"
 }
 
-# If gamescope BASELAYER slips to the 1080p GamePad on a 4K TV, HDMI shows
-# that window in the top-left quarter. Restore TV BASELAYER without raising
-# or resizing. Re-park if Cemu snapped the pad back to 0,0.
+# GamePad damage otherwise steals HDMI focus (1080p quarter on 4K TV).
+# Keep overlay-hide + TV BASELAYER. Re-park if Cemu snapped the pad.
 cover_gamepad_under_tv() {
   local pad_dec tv_dec cur
   find_pad_wid || return 0
@@ -473,7 +474,7 @@ present_cemu_tv() {
   local sw sh bl tv_dec
   find_tv_wid || return 1
   read -r sw sh <<<"$(gamescope_nested_app_size)"
-  gamescope_set_xwayland_mode 1 "$sw" "$sh" 0
+  gamescope_restore_nested_hdmi_mode
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
   x11_move_if_needed "$TV_DISPLAY" "$TV_WID" 0 0
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
@@ -585,6 +586,7 @@ watch_cemu_focus_loop() {
   done
   echo "Cemu exited — stopping GamePad mirror so :2 can screensaver again."
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
@@ -649,6 +651,7 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_cemu
   stop_mirror
   rm -f "$DS_WANT" "$SDLMAP"
+  gamescope_restore_nested_hdmi_mode
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
   echo "Quit Cemu (SteamLaunch reaper + windows). Steam Exit can finish."

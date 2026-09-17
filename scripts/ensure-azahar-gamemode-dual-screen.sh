@@ -329,7 +329,7 @@ present_primary() {
   local sw sh
   find_primary_wid || return 1
   read -r sw sh <<<"$(gamescope_nested_app_size)"
-  gamescope_set_xwayland_mode 1 "$sw" "$sh" 0
+  gamescope_restore_nested_hdmi_mode
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$PRIMARY_WID" "$sw" "$sh"
@@ -374,6 +374,7 @@ watch_azahar_focus_loop() {
   done
   echo "Azahar exited — stopping bottom mirror so :2 can screensaver again."
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
@@ -396,8 +397,10 @@ place_secondary_for_capture() {
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
   x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
-  # Frame only — opacity 0 on the GL child kills bottom-screen inject.
+  # Overlay-tag + opacity 0 on the frame and GL children so the 1080p
+  # Secondary is not HDMI scanout. X11-raise so inject still hits it.
   x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
+  x11_raise_xid "$TV_DISPLAY" "$wid"
   present_primary || true
 }
 
@@ -451,6 +454,7 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_focus_watch
   stop_azahar
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   timeout 2 bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
   # Do not paint while azahar is still up. The clock used to start inside
   # Steam's reaper (setsid is not enough) and Steam sat on Exiting.

@@ -13,7 +13,8 @@
 # stays on video/0 while GamePad View still mirrors. GamePad stays mapped
 # on-screen under the TV; ffplay x11grab -window_id copies that drawable
 # onto :2. Off-screen ximagesrc is MIT-SHM BadMatch. Hold-Select overlay
-# and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
+# and GamePad touch live in sunshine-ds (HOME rising edge / XTest;
+# checkpoint-2026-09-18-gamepad-xtest). Do not unletterbox Stretch panel refs.
 # --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
 # --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
 # --quit stops Cemu + reaper + mirror. Do not SIGSTOP on Steam Exit
@@ -382,6 +383,10 @@ cover_gamepad_under_tv() {
   cur="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
   if [ "$cur" != "$tv_dec" ]; then
     set_gamescope_focus "$TV_WID" "$APPID"
+  else
+    # kms restart / Steam can flip FOCUS_DISPLAY back to middle 0 while
+    # Cemu stays focused. GamePad XTest then looks dead.
+    gamescope_set_focus_display_middle 1
   fi
 }
 

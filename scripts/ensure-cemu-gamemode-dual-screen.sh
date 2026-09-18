@@ -508,6 +508,7 @@ present_virtual_gamepad() {
   DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
   x11_resize_if_needed "$PAD_DISPLAY" "$ff" 1920 1080
+  x11_move_if_needed "$PAD_DISPLAY" "$ff" 0 0
   want="$(printf '%d' "$ff" 2>/dev/null || printf '%s' "$ff")"
   cur="$(DISPLAY="$PAD_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
   if [ "$cur" != "$want" ]; then
@@ -532,15 +533,20 @@ present_dual_layout() {
 }
 
 needs_virtual_gamepad() {
-  local ff
-  # Only missing ffplay or a mapped idle clock. :2 getwindowfocus != ffplay
-  # was true every tick (steamcompmgr) and present_dual_layout FULLSCREEN'd
-  # the 4K TV against the 1080p GamePad — HDMI 1/4 flicker.
+  local ff cur
+  # Only missing ffplay, a mapped idle clock, or SDL's 640x480 default after
+  # a kms restart. :2 getwindowfocus != ffplay was true every tick
+  # (steamcompmgr) and present_dual_layout FULLSCREEN'd the 4K TV against
+  # the 1080p GamePad — HDMI 1/4 flicker.
   if idle_clock_mapped; then
     return 0
   fi
   ff="$(find_ffplay_wid || true)"
-  [ -z "${ff:-}" ]
+  if [ -z "${ff:-}" ]; then
+    return 0
+  fi
+  cur="$(x11_window_wh "$PAD_DISPLAY" "$ff")"
+  [ "${cur%% *}" != "1920" ] || [ "${cur##* }" != "1080" ]
 }
 
 watch_cemu_focus_loop() {

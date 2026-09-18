@@ -340,12 +340,18 @@ present_ffplay_baselayer() {
   command -v xdotool >/dev/null 2>&1 || return 1
   wid="$(timeout 1 env DISPLAY="$x11" xdotool search --class ffplay 2>/dev/null | tail -1 || true)"
   [ -n "${wid:-}" ] || return 1
+  # Headless gamescope remaps SDL ffplay at 640x480 after a kms restart.
+  # Skipping this when BASELAYER already points at ffplay left Thor's
+  # GamePad panel looking tiny (640x480 in a 1920x1080 stream).
+  DISPLAY="$x11" xdotool windowmap "$wid" 2>/dev/null || true
+  x11_resize_if_needed "$x11" "$wid" "$WIDTH" "$HEIGHT"
+  x11_move_if_needed "$x11" "$wid" 0 0
   want="$(xid_dec "$wid")"
   cur="$(baselayer_xid "$x11")"
   if [ -n "$cur" ] && [ "$cur" = "$want" ]; then
     return 0
   fi
-  DISPLAY="$x11" xdotool windowmap "$wid" windowraise "$wid" 2>/dev/null || true
+  DISPLAY="$x11" xdotool windowraise "$wid" 2>/dev/null || true
   DISPLAY="$x11" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$want" 2>/dev/null || true
   DISPLAY="$x11" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$want" 2>/dev/null || true
 }

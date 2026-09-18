@@ -137,7 +137,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-17-hdmi-hud`; Cemu/Azahar fill+Exit: `checkpoint-2026-09-14-gamemode-fill-exit`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-18-gamepad-xtest`; HUD: `checkpoint-2026-09-17-hdmi-hud`; Cemu/Azahar fill+Exit: `checkpoint-2026-09-14-gamemode-fill-exit`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

@@ -2,17 +2,17 @@
 
 Proven dual-stream GameStream as of 2026-09-08. Personal IPs/uniqueids stay in `host.md` / `rules_of_the_land.md`.
 
-## Game Mode dual-stream + overlay + screensaver + Thor pad (2026-09-10, user confirmed)
+## Game Mode `:48200` standard (2026-09-18, user: “WE DID IT”)
 
-User: “it works!” (earlier: both screens, Steam overlay, bottom screensaver; then Thor bumpers/Select). Do not “improve” this unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+**THE standard is `checkpoint-2026-09-18-gamepad-xtest`.** Thor bottom taps reach Cemu and line up under Stretch. Do not “improve” GamePad tap math, XTest inject, or Stretch mapping unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 | Item | Proven value |
 |---|---|
-| Tag | **`checkpoint-2026-09-18-gamepad-xtest`** (user: “CHECKPOINT, WE DID IT” — GamePad taps line up under Stretch: XTest after clearing overlay/opacity; `:0` FOCUS_DISPLAY flush; Thor `ref=1239x1079` maps **linear** `x/width` — do not unletterbox Fit bars). HUD: `checkpoint-2026-09-17-hdmi-hud` (4K HDMI + QAM preset 2; `:2` isolated mangoapp ftok; kms rebinds video/1). Cemu/Azahar fill+Exit: `checkpoint-2026-09-14-gamemode-fill-exit`. Tile grab: `checkpoint-2026-09-11-gamemode-tender-ds` (`:1` x11grab). 3DS dumps: `checkpoint-2026-09-11-3ds-n3ds`. Home/Library mute: `checkpoint-2026-09-11-steam-menu-mute`. Mux + tile GamePad-vs-Pro: `checkpoint-2026-09-11-emupads-mux`. Earlier: `checkpoint-2026-09-10-gamemode-tender-ds` (tile grab still `:0`). `checkpoint-2026-09-10-gamemode-cemu-audio` (manual script). Full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
-| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/pw-link-gamescope-f15e` tip **`9e07d39e`** (AUTOCONNECT + object.serial; do not ship `f8d9968c` skip-AUTOCONNECT) |
-| This playbook | this tree / same tag |
-| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `cursor/gamepad-client-fill-f15e` `faf41b72` (GamePad fill Stretch/Fit on 1080p video/1) |
-| Host ELF | `~/.local/bin/sunshine-ds-kms` sha `620e6aef…`, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Live pid may still be the `f8d9968c` skip build — sidecar must not write `node=` |
+| Tag | **`checkpoint-2026-09-18-gamepad-xtest`** — **THE Game Mode `:48200` standard** (user: “CHECKPOINT, WE DID IT” — GamePad taps line up under Stretch: XTest after clearing overlay/opacity; `:0` FOCUS_DISPLAY flush; Thor `ref=1239x1079` maps **linear** `x/width` — do not unletterbox Fit bars). HUD subset: `checkpoint-2026-09-17-hdmi-hud` (4K HDMI + QAM preset 2; `:2` isolated mangoapp ftok; kms rebinds video/1). Cemu/Azahar fill+Exit: `checkpoint-2026-09-14-gamemode-fill-exit`. Tile grab: `checkpoint-2026-09-11-gamemode-tender-ds` (`:1` x11grab). 3DS dumps: `checkpoint-2026-09-11-3ds-n3ds`. Home/Library mute: `checkpoint-2026-09-11-steam-menu-mute`. Mux + tile GamePad-vs-Pro: `checkpoint-2026-09-11-emupads-mux`. Earlier: `checkpoint-2026-09-10-gamemode-tender-ds` (tile grab still `:0`). `checkpoint-2026-09-10-gamemode-cemu-audio` (manual script). Full Thor minus audio: `checkpoint-2026-09-10-gamemode-works`. Screens-only: `checkpoint-2026-09-10-gamemode-dual-stream` |
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/bottom-touch-4k-f15e` **`4ca50111`** (XTest GamePad taps + linear Stretch `packet_to_unit`). AUTOCONNECT + object.serial remains `9e07d39e` — do not ship `f8d9968c` skip-AUTOCONNECT |
+| This playbook | this tree / **`checkpoint-2026-09-18-gamepad-xtest`** |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `cursor/bottom-touch-stream-f15e` `98700dcd` (stream-space GamePad refs). Stretch/Fit fill `faf41b72`. Thor Stretch + old APK (`ref=1239x1079`) is covered by host linear map |
+| Host ELF | `~/.local/bin/sunshine-ds-kms` git **`4ca50111`**, `cap_sys_admin=ep`, RUNPATH `~/.local/lib/sunshine-ds-kms`. Sidecar must not write `node=` |
 | Sidecar | `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual`: `serial=` + **`pw_node=`** (not `node=`). `f8d9968c` skips AUTOCONNECT when `node=` is set |
 | Conf | `capture = kms`, `output_name = HDMI-A-1`, `dual_display_source = gamescope-virtual`, `port = 48200`, `encoder = software`, `gamepad = x360`, `back_button_timeout = 500`, `audio_sink` = HDMI alsa leaf (Steam UI + VSS mix; not VSS.monitor, not `sink-sunshine-stereo`) |
 | Moonlight | host **`:48200`** uniqueid `1075C8EF…`. Desktop app **`958645192`**. Not `881448767`, not Decky `:47989`, not `:48100` |
@@ -34,12 +34,15 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 ```
 
-If a new headless gamescope never logs `stream available on node ID`: `systemctl --user restart pipewire.service pipewire-pulse.service` (not `sudo systemctl --user`), then `--paint`. Prefer this tag over **`checkpoint-2026-09-09-gamemode-cemu-ds`** (`119d7452`) for the full Thor experience; that tag is still the HDMI DCC / Cemu-picture baseline.
+If a new headless gamescope never logs `stream available on node ID`: `systemctl --user restart pipewire.service pipewire-pulse.service` (not `sudo systemctl --user`), then `--paint`. **THE Game Mode `:48200` standard is `checkpoint-2026-09-18-gamepad-xtest`.** `checkpoint-2026-09-09-gamemode-cemu-ds` (`119d7452`) is still the HDMI DCC / Cemu-picture baseline only.
 
 ## Checkpoint SHAs
 
 | Repo | Integration branch | Tip | Tag |
 |---|---|---|---|
+| [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `cursor/bottom-touch-4k-f15e` | `4ca50111` | **`checkpoint-2026-09-18-gamepad-xtest`** (THE Game Mode `:48200` standard) |
+| [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `cursor/bottom-touch-stream-f15e` | `98700dcd` | stream-space GamePad refs (host linear map covers Stretch `ref=1239x1079`) |
+| This playbook | `cursor/bottom-touch-4k-f15e` | this tree | **`checkpoint-2026-09-18-gamepad-xtest`** |
 | [FanGoH/Sunshine](https://github.com/FanGoH/Sunshine) | `sunshine-ds-linux` | `0381303a` | `checkpoint-2026-09-08-one-virtual-output` |
 | [FanGoH/moonlight-android](https://github.com/FanGoH/moonlight-android) | `dual-display` | `87267c9a` | `checkpoint-2026-09-08-device-name` |
 | This playbook | `main` | this tree | `checkpoint-2026-09-08-sunshine-ds-playbook` |
@@ -150,7 +153,7 @@ CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh
 
 HDMI **black after Moonlight reconnect** — **checkpoint `checkpoint-2026-09-09-hdmi-reconnect`** (user confirmed 2026-09-09 evening). Pin HDMI capture, `eglMakeCurrent` every snapshot (sunshine-ds **`f3844600`** live; `b2fc3163` fail-closed import). Healthy log: `Keeping HDMI capture thread alive` then `HDMI capture idle` / `HDMI capture resumed`. A pid older than the ELF mtime does not have this.
 
-Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). Prefer **`checkpoint-2026-09-18-gamepad-xtest`** for GamePad taps (user: “WE DID IT”; XTest + linear Stretch). Prefer **`checkpoint-2026-09-17-hdmi-hud`** for 4K HDMI HUD + video/1 clock rebind. Prefer **`checkpoint-2026-09-14-gamemode-fill-exit`** for filled Thor bottom + Azahar Exit. `checkpoint-2026-09-11-gamemode-tender-ds` is Tender Cemu tiles (GamePad on bottom from `:1`) and immediate Exit `--quit` without the 1080p scale / `--paint` hop. `checkpoint-2026-09-10-gamemode-tender-ds` is the same minus the `:1` grab / first-tick Exit. `checkpoint-2026-09-10-gamemode-cemu-audio` is the same minus Tender `--attach` / leftover-x11grab paint.
+Earlier tags: `checkpoint-2026-09-09-gamemode-cemu-touch-v2` (`be45fc0f`) is touch/overlay only — HDMI was still DCC-black. `checkpoint-2026-09-09-gamemode-cemu-ds` is HDMI DCC + Cemu picture. `checkpoint-2026-09-10-gamemode-dual-stream` is both-screens + overlay + clock. `checkpoint-2026-09-10-gamemode-works` is those plus the 15-button pad (Moonlight still silent). **THE Game Mode `:48200` standard is `checkpoint-2026-09-18-gamepad-xtest`** (user: “WE DID IT”; XTest + linear Stretch). Subsets: **`checkpoint-2026-09-17-hdmi-hud`** (4K HDMI HUD + video/1 clock rebind); **`checkpoint-2026-09-14-gamemode-fill-exit`** (filled Thor bottom + Azahar Exit). `checkpoint-2026-09-11-gamemode-tender-ds` is Tender Cemu tiles (GamePad on bottom from `:1`) and immediate Exit `--quit` without the 1080p scale / `--paint` hop. `checkpoint-2026-09-10-gamemode-tender-ds` is the same minus the `:1` grab / first-tick Exit. `checkpoint-2026-09-10-gamemode-cemu-audio` is the same minus Tender `--attach` / leftover-x11grab paint.
 
 ## Logical order that got here
 

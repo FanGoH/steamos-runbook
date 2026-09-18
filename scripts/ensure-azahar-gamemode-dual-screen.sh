@@ -9,6 +9,7 @@
 # not 769: Steam blurs the game (`GAMESCOPE_BLUR_MODE`) and leaves
 # FOCUSED_APP on Azahar. Do not raise Primary over that panel.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
+# Game Mode standard: checkpoint-2026-09-18-gamepad-xtest (XTest + linear Stretch).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
 # ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors

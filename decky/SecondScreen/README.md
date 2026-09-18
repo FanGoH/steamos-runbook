@@ -1,6 +1,6 @@
 # Second Screen (Decky)
 
-Game Mode QAM for **emulator dual-screen** and **putting a gamescope window on the Moonlight bottom stream**.
+Game Mode QAM for **emulator dual-screen** and **putting a gamescope window on the Moonlight bottom stream**. Game Mode `:48200` standard: **`checkpoint-2026-09-18-gamepad-xtest`**. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 Install: `scripts/ensure-second-screen-decky.sh`. PluginLoader is root — `main.py` calls `scripts/second-screen-windows.py` as user `deck`. Never `sudo systemctl --user`. Never `pgrep -f` sunshine. `~/homebrew/plugins` is often `root:root`; copy needs sudo, then reload Decky.
 

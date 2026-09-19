@@ -54,6 +54,7 @@ DECKY = {
     "quick": ("Emu Quick", "ensure-emu-quick-decky.sh"),
     "sunshine": ("Sunshine DS", "ensure-sunshine-ds-decky.sh"),
     "playbook": ("Playbook", "ensure-playbook-decky.sh"),
+    "fgpc": ("FGPC", "ensure-fgpc-decky.sh"),
     "tailscale": ("Tailscale Control", "ensure-tailscale-control.sh"),
 }
 
@@ -196,6 +197,12 @@ def self_test() -> None:
         if result.rc != 0:
             err(result.stderr or result.stdout)
             raise typer.Exit(1)
+    from fgpc.api import self_test as api_self_test
+
+    api = api_self_test()
+    if not api.get("ok"):
+        err(api.get("message") or "fgpc-api self-test failed")
+        raise typer.Exit(1)
     ok(f"fgpc self-test ok  playbook={root}")
 
 
@@ -559,7 +566,7 @@ def decky_reload(
 
 @decky_app.command("install")
 def decky_install(
-    key: str = typer.Argument(..., help="pads | hide | screen | quick | sunshine | playbook | tailscale"),
+    key: str = typer.Argument(..., help="pads | hide | screen | quick | sunshine | playbook | fgpc | tailscale"),
 ) -> None:
     """Run the matching ensure-*-decky.sh (copy + reload)."""
     hit = DECKY.get(key)

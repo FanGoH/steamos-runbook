@@ -17,5 +17,6 @@ fgpc pad --help
 
 Install: `scripts/ensure-fgpc.sh` (uv venv + `~/.local/bin/fgpc`).
 Completion: `fgpc complete install` or `eval "$(fgpc --show-completion bash)"`.
+QAM: `scripts/ensure-fgpc-decky.sh` (calls `scripts/fgpc-api.py`; reload name **FGPC**).
 
 Skill: `.cursor/skills/fgpc/SKILL.md`.

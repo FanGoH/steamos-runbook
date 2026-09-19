@@ -28,8 +28,12 @@ EXAMPLES = [
     ("fgpc emu status --emu eden", "Emu Quick rows"),
     ("fgpc decky reload 'Pad Hide'", "QAM after a plugin edit"),
     ("fgpc decky install playbook", "QAM Run post-update plugin"),
+    ("fgpc decky install fgpc", "QAM catalog (stream / screen / pad / hide)"),
     ("fgpc complete install", "Bash/Zsh autocomplete"),
 ]
+
+# Groups Decky FGPC exposes. host / mode / complete stay SSH-only.
+QAM_GROUPS = ("stream", "screen", "pad", "hide")
 
 TIPS = [
     "Moonlight dual-stream in Game Mode is :48200 (white tile), not Decky :47989.",
@@ -100,7 +104,7 @@ Update Tender + wrap (`ensure-tender.sh`) without the full recovery.
 
   fgpc decky list
   fgpc decky reload 'Pad Hide'
-  fgpc decky install hide|pads|screen|quick|sunshine|playbook|tailscale
+  fgpc decky install hide|pads|screen|quick|sunshine|playbook|fgpc|tailscale
 """,
     "saves": """Official Syncthing mesh (not GTK / decky-syncthing).
 

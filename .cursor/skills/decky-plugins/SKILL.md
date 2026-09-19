@@ -4,7 +4,7 @@ description: >-
   Reload a Decky plugin after editing. Otherwise the user cannot use it.
   Copying decky/<Name>/ into ~/homebrew/plugins is not enough — PluginLoader
   keeps the old Python and QAM bundle in memory. Use when editing
-  decky/EmuPads, SecondScreen, EmuQuick, PadHide, Playbook, sunshine-ds, Tailscale
+  decky/EmuPads, SecondScreen, EmuQuick, PadHide, Playbook, FGPC, sunshine-ds, Tailscale
   Control, main.py, dist/index.js, plugin.json, QAM UI, or running
   ensure-*-decky.sh.
 ---
@@ -33,6 +33,7 @@ the files already looked installed.
 | `decky/SecondScreen/` | `scripts/ensure-second-screen-decky.sh` | `Second Screen` |
 | `decky/PadHide/` | `scripts/ensure-pad-hide-decky.sh` | `Pad Hide` |
 | `decky/Playbook/` | `scripts/ensure-playbook-decky.sh` | `Playbook` |
+| `decky/FGPC/` | `scripts/ensure-fgpc-decky.sh` | `FGPC` |
 | `decky/EmuQuick/` | `scripts/ensure-emu-quick-decky.sh` | `Emu Quick` |
 | `decky/sunshine-ds/` | `scripts/ensure-sunshine-ds-decky.sh` | `Sunshine DS` |
 | Tailscale Control | `scripts/ensure-tailscale-control.sh` | `Tailscale Control` |
@@ -45,7 +46,8 @@ If reload fails, print the Decky → reload plugins (or leave Game Mode and
 come back) line from the ensure script. `~/homebrew/plugins` is often
 `root:root` — `sudo -n` copy, else `record_manual` with the exact `sudo cp`.
 
-Pad Hide recipe: `.cursor/skills/pad-hide/SKILL.md`. SSH front door: `fgpc decky reload 'Pad Hide'` (`.cursor/skills/fgpc/SKILL.md`).
+Pad Hide recipe: `.cursor/skills/pad-hide/SKILL.md`. FGPC catalog QAM:
+`.cursor/skills/fgpc/SKILL.md`. SSH: `fgpc decky reload FGPC`.
 
 ## Do not
 

@@ -58,13 +58,14 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)
 - Decky **Playbook** (`ensure-playbook-decky.sh`) so QAM can run this same `./post-update.sh`
+- Decky **FGPC** (`ensure-fgpc-decky.sh`) so QAM can run the `fgpc` catalog (Game Mode `:48200`, screen, pads, hide)
 
 Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
-- Emu Pads / Pad Hide / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
+- Emu Pads / Pad Hide / FGPC / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
 - `sudoers.d/zzz-sunshine-ds-kms-setcap` and `zzz-hide-controllers` after an update wiped `/etc`
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
@@ -122,6 +123,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/playbook-post-update.py` | Start / status for `./post-update.sh` and Tender zip+wrap (background user oneshots). Called by Decky **Playbook** |
 | `scripts/ensure-playbook-decky.sh` | Install Decky **Playbook** (QAM Run post-update). `~/homebrew/plugins` may need sudo |
 | `decky/Playbook/` | Playbook plugin source |
+| `scripts/fgpc-api.py` | JSON dump/run for Decky **FGPC** (catalog + stream/screen/pad/hide). No Typer |
+| `scripts/ensure-fgpc-decky.sh` | Install Decky **FGPC**. `~/homebrew/plugins` may need sudo |
+| `decky/FGPC/` | FGPC plugin source (QAM catalog; not post-update) |
 | `fgpc/` | FanGoH Gaming PC CLI (Typer + Rich). `fgpc`, `fgpc tips`, `fgpc pad list` |
 | `scripts/ensure-fgpc.sh` | Install `~/.local/bin/fgpc` (uv venv under `~/.local/share/fgpc`) |
 | `.cursor/skills/fgpc/SKILL.md` | fgpc groups, examples, do-nots |

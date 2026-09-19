@@ -631,6 +631,14 @@ else
 ./scripts/ensure-playbook-decky.sh
 EOF
 fi
+if [ -f "$HOMEBREW_DIR/plugins/FGPC/main.py" ]; then
+  ok "Decky FGPC plugin installed"
+else
+  warn "Decky FGPC plugin not installed"
+  record_manual "Install FGPC Decky plugin" <<EOF
+./scripts/ensure-fgpc-decky.sh
+EOF
+fi
 if [ -f "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" ]; then
   tender_ver="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" 2>/dev/null || echo unknown)"
   ok "Decky Tender plugin installed ($tender_ver)"

@@ -37,8 +37,15 @@ Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
 | `pad` | `bind-gamepad.py`, `ensure-emupads-mux.sh` |
 | `hide` | `hide-controllers.py` |
 | `emu` | `emu-quick-settings.py` |
-| `decky` | `ensure-*-decky.sh`, `decky_reload_plugin` (Playbook runs `post-update.sh`) |
+| `decky` | `ensure-*-decky.sh`, `decky_reload_plugin` (Playbook runs `post-update.sh`; **FGPC** is the catalog QAM) |
 | `saves` | `ensure-syncthing.sh` |
+
+Decky **FGPC** (`ensure-fgpc-decky.sh`, reload name `FGPC`) is the QAM
+catalog: Game Mode `:48200` start-kms / paint / stop / close Cemu|Azahar,
+second screen, pad mode/apply, hide toggles, tips. JSON:
+`python3 scripts/fgpc-api.py dump`. It does **not** run bootstrap,
+post-update, or mode switch (SSH `fgpc` only). Playbook QAM stays
+post-update only.
 
 ## Do not
 
@@ -46,6 +53,7 @@ Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
 - `pgrep -f` / `pkill -f` sunshine.
 - `sudo systemctl --user`.
 - `--start` kms while `:2` is already up (`fgpc stream gamemode start-kms`).
-- Pass `--force` on hide from Decky; `fgpc hide off --force` is SSH-only.
+- Pass `--force` on hide from Decky / `fgpc-api.py`; `fgpc hide off --force` is SSH-only.
+- Merge FGPC into the Playbook plugin (Playbook is post-update only).
 
 Skill for hide details: `.cursor/skills/pad-hide/SKILL.md`. Reload QAM: `.cursor/skills/decky-plugins/SKILL.md`.

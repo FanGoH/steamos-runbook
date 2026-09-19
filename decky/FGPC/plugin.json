@@ -1,0 +1,10 @@
+{
+  "name": "FGPC",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["steamos", "moonlight", "sunshine", "gamepad", "fgpc"],
+    "description": "QAM for fgpc: Game Mode :48200 stream, second screen, EmuPads mode, pad hide. Same catalog as the SSH CLI."
+  }
+}

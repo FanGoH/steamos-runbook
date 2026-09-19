@@ -44,7 +44,7 @@ If reload fails, print the Decky → reload plugins (or leave Game Mode and
 come back) line from the ensure script. `~/homebrew/plugins` is often
 `root:root` — `sudo -n` copy, else `record_manual` with the exact `sudo cp`.
 
-Pad Hide recipe: `.cursor/skills/pad-hide/SKILL.md`.
+Pad Hide recipe: `.cursor/skills/pad-hide/SKILL.md`. SSH front door: `fgpc decky reload 'Pad Hide'` (`.cursor/skills/fgpc/SKILL.md`).
 
 ## Do not
 

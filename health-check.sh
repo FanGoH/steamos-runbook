@@ -623,6 +623,14 @@ else
 ./scripts/ensure-pad-hide-decky.sh
 EOF
 fi
+if command -v fgpc >/dev/null 2>&1 || [ -x "/home/$STEAMOS_USER/.local/bin/fgpc" ]; then
+  ok "fgpc CLI installed"
+else
+  warn "fgpc CLI not on PATH"
+  record_manual "Install fgpc CLI" <<EOF
+./scripts/ensure-fgpc.sh
+EOF
+fi
 if [ -f "$HOMEBREW_DIR/plugins/tailscale-control/main.py" ]; then
   if grep -Fq 'cmd_list.append("--reset")' "$HOMEBREW_DIR/plugins/tailscale-control/main.py"; then
     warn "Tailscale Control still runs up --reset (overrides hostname / Headscale)"

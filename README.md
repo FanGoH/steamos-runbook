@@ -119,7 +119,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-hide-controllers.sh` | Detect pad-hide sudoers + udev (SSH). QAM does not need sudoers |
 | `scripts/ensure-pad-hide-decky.sh` | Install Decky **Pad Hide**. `~/homebrew/plugins` may need sudo |
 | `decky/PadHide/` | Pad Hide plugin source (per-pad toggles; UI pad cannot hide itself) |
-| `scripts/playbook-post-update.py` | Start / status for `./post-update.sh` (background user oneshot). Called by Decky **Playbook** |
+| `scripts/playbook-post-update.py` | Start / status for `./post-update.sh` and Tender zip+wrap (background user oneshots). Called by Decky **Playbook** |
 | `scripts/ensure-playbook-decky.sh` | Install Decky **Playbook** (QAM Run post-update). `~/homebrew/plugins` may need sudo |
 | `decky/Playbook/` | Playbook plugin source |
 | `fgpc/` | FanGoH Gaming PC CLI (Typer + Rich). `fgpc`, `fgpc tips`, `fgpc pad list` |

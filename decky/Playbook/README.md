@@ -1,9 +1,15 @@
 # Playbook (Decky)
 
-QAM button to run `./post-update.sh` after a SteamOS update. Same steps as
-`fgpc host post-update`: pacman, Sunshine, Game Mode kms unit, mux, Decky
-plugins, official **Tender** zip (then `rom-launcher` wrap), health-check.
-Manual leftover sudo lines show in the panel.
+QAM **Run post-update** starts `./post-update.sh` after a SteamOS update.
+Same steps as `fgpc host post-update`: pacman, Sunshine, Game Mode kms
+unit, mux, Decky plugins, official **Tender** zip (then `rom-launcher`
+wrap), health-check.
+
+QAM **Update Tender + wrap** is the smaller job: official GitHub
+`Tender.zip` when behind, then `ensure-eden-component.sh --wrap-launcher`
+so dual-screen / Eden host launches stay on Play. Use this after a Tender
+plugin update without running the full post-update. Manual leftover sudo
+lines show in the panel.
 
 Install: `scripts/ensure-playbook-decky.sh`. PluginLoader is root —
 `main.py` calls `scripts/playbook-post-update.py` as user `deck` (`runuser`

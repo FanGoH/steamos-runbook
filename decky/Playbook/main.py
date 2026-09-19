@@ -150,3 +150,13 @@ class Plugin:
         except subprocess.TimeoutExpired:
             return {"ok": False, "running": False, "message": "start post-update timed out"}
         return _json_from(proc)
+
+    async def update_tender(self) -> dict:
+        script = _script()
+        if not os.path.isfile(script):
+            return _missing_backend()
+        try:
+            proc = _run_as_deck(["python3", script, "tender-start"], timeout=20)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "running": False, "message": "start Tender update timed out"}
+        return _json_from(proc)

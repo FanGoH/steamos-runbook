@@ -21,6 +21,7 @@ const definePlugin = (fn) => {
 
 const getStatus = callable("get_status");
 const runPostUpdate = callable("run_post_update");
+const updateTender = callable("update_tender");
 
 function statusLine(status) {
   if (!status) return "Checking playbook…";
@@ -36,6 +37,16 @@ function countsLine(status) {
   const fail = status.fail_count ?? 0;
   if (!ok && !warn && !fail) return "";
   return `Last run: ${ok} ok · ${warn} warn · ${fail} fail`;
+}
+
+function tenderLine(status) {
+  const tender = status?.tender;
+  if (!tender) return "Tender: checking wrap…";
+  if (tender.running) return tender.message || "Updating Tender + wrap…";
+  if (tender.message) return tender.message;
+  const ver = tender.installed || "not installed";
+  if (tender.wrapped) return `Tender ${ver} · playbook wrap on`;
+  return `Tender ${ver} · stock launcher (wrap needed)`;
 }
 
 function Content() {
@@ -59,8 +70,10 @@ function Content() {
     return () => clearInterval(id);
   }, [refresh]);
 
+  const jobRunning = Boolean(status?.running || status?.tender?.running);
+
   const start = async () => {
-    if (busy || status?.running) return;
+    if (busy || jobRunning) return;
     setBusy(true);
     try {
       const result = await runPostUpdate();
@@ -73,6 +86,28 @@ function Content() {
     } catch (err) {
       toaster.toast({
         title: "Playbook failed",
+        body: String(err).slice(0, 220),
+        duration: 7000,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startTender = async () => {
+    if (busy || jobRunning) return;
+    setBusy(true);
+    try {
+      const result = await updateTender();
+      toaster.toast({
+        title: result?.ok === false ? "Tender failed" : "Tender",
+        body: (result?.message || "Started Tender update + wrap").slice(0, 220),
+        duration: result?.ok === false ? 7000 : 4000,
+      });
+      await refresh();
+    } catch (err) {
+      toaster.toast({
+        title: "Tender failed",
         body: String(err).slice(0, 220),
         duration: 7000,
       });
@@ -105,7 +140,7 @@ function Content() {
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx(DFL.ButtonItem, {
               layout: "below",
-              disabled: busy || !!status?.running,
+              disabled: busy || jobRunning,
               onClick: start,
               children: status?.running ? "Running…" : "Run post-update",
             }),
@@ -116,6 +151,27 @@ function Content() {
               disabled: busy,
               onClick: refresh,
               children: "Refresh status",
+            }),
+          }),
+        ],
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
+        title: "Tender",
+        children: [
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.75, fontSize: "0.88em" },
+              children: tenderLine(status),
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy || jobRunning,
+              onClick: startTender,
+              children: status?.tender?.running
+                ? "Updating Tender…"
+                : "Update Tender + wrap",
             }),
           }),
         ],

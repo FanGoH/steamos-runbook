@@ -34,6 +34,24 @@ def test_manual_excerpt() -> None:
     assert lines == ["## A", "# b"]
 
 
+def test_parse_tender_output() -> None:
+    parsed = mod.parse_tender_output(
+        "Tender installed: 0.31.0\n"
+        "Tender wanted: 0.33.0 (tender-v0.33.0)\n"
+        "needs_update: yes\n"
+    )
+    assert parsed["installed"] == "0.31.0"
+    assert parsed["wanted"] == "0.33.0"
+    assert parsed["needs_update"] is True
+    done = mod.parse_tender_output("Tender is 0.33.0 (was 0.31.0).\n")
+    assert done["installed"] == "0.33.0"
+    assert done["needs_update"] is False
+
+
+def test_launcher_wrapped() -> None:
+    assert mod.launcher_wrapped(Path("/missing/rom-launcher")) is False
+
+
 def test_self_test() -> None:
     assert mod.self_test() == 0
 
@@ -41,6 +59,8 @@ def test_self_test() -> None:
 def main() -> int:
     test_summarize()
     test_manual_excerpt()
+    test_parse_tender_output()
+    test_launcher_wrapped()
     test_self_test()
     print("test_playbook_post_update ok")
     return 0

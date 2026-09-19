@@ -53,7 +53,8 @@ TOPIC_HELP = {
   fgpc host post-update  ./post-update.sh (includes Tender zip + wrap)
   fgpc host bootstrap    ./bootstrap.sh
 
-QAM Playbook is the same post-update.sh (background oneshot).
+QAM Playbook is the same post-update.sh (background oneshot), plus
+Update Tender + wrap (`ensure-tender.sh`) without the full recovery.
 """,
     "mode": """Plasma dual-stream vs Game Mode.
 

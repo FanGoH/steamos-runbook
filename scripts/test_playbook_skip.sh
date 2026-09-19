@@ -78,4 +78,11 @@ require_playbook_user || fail "require_playbook_user failed as uid $(id -u)"
 [ -n "${XDG_RUNTIME_DIR:-}" ] || fail "require_playbook_user did not set XDG_RUNTIME_DIR"
 [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || fail "require_playbook_user did not set DBUS_SESSION_BUS_ADDRESS"
 
+type playbook_in_game_mode >/dev/null || fail "playbook_in_game_mode missing"
+type playbook_sudo >/dev/null || fail "playbook_sudo missing"
+playbook_sudo && fail "playbook_sudo with no args should fail"
+# No TTY prompt: a command that is not NOPASSWD must fail without SUDO_ASKPASS.
+unset SUDO_ASKPASS
+playbook_sudo steamos-readonly status >/dev/null 2>&1 && true
+
 echo "test_playbook_skip ok"

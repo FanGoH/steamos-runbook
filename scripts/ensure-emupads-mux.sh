@@ -86,6 +86,11 @@ elif ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
   systemctl --user start "$SERVICE"
 fi
 
+if playbook_emupads_off; then
+  echo "EmuPads Off (P1/P2 unplugged). Mux is enabled; QAM On recreates the sinks."
+  exit 0
+fi
+
 i=0
 while [ "$i" -lt 25 ]; do
   if grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then

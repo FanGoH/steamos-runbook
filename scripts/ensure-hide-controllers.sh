@@ -47,16 +47,45 @@ sudo -n $HELPER
 EOF
 }
 
+# /etc writes need steamos-readonly. QAM Playbook sets SUDO_ASKPASS.
+install_hide_etc() {
+  local prev="none"
+  if command -v steamos-readonly >/dev/null 2>&1; then
+    if steamos-readonly status 2>/dev/null | grep -qi 'disabled\|disable'; then
+      prev="disabled"
+    else
+      playbook_sudo steamos-readonly disable || return 1
+      prev="enabled"
+    fi
+  fi
+  playbook_sudo install -m 440 "$SRC" "$DEST" || return 1
+  playbook_sudo visudo -cf "$DEST" || return 1
+  playbook_sudo install -m 644 "$UDEV_SRC" "$UDEV_DEST" || return 1
+  playbook_sudo udevadm control --reload || true
+  if [ "$prev" = "enabled" ]; then
+    playbook_sudo steamos-readonly enable || true
+  fi
+  echo "Installed $DEST and $UDEV_DEST."
+}
+
 if helper_nopasswd; then
   echo "sudo -n $HELPER works (SSH hide/show)."
-  if [ ! -f "$UDEV_DEST" ]; then
-    echo "udev $UDEV_DEST is missing; replug will not re-hide until status/apply."
-    ask_install
-    exit 2
+  if [ -f "$UDEV_DEST" ]; then
+    exit 0
   fi
-  exit 0
+  echo "udev $UDEV_DEST is missing; installing it."
+  if install_hide_etc; then
+    exit 0
+  fi
+  echo "Could not write $UDEV_DEST automatically (need sudo for steamos-readonly)."
+  ask_install
+  exit 2
 fi
 
 echo "sudo -n $HELPER is not allowed (SSH hide needs the sudoers drop-in)."
+if install_hide_etc && helper_nopasswd; then
+  echo "sudo -n $HELPER works after installing the drop-in."
+  exit 0
+fi
 ask_install
 exit 2

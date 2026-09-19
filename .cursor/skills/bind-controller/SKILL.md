@@ -1,6 +1,6 @@
 ---
 name: bind-controller
-description: Bind Cemu, Azahar, or Eden to a host gamepad (Thor, Odin, Sunshine pad, Steam virtual). Use when the user says the controller is not working, asks to change Cemu/Azahar/3DS/Eden/Switch controllers, switch pads, experiment with gyro, reorder pads, or install the Emu Pads Decky plugin.
+description: Bind Cemu, Azahar, or Eden to a host gamepad (Thor, Odin, Sunshine pad, Steam virtual). Use when the user says the controller is not working, asks to change Cemu/Azahar/3DS/Eden/Switch controllers, switch pads, experiment with gyro, reorder pads, install the Emu Pads Decky plugin, or hide extra pads (NMH3 / Pad Hide).
 ---
 
 # Bind controller
@@ -33,6 +33,18 @@ Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPa
 Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. Source `decky/EmuPads/` (see that README). `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
 
 After `systemctl --user restart emupads-mux.service` (never `sudo systemctl --user`), **restart Cemu/Azahar/Eden** — the sinks are new uinput nodes. Routing lives in `~/.config/emupads/mux.json`.
+
+## Decky: Pad Hide
+
+Kernel-unplug extra USB/BT pads so NMH3 (or Steam) only sees the Moonlight pad. Cable and pairing stay. Script is the API; QAM is one client.
+
+```bash
+python3 scripts/hide-controllers.py list
+python3 scripts/hide-controllers.py hide --id usb:045e:028e:5F19FC0A
+python3 scripts/hide-controllers.py show --id usb:045e:028e:5F19FC0A
+```
+
+The pad driving Steam/QAM cannot hide itself (Decky never passes `--force`). Virtual Sunshine / Steam / EmuPads have no USB/HID target. SSH as `deck` needs `sudoers/zzz-hide-controllers`. Install: `scripts/ensure-pad-hide-decky.sh`. Source `decky/PadHide/`.
 
 ## Do not lose
 

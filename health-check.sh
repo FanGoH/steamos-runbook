@@ -615,6 +615,14 @@ else
 ./scripts/ensure-second-screen-decky.sh
 EOF
 fi
+if [ -f "$HOMEBREW_DIR/plugins/PadHide/main.py" ]; then
+  ok "Decky Pad Hide plugin installed"
+else
+  warn "Decky Pad Hide plugin not installed"
+  record_manual "Install Pad Hide Decky plugin" <<EOF
+./scripts/ensure-pad-hide-decky.sh
+EOF
+fi
 if [ -f "$HOMEBREW_DIR/plugins/tailscale-control/main.py" ]; then
   if grep -Fq 'cmd_list.append("--reset")' "$HOMEBREW_DIR/plugins/tailscale-control/main.py"; then
     warn "Tailscale Control still runs up --reset (overrides hostname / Headscale)"

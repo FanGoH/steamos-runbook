@@ -1,0 +1,10 @@
+{
+  "name": "Pad Hide",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["controller", "gamepad", "moonlight", "sunshine"],
+    "description": "Unplug extra pads from Steam/games without pulling the cable. The QAM pad cannot hide itself."
+  }
+}

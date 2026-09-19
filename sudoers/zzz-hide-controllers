@@ -1,0 +1,5 @@
+# Kernel pad hide (USB authorized / HID unbind). Helper validates every arg.
+# Dest name must not contain a dot or sudo ignores the drop-in.
+# zzz- sorts after /etc/sudoers.d/wheel; a later %wheel ALL=(ALL) ALL
+# otherwise overrides this NOPASSWD (last match wins).
+deck ALL=(root) NOPASSWD: /home/deck/steamos-playbook/scripts/hide-controllers-sysfs.sh

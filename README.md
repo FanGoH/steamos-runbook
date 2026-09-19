@@ -111,6 +111,11 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/second-screen-windows.py` | List gamescope windows; show one on `:2`; Auto dual-screen. Called by Decky **Second Screen** |
 | `scripts/ensure-second-screen-decky.sh` | Install Decky **Second Screen** (dual-screen toggle + window list). `~/homebrew/plugins` may need sudo |
 | `decky/SecondScreen/` | Second Screen plugin source |
+| `scripts/hide-controllers.py` | Hide USB/BT pads from Steam/games (`authorized=0` / HID unbind). JSON API for Decky **Pad Hide**, SSH, later web |
+| `scripts/hide-controllers-sysfs.sh` | Privileged sysfs helper (sudoers `zzz-hide-controllers`). Never unplugs hubs |
+| `scripts/ensure-hide-controllers.sh` | Detect pad-hide sudoers + udev (SSH). QAM does not need sudoers |
+| `scripts/ensure-pad-hide-decky.sh` | Install Decky **Pad Hide**. `~/homebrew/plugins` may need sudo |
+| `decky/PadHide/` | Pad Hide plugin source (per-pad toggles; UI pad cannot hide itself) |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |

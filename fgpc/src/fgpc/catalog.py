@@ -35,6 +35,7 @@ TIPS = [
     "Moonlight dual-stream in Game Mode is :48200 (white tile), not Decky :47989.",
     "Never pgrep -f / pkill -f sunshine. Use pgrep -x sunshine-ds / sunshine-ds-kms.",
     "Never sudo systemctl --user (no user bus). export XDG_RUNTIME_DIR=/run/user/$(id -u).",
+    "Never sudo ./post-update.sh. Skip a step with PLAYBOOK_SKIP=name or SKIP_ENSURE_NAME=1.",
     "Do not --start kms while headless :2 is already up — use --start-kms.",
     "Do not authorized=0 a USB hub (1-1). The Xbox leaf on this box is 1-1.3.",
     "The pad driving Steam/QAM cannot hide itself. Decky never passes --force.",
@@ -51,6 +52,7 @@ TOPIC_HELP = {
   fgpc host status       light: kms / mux / plugins
   fgpc host health       full ./health-check.sh
   fgpc host post-update  ./post-update.sh (includes Tender zip + wrap)
+                         Do not sudo. PLAYBOOK_SKIP / SKIP_ENSURE_* skip steps.
   fgpc host bootstrap    ./bootstrap.sh
 
 QAM Playbook is the same post-update.sh (background oneshot), plus

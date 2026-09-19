@@ -94,10 +94,56 @@ load_env() {
   SYNCTHING_EDEN_FOLDER_ID="${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}"
   SYNCTHING_AZAHAR_FOLDER_ID="${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}"
   SYNCTHING_PEER_IDS="${SYNCTHING_PEER_IDS:-}"
+  # Comma/space list of post-update/bootstrap step names to skip.
+  # Default skips Switch 2 (this box does not pair them). Empty = run all.
+  # Example: PLAYBOOK_SKIP=switch2-controllers,openrgb
+  # Or: SKIP_ENSURE_SWITCH2_CONTROLLERS=1
+  PLAYBOOK_SKIP="${PLAYBOOK_SKIP-switch2-controllers}"
 }
 
 setup_user_dbus() {
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+  fi
+}
+
+require_playbook_user() {
+  # User units and Flatpak sandbox need deck, not root. sudo ./post-update.sh
+  # is the "No such file or directory" session-bus failure.
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "Do not run this as root (sudo). User units need deck's session bus."
+    echo
+    echo "  export XDG_RUNTIME_DIR=/run/user/\$(id -u)"
+    echo "  ${STEAMOS_PLAYBOOK_DIR:-/home/deck/steamos-playbook}/post-update.sh"
+    echo
+    echo "Or QAM Playbook → Run post-update."
+    return 1
+  fi
+  setup_user_dbus
+}
+
+playbook_step_skipped() {
+  # PLAYBOOK_SKIP=switch2-controllers,openrgb
+  # SKIP_ENSURE_SWITCH2_CONTROLLERS=1
+  local name="$1"
+  local bare="${name#ensure-}"
+  local env_name flag val item skip
+  env_name="$(printf '%s' "$bare" | tr '[:lower:]-' '[:upper:]_')"
+  flag="SKIP_ENSURE_${env_name}"
+  val="${!flag-}"
+  case "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on|skip) return 0 ;;
+  esac
+  skip="${PLAYBOOK_SKIP-}"
+  skip="${skip//,/ }"
+  for item in $skip; do
+    item="${item#ensure-}"
+    if [ "$item" = "$bare" ] || [ "$item" = "$name" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # GameStream /serverinfo XML (empty if the host is down).

@@ -8,6 +8,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
+if ! require_playbook_user; then
+  exit 2
+fi
 
 LOG_DIR="$ROOT/logs"
 LOG_FILE="$LOG_DIR/post-update-$(date +%Y%m%d-%H%M%S).log"
@@ -36,6 +39,8 @@ echo "SteamOS updates can remove udev rules, disable user services, and reset"
 echo "pacman keyrings while keeping scripts in /home/deck."
 echo "This script restores what it can automatically and prints exact manual"
 echo "commands only for steps that need a human (e.g. Tailscale login)."
+echo "Do not sudo this script. Skip a step with PLAYBOOK_SKIP=name or"
+echo "SKIP_ENSURE_NAME=1 (default skip: switch2-controllers)."
 echo
 
 failed=0
@@ -49,6 +54,12 @@ run_step() {
   local rc
 
   echo "---- $name ----" | tee -a "$LOG_FILE"
+  if playbook_step_skipped "$name"; then
+    echo "SKIP (PLAYBOOK_SKIP / SKIP_ENSURE_*)" | tee -a "$LOG_FILE"
+    echo "SKIP|$name|0" >>"$RESULTS_FILE"
+    echo | tee -a "$LOG_FILE"
+    return 0
+  fi
   bash "$script" "$@" 2>&1 | tee -a "$LOG_FILE"
   rc=${PIPESTATUS[0]}
 
@@ -110,6 +121,7 @@ echo "Results:" | tee -a "$LOG_FILE"
 while IFS='|' read -r status name rc; do
   case "$status" in
     OK)   echo "  ${C_GREEN}✅${C_RESET} $name" | tee -a "$LOG_FILE" ;;
+    SKIP) echo "  ${C_YELLOW}↷${C_RESET}  $name (skipped)" | tee -a "$LOG_FILE" ;;
     WARN) echo "  ${C_YELLOW}⚠️${C_RESET}  $name (exit $rc)" | tee -a "$LOG_FILE" ;;
     FAIL) echo "  ${C_RED}❌${C_RESET} $name (exit $rc)" | tee -a "$LOG_FILE" ;;
   esac

@@ -35,8 +35,9 @@ function countsLine(status) {
   const ok = status.ok_count ?? 0;
   const warn = status.warn_count ?? 0;
   const fail = status.fail_count ?? 0;
-  if (!ok && !warn && !fail) return "";
-  return `Last run: ${ok} ok · ${warn} warn · ${fail} fail`;
+  const skip = status.skip_count ?? 0;
+  if (!ok && !warn && !fail && !skip) return "";
+  return `Last run: ${ok} ok · ${warn} warn · ${fail} fail · ${skip} skip`;
 }
 
 function tenderLine(status) {

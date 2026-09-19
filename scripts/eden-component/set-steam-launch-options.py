@@ -64,21 +64,31 @@ def _rd(path: Path) -> str:
     return f'{RD} "{path}"'
 
 
-def updates() -> dict[str, str]:
-    luigi = next(
-        SWITCH.joinpath("Luigi's Mansion 3").glob("*0100DCA0064A6000*.nsp")
-    )
-    kirby = SWITCH.joinpath(
+def _first_glob(folder: Path, pattern: str) -> Path | None:
+    if not folder.is_dir():
+        return None
+    return next(iter(sorted(folder.glob(pattern))), None)
+
+
+def updates(switch: Path | None = None) -> dict[str, str]:
+    root = switch if switch is not None else SWITCH
+    out: dict[str, str] = {}
+    xeno = root / "Xenoblade Chronicles 3" / "Xenoblade Chronicles 3.xci"
+    if xeno.is_file():
+        out["Xenoblade Chronicles 3"] = _rd(xeno)
+    luigi_dir = root / "Luigi's Mansion 3"
+    luigi = _first_glob(luigi_dir, "*0100DCA0064A6000*.nsp")
+    if luigi is None:
+        luigi = pick_switch_dump(luigi_dir)
+    if luigi is not None:
+        out["Luigi's Mansion 3"] = _rd(luigi)
+    kirby = root.joinpath(
         "Kirby's Return to Dream Land Deluxe",
         "Kirbys Return to Dream Land Deluxe [01006B601380E000][v0].nsp",
     )
-    return {
-        "Xenoblade Chronicles 3": _rd(
-            SWITCH / "Xenoblade Chronicles 3" / "Xenoblade Chronicles 3.xci"
-        ),
-        "Luigi's Mansion 3": _rd(luigi),
-        "Kirby's Return to Dream Land Deluxe": _rd(kirby),
-    }
+    if kirby.is_file():
+        out["Kirby's Return to Dream Land Deluxe"] = _rd(kirby)
+    return out
 
 
 def find_shortcut_vdfs(home: Path) -> list[Path]:
@@ -773,6 +783,8 @@ def _self_test() -> None:
         base.write_bytes(b"b" * 8)
         dlc.write_bytes(b"d" * 20)
         assert pick_switch_dump(luigi_dir) == base
+        assert updates(home / "retrodeck/roms/switch")["Luigi's Mansion 3"]
+        assert updates(Path(td) / "missing-switch") == {}
         assert rom_for_appid(str(appid), home) == xci
         assert rom_for_appid("999", home) is None
         ps2_dir = home / "retrodeck/roms/ps2" / "Xenosaga Episode I - Der Wille zur Macht"

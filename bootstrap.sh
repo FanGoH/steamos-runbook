@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
+if ! require_playbook_user; then
+  exit 2
+fi
 
 LOG_DIR="$ROOT/logs"
 LOG_FILE="$LOG_DIR/bootstrap-$(date +%Y%m%d-%H%M%S).log"
@@ -33,6 +36,11 @@ run_step() {
   local mode="${3:-fail}"
 
   echo "---- $name ----" | tee -a "$LOG_FILE"
+  if playbook_step_skipped "$name"; then
+    echo "SKIP (PLAYBOOK_SKIP / SKIP_ENSURE_*)" | tee -a "$LOG_FILE"
+    echo | tee -a "$LOG_FILE"
+    return 0
+  fi
   bash "$script" 2>&1 | tee -a "$LOG_FILE"
   local rc=${PIPESTATUS[0]}
 

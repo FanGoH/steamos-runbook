@@ -124,6 +124,44 @@ require_playbook_user() {
   setup_user_dbus
 }
 
+playbook_in_game_mode() {
+  systemctl --user is-active gamescope-session.service >/dev/null 2>&1
+}
+
+playbook_emupads_off() {
+  python3 - <<'PY'
+import json, os
+from pathlib import Path
+home = Path(os.environ.get("HOME") or Path.home())
+path = home / ".config/emupads/mux.json"
+try:
+    data = json.loads(path.read_text()) if path.is_file() else {}
+except (OSError, json.JSONDecodeError):
+    data = {}
+raise SystemExit(0 if data.get("enabled") is False else 1)
+PY
+}
+
+# sudo for post-update leftovers (udev / sudoers). Prefer passwordless, then
+# SUDO_ASKPASS from QAM Playbook. Never prompt on a TTY during post-update.
+playbook_sudo() {
+  if [ "$#" -eq 0 ]; then
+    return 1
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+    return
+  fi
+  if sudo -n "$@" >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -n "${SUDO_ASKPASS:-}" ] && [ -x "${SUDO_ASKPASS}" ]; then
+    sudo -A "$@"
+    return
+  fi
+  return 1
+}
+
 playbook_step_required() {
   local bare="${1#ensure-}"
   case "$bare" in

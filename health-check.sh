@@ -322,6 +322,8 @@ if [ "$ds_state" = "FREE" ]; then
   ok "sunshine-ds SUNSHINE_SERVER_FREE (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
 elif [ "$ds_state" = "BUSY" ]; then
   ok "sunshine-ds BUSY (in session) (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
+elif playbook_in_game_mode; then
+  ok "Game Mode: desktop sunshine-ds (:48100) stays down (kms is :48200)"
 else
   warn "sunshine-ds not answering (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
   record_manual "Start sunshine-ds (not Decky :47989)" <<EOF
@@ -333,6 +335,8 @@ EOF
 fi
 if [ -n "$ds_pid" ]; then
   ok "sunshine-ds pid $ds_pid"
+elif playbook_in_game_mode; then
+  ok "Game Mode: no desktop sunshine-ds process (expected)"
 else
   warn "no sunshine-ds process (pgrep -x sunshine-ds)"
 fi
@@ -673,14 +677,7 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-emupads-mux.sh
 EOF
 fi
-if python3 - <<'PY' 2>/dev/null
-import json
-from pathlib import Path
-p = Path.home() / ".config/emupads/mux.json"
-data = json.loads(p.read_text()) if p.is_file() else {}
-raise SystemExit(0 if data.get("enabled") is False else 1)
-PY
-then
+if playbook_emupads_off; then
   ok "EmuPads Off (P1/P2 unplugged)"
 elif grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then
   ok "EmuPads P1 sink is up"

@@ -20,11 +20,24 @@ fi
 
 mkdir -p "$BIN_DIR" "$(dirname "$VENV")"
 
+# sudo ./post-update.sh leaves root-owned dist-info; pip cannot upgrade.
+if [ -d "$VENV" ] && find "$VENV" -user root -print -quit 2>/dev/null | grep -q .; then
+  echo "Fixing root-owned files in $VENV (leftover from sudo ./post-update.sh)."
+  if ! playbook_sudo chown -R "${STEAMOS_USER}:${STEAMOS_USER}" "$VENV"; then
+    VENV="${VENV}-deck"
+    echo "Could not chown; using $VENV instead."
+  fi
+fi
+if [ ! -x "$VENV/bin/python" ]; then
+  if command -v uv >/dev/null 2>&1; then
+    uv venv "$VENV" --python python3
+  else
+    python3 -m venv "$VENV"
+  fi
+fi
 if command -v uv >/dev/null 2>&1; then
-  uv venv "$VENV" --python python3
   uv pip install --python "$VENV/bin/python" -e "$PKG"
 else
-  python3 -m venv "$VENV"
   "$VENV/bin/pip" install -e "$PKG"
 fi
 

@@ -349,6 +349,13 @@ if [ "$DO_STOP" -eq 1 ]; then
   exit 0
 fi
 
+if playbook_in_game_mode; then
+  echo "Game Mode: desktop sunshine-ds (:48100 / kwin) stays down."
+  echo "Moonlight host is sunshine-ds-kms :48200 (already brought up by ensure-sunshine-ds-gamemode)."
+  print_status
+  exit 0
+fi
+
 if [ ! -S "${XDG_RUNTIME_DIR}/wayland-0" ] && [ ! -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
   record_manual "Export the user session bus before starting sunshine-ds" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0

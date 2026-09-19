@@ -79,7 +79,7 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def summarize_results(text: str) -> dict[str, Any]:
-    ok = warn = fail = 0
+    ok = warn = fail = skip = 0
     steps: list[dict[str, Any]] = []
     for raw in text.splitlines():
         line = raw.strip()
@@ -87,7 +87,7 @@ def summarize_results(text: str) -> dict[str, Any]:
             continue
         status, name, *rest = line.split("|")
         status = status.strip().upper()
-        if status not in ("OK", "WARN", "FAIL"):
+        if status not in ("OK", "WARN", "FAIL", "SKIP"):
             continue
         rc = 0
         if rest:
@@ -100,13 +100,15 @@ def summarize_results(text: str) -> dict[str, Any]:
             ok += 1
         elif status == "WARN":
             warn += 1
+        elif status == "SKIP":
+            skip += 1
         else:
             fail += 1
     if fail:
         overall = "fail"
     elif warn:
         overall = "warn"
-    elif ok:
+    elif ok or skip:
         overall = "ok"
     else:
         overall = "idle"
@@ -115,6 +117,7 @@ def summarize_results(text: str) -> dict[str, Any]:
         "ok": ok,
         "warn": warn,
         "fail": fail,
+        "skip": skip,
         "steps": steps,
     }
 
@@ -321,6 +324,7 @@ def cmd_status() -> dict[str, Any]:
         "ok_count": summary["ok"],
         "warn_count": summary["warn"],
         "fail_count": summary["fail"],
+        "skip_count": summary["skip"],
         "steps": summary["steps"][-12:],
         "manual": manual_excerpt(manual),
         "started": saved.get("started"),
@@ -612,6 +616,10 @@ def self_test() -> int:
     assert summary["fail"] == 1
     assert summary["overall"] == "fail"
     assert summarize_results("OK|a|0\n")["overall"] == "ok"
+    skipped = summarize_results("OK|a|0\nSKIP|ensure-switch2-controllers|0\n")
+    assert skipped["skip"] == 1
+    assert skipped["overall"] == "ok"
+    assert summarize_results("SKIP|ensure-switch2-controllers|0\n")["overall"] == "ok"
     assert summarize_results("")["overall"] == "idle"
     excerpt = manual_excerpt("## One\n# comment\n\n## Two\n", limit=2)
     assert excerpt == ["## One", "# comment"]

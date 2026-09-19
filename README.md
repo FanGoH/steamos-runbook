@@ -41,8 +41,11 @@ Do **not** switch Game Mode ↔ Desktop to “fix” capture. Do **not** `--star
 ```bash
 cd ~/steamos-playbook
 git pull
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./post-update.sh
 ```
+
+Do **not** `sudo ./post-update.sh` (no user bus → every `systemctl --user` fails). Skip a step with `PLAYBOOK_SKIP=switch2-controllers` or `SKIP_ENSURE_SWITCH2_CONTROLLERS=1` (Switch 2 is skipped by default).
 
 `post-update.sh` re-enables the Game Mode kms unit (`--install-service`), the mux, Eden/Tender wrap, Decky Sunshine, and prints `sudo` lines when `~/homebrew/plugins` is root-owned or `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` was wiped. Then `./health-check.sh` (already run at the end). Follow any printed manual actions (Emu Pads copy, `decky-romm-sync/bin/rom-launcher` restore, setcap sudoers). It also downloads the official **Tender** zip when behind (`ensure-tender.sh`) and then re-wraps `rom-launcher` (`ensure-eden-component.sh` — Tender releases overwrite that file).
 
@@ -53,7 +56,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Game Mode `:48200` boot unit (`--install-service`) + EmuPads mux
 - pacman keyrings (`archlinux` + `holo`), `sshd`, WOL, OpenRGB udev
 - Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
-- Gear Lever, Cursor Agent worker, Switch 2 BLE bridge
+- Gear Lever, Cursor Agent worker (Switch 2 BLE bridge is skipped by default)
 - Eden/Tender wrap, official Tender zip if behind, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 - Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)

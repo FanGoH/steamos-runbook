@@ -12,6 +12,10 @@ if ! python3 "$ROOT/scripts/test_playbook_post_update.py" >/dev/null; then
   echo "playbook-post-update tests failed."
   exit 1
 fi
+if ! bash "$ROOT/scripts/test_playbook_skip.sh" >/dev/null; then
+  echo "playbook skip tests failed."
+  exit 1
+fi
 
 SRC="$ROOT/decky/Playbook"
 if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/index.js" ]; then

@@ -6,7 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
-setup_user_dbus
+if ! require_playbook_user; then
+  exit 2
+fi
 
 MANUAL_ACTIONS_FILE="${MANUAL_ACTIONS_FILE:-$ROOT/logs/manual-actions-health.txt}"
 export MANUAL_ACTIONS_FILE
@@ -40,7 +42,9 @@ fi
 echo
 
 echo "[Pacman]"
-bash "$ROOT/scripts/check-pacman.sh" >/tmp/steamos-playbook-pacman-check.out 2>&1
+PACMAN_CHECK_OUT="${PLAYBOOK_PACMAN_CHECK_OUT:-$ROOT/logs/pacman-check.out}"
+mkdir -p "$(dirname "$PACMAN_CHECK_OUT")"
+bash "$ROOT/scripts/check-pacman.sh" >"$PACMAN_CHECK_OUT" 2>&1
 pacman_rc=$?
 if [ "$pacman_rc" -eq 0 ]; then
   ok "pacman keyring looks OK"
@@ -52,7 +56,7 @@ EOF
 else
   fail "pacman check failed"
 fi
-grep -E '^(pacman |  - )' /tmp/steamos-playbook-pacman-check.out 2>/dev/null | sed 's/^/  /' || true
+grep -E '^(pacman |  - )' "$PACMAN_CHECK_OUT" 2>/dev/null | sed 's/^/  /' || true
 echo
 
 echo "[Networking]"
@@ -677,13 +681,27 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-emupads-mux.sh
 EOF
 fi
-if grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then
+if python3 - <<'PY' 2>/dev/null
+import json
+from pathlib import Path
+p = Path.home() / ".config/emupads/mux.json"
+data = json.loads(p.read_text()) if p.is_file() else {}
+raise SystemExit(0 if data.get("enabled") is False else 1)
+PY
+then
+  ok "EmuPads Off (P1/P2 unplugged)"
+elif grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then
   ok "EmuPads P1 sink is up"
 else
   warn "EmuPads P1 sink missing"
 fi
 echo
 
+if playbook_step_skipped "switch2-controllers"; then
+  echo "[Switch 2 controllers]"
+  ok "skipped (PLAYBOOK_SKIP / SKIP_ENSURE_SWITCH2_CONTROLLERS)"
+  echo
+else
 echo "[Switch 2 controllers]"
 S2_DIR="${SWITCH2_CONTROLLERS_DIR:-/home/$STEAMOS_USER/code/switch2-controllers-linux}"
 S2_PY=""
@@ -782,10 +800,11 @@ if [ -f "$HOMEBREW_DIR/plugins/Switch2Controllers/main.py" ]; then
 else
   warn "Decky Switch2Controllers plugin not installed"
   record_manual "Install Switch 2 Controllers Decky plugin" <<EOF
-sudo bash $S2_DIR/scripts/install-decky.sh --install-only \$HOME/homebrew/plugins
+  sudo bash $S2_DIR/scripts/install-decky.sh --install-only \$HOME/homebrew/plugins
 EOF
 fi
 echo
+fi
 
 echo "[PCSX2 BIOS]"
 PCSX2_INI="${PCSX2_INI:-/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/config/PCSX2/inis/PCSX2.ini}"

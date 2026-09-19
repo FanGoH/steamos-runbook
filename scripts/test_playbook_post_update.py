@@ -26,6 +26,9 @@ def test_summarize() -> None:
     fail = mod.summarize_results("OK|a|0\nFAIL|b|1\n")
     assert fail["overall"] == "fail"
     assert fail["fail"] == 1
+    skipped = mod.summarize_results("OK|a|0\nSKIP|ensure-switch2-controllers|0\n")
+    assert skipped["skip"] == 1
+    assert skipped["overall"] == "ok"
 
 
 def test_manual_excerpt() -> None:

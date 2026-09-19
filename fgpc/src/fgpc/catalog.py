@@ -27,6 +27,7 @@ EXAMPLES = [
     ("fgpc mode game", "Leave Plasma, stop desktop DS"),
     ("fgpc emu status --emu eden", "Emu Quick rows"),
     ("fgpc decky reload 'Pad Hide'", "QAM after a plugin edit"),
+    ("fgpc decky install playbook", "QAM Run post-update plugin"),
     ("fgpc complete install", "Bash/Zsh autocomplete"),
 ]
 
@@ -51,6 +52,8 @@ TOPIC_HELP = {
   fgpc host health       full ./health-check.sh
   fgpc host post-update  ./post-update.sh
   fgpc host bootstrap    ./bootstrap.sh
+
+QAM Playbook is the same post-update.sh (background oneshot).
 """,
     "mode": """Plasma dual-stream vs Game Mode.
 
@@ -96,7 +99,7 @@ TOPIC_HELP = {
 
   fgpc decky list
   fgpc decky reload 'Pad Hide'
-  fgpc decky install hide|pads|screen|quick|sunshine|tailscale
+  fgpc decky install hide|pads|screen|quick|sunshine|playbook|tailscale
 """,
     "saves": """Official Syncthing mesh (not GTK / decky-syncthing).
 

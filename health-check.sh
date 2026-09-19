@@ -623,6 +623,14 @@ else
 ./scripts/ensure-pad-hide-decky.sh
 EOF
 fi
+if [ -f "$HOMEBREW_DIR/plugins/Playbook/main.py" ]; then
+  ok "Decky Playbook plugin installed"
+else
+  warn "Decky Playbook plugin not installed"
+  record_manual "Install Playbook Decky plugin" <<EOF
+./scripts/ensure-playbook-decky.sh
+EOF
+fi
 if command -v fgpc >/dev/null 2>&1 || [ -x "/home/$STEAMOS_USER/.local/bin/fgpc" ]; then
   ok "fgpc CLI installed"
 else

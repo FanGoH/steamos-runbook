@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Decky plugins
 
-PluginLoader runs as **root**. Source lives in the playbook (`decky/<Name>/`: `main.py`, `plugin.json` `api_version` 1, `dist/index.js`). Install with `scripts/ensure-*-decky.sh`. Examples: `decky/EmuPads/`, `decky/PadHide/`, SunshineDS on the box.
+PluginLoader runs as **root**. Source lives in the playbook (`decky/<Name>/`: `main.py`, `plugin.json` `api_version` 1, `dist/index.js`). Install with `scripts/ensure-*-decky.sh`. Examples: `decky/EmuPads/`, `decky/PadHide/`, `decky/Playbook/`, SunshineDS on the box.
 
 ```python
 # ❌ BAD — missing user bus; also never sudo systemctl --user

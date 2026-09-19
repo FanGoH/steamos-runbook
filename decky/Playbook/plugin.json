@@ -1,0 +1,10 @@
+{
+  "name": "Playbook",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["steamos", "post-update", "playbook", "recovery"],
+    "description": "Run ./post-update.sh after a SteamOS update. Restores kms, mux, Decky plugins, and prints leftover sudo lines."
+  }
+}

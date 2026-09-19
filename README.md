@@ -57,6 +57,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Eden/Tender wrap, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 - Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)
+- Decky **Playbook** (`ensure-playbook-decky.sh`) so QAM can run this same `./post-update.sh`
 
 Manual follow-ups (printed when needed):
 
@@ -117,6 +118,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-hide-controllers.sh` | Detect pad-hide sudoers + udev (SSH). QAM does not need sudoers |
 | `scripts/ensure-pad-hide-decky.sh` | Install Decky **Pad Hide**. `~/homebrew/plugins` may need sudo |
 | `decky/PadHide/` | Pad Hide plugin source (per-pad toggles; UI pad cannot hide itself) |
+| `scripts/playbook-post-update.py` | Start / status for `./post-update.sh` (background user oneshot). Called by Decky **Playbook** |
+| `scripts/ensure-playbook-decky.sh` | Install Decky **Playbook** (QAM Run post-update). `~/homebrew/plugins` may need sudo |
+| `decky/Playbook/` | Playbook plugin source |
 | `fgpc/` | FanGoH Gaming PC CLI (Typer + Rich). `fgpc`, `fgpc tips`, `fgpc pad list` |
 | `scripts/ensure-fgpc.sh` | Install `~/.local/bin/fgpc` (uv venv under `~/.local/share/fgpc`) |
 | `.cursor/skills/fgpc/SKILL.md` | fgpc groups, examples, do-nots |

@@ -37,7 +37,7 @@ Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
 | `pad` | `bind-gamepad.py`, `ensure-emupads-mux.sh` |
 | `hide` | `hide-controllers.py` |
 | `emu` | `emu-quick-settings.py` |
-| `decky` | `ensure-*-decky.sh`, `decky_reload_plugin` |
+| `decky` | `ensure-*-decky.sh`, `decky_reload_plugin` (Playbook runs `post-update.sh`) |
 | `saves` | `ensure-syncthing.sh` |
 
 ## Do not

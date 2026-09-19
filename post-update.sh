@@ -90,6 +90,7 @@ run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "ensure-emu-quick-decky" "$ROOT/scripts/ensure-emu-quick-decky.sh" warn
 run_step "ensure-second-screen-decky" "$ROOT/scripts/ensure-second-screen-decky.sh" warn
 run_step "ensure-pad-hide-decky" "$ROOT/scripts/ensure-pad-hide-decky.sh" warn
+run_step "ensure-playbook-decky" "$ROOT/scripts/ensure-playbook-decky.sh" warn
 run_step "ensure-fgpc" "$ROOT/scripts/ensure-fgpc.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "ensure-tailscale-control" "$ROOT/scripts/ensure-tailscale-control.sh" warn

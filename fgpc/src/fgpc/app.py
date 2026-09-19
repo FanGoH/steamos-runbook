@@ -53,6 +53,7 @@ DECKY = {
     "screen": ("Second Screen", "ensure-second-screen-decky.sh"),
     "quick": ("Emu Quick", "ensure-emu-quick-decky.sh"),
     "sunshine": ("Sunshine DS", "ensure-sunshine-ds-decky.sh"),
+    "playbook": ("Playbook", "ensure-playbook-decky.sh"),
     "tailscale": ("Tailscale Control", "ensure-tailscale-control.sh"),
 }
 
@@ -558,7 +559,7 @@ def decky_reload(
 
 @decky_app.command("install")
 def decky_install(
-    key: str = typer.Argument(..., help="pads | hide | screen | quick | sunshine | tailscale"),
+    key: str = typer.Argument(..., help="pads | hide | screen | quick | sunshine | playbook | tailscale"),
 ) -> None:
     """Run the matching ensure-*-decky.sh (copy + reload)."""
     hit = DECKY.get(key)

@@ -45,7 +45,7 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./post-update.sh
 ```
 
-Do **not** `sudo ./post-update.sh` (no user bus → every `systemctl --user` fails). Skip a step with `PLAYBOOK_SKIP=switch2-controllers` or `SKIP_ENSURE_SWITCH2_CONTROLLERS=1` (Switch 2 is skipped by default).
+Do **not** `sudo ./post-update.sh` (no user bus → every `systemctl --user` fails). From QAM Playbook, enter the `deck` sudo password first so udev / sudoers / plugin copies can run. Skip a step with `PLAYBOOK_SKIP=switch2-controllers` or `SKIP_ENSURE_SWITCH2_CONTROLLERS=1` (Switch 2 is skipped by default). OpenRGB always runs.
 
 `post-update.sh` re-enables the Game Mode kms unit (`--install-service`), the mux, Eden/Tender wrap, Decky Sunshine, and prints `sudo` lines when `~/homebrew/plugins` is root-owned or `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` was wiped. Then `./health-check.sh` (already run at the end). Follow any printed manual actions (Emu Pads copy, `decky-romm-sync/bin/rom-launcher` restore, setcap sudoers). It also downloads the official **Tender** zip when behind (`ensure-tender.sh`) and then re-wraps `rom-launcher` (`ensure-eden-component.sh` — Tender releases overwrite that file).
 

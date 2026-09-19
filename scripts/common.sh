@@ -96,8 +96,9 @@ load_env() {
   SYNCTHING_PEER_IDS="${SYNCTHING_PEER_IDS:-}"
   # Comma/space list of post-update/bootstrap step names to skip.
   # Default skips Switch 2 (this box does not pair them). Empty = run all.
-  # Example: PLAYBOOK_SKIP=switch2-controllers,openrgb
+  # Example: PLAYBOOK_SKIP=switch2-controllers
   # Or: SKIP_ENSURE_SWITCH2_CONTROLLERS=1
+  # OpenRGB is required and cannot be skipped.
   PLAYBOOK_SKIP="${PLAYBOOK_SKIP-switch2-controllers}"
 }
 
@@ -123,12 +124,24 @@ require_playbook_user() {
   setup_user_dbus
 }
 
+playbook_step_required() {
+  local bare="${1#ensure-}"
+  case "$bare" in
+    openrgb) return 0 ;;
+  esac
+  return 1
+}
+
 playbook_step_skipped() {
-  # PLAYBOOK_SKIP=switch2-controllers,openrgb
+  # PLAYBOOK_SKIP=switch2-controllers
   # SKIP_ENSURE_SWITCH2_CONTROLLERS=1
+  # OpenRGB cannot be skipped.
   local name="$1"
   local bare="${name#ensure-}"
   local env_name flag val item skip
+  if playbook_step_required "$name"; then
+    return 1
+  fi
   env_name="$(printf '%s' "$bare" | tr '[:lower:]-' '[:upper:]_')"
   flag="SKIP_ENSURE_${env_name}"
   val="${!flag-}"

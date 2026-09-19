@@ -152,6 +152,25 @@ def tender_running() -> bool:
     return unit_running(service=TENDER_UNIT_SERVICE)
 
 
+def _sudo_askpass_setenv() -> list[str]:
+    askpass = os.environ.get("SUDO_ASKPASS") or ""
+    if askpass and Path(askpass).is_file():
+        return [f"--setenv=SUDO_ASKPASS={askpass}"]
+    return []
+
+
+def _clear_sudo_askpass() -> None:
+    script = Path(__file__).with_name("playbook-sudo.py")
+    if not script.is_file():
+        return
+    subprocess.run(
+        [sys.executable, str(script), "clear"],
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+
+
 def drop_unit(service: str = UNIT_SERVICE) -> None:
     subprocess.run(
         ["systemctl", "--user", "stop", service],
@@ -384,6 +403,7 @@ def cmd_start() -> dict[str, Any]:
         f"--setenv=DBUS_SESSION_BUS_ADDRESS={bus}",
         "--setenv=NO_COLOR=1",
         f"--setenv=STEAMOS_PLAYBOOK_DIR={root}",
+        *_sudo_askpass_setenv(),
         sys.executable,
         str(script),
         "--run",
@@ -426,11 +446,14 @@ def cmd_run() -> int:
     env = dict(os.environ)
     env["NO_COLOR"] = "1"
     env["STEAMOS_PLAYBOOK_DIR"] = str(root)
-    proc = subprocess.run(
-        ["bash", str(root / "post-update.sh")],
-        cwd=str(root),
-        env=env,
-    )
+    try:
+        proc = subprocess.run(
+            ["bash", str(root / "post-update.sh")],
+            cwd=str(root),
+            env=env,
+        )
+    finally:
+        _clear_sudo_askpass()
     finished = time.strftime("%Y-%m-%d %H:%M:%S")
     summary = summarize_results("")
     try:
@@ -520,6 +543,7 @@ def cmd_tender_start() -> dict[str, Any]:
         f"--setenv=DBUS_SESSION_BUS_ADDRESS={bus}",
         "--setenv=NO_COLOR=1",
         f"--setenv=STEAMOS_PLAYBOOK_DIR={root}",
+        *_sudo_askpass_setenv(),
         sys.executable,
         str(script),
         "--run-tender",
@@ -563,14 +587,17 @@ def cmd_run_tender() -> int:
     env = dict(os.environ)
     env["NO_COLOR"] = "1"
     env["STEAMOS_PLAYBOOK_DIR"] = str(root)
-    with log.open("w", encoding="utf-8") as fh:
-        proc = subprocess.run(
-            ["bash", str(root / "scripts" / "ensure-tender.sh")],
-            cwd=str(root),
-            env=env,
-            stdout=fh,
-            stderr=subprocess.STDOUT,
-        )
+    try:
+        with log.open("w", encoding="utf-8") as fh:
+            proc = subprocess.run(
+                ["bash", str(root / "scripts" / "ensure-tender.sh")],
+                cwd=str(root),
+                env=env,
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+            )
+    finally:
+        _clear_sudo_askpass()
     output = ""
     try:
         output = log.read_text(encoding="utf-8", errors="replace")
@@ -648,6 +675,7 @@ def self_test() -> int:
     root = playbook_root()
     assert (root / "post-update.sh").is_file(), f"missing post-update.sh under {root}"
     assert (root / "scripts" / "ensure-tender.sh").is_file()
+    assert (root / "scripts" / "playbook-sudo.py").is_file()
     print("playbook-post-update self-test ok")
     return 0
 

@@ -49,8 +49,8 @@ assert_run "ensure-switch2-controllers"
 assert_run "ensure-openrgb"
 
 PLAYBOOK_SKIP="openrgb,sunshine"
-assert_skip "ensure-openrgb"
-assert_skip "openrgb"
+assert_run "ensure-openrgb"
+assert_run "openrgb"
 assert_skip "ensure-sunshine"
 assert_run "ensure-switch2-controllers"
 
@@ -61,8 +61,8 @@ assert_run "ensure-openrgb"
 
 PLAYBOOK_SKIP=""
 SKIP_ENSURE_OPENRGB=1
-assert_skip "ensure-openrgb"
-assert_skip "openrgb"
+assert_run "ensure-openrgb"
+assert_run "openrgb"
 assert_run "ensure-sunshine"
 unset SKIP_ENSURE_OPENRGB
 

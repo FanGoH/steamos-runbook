@@ -52,6 +52,7 @@ function tenderLine(status) {
 
 function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
+  const [password, setPassword] = SP_REACT.useState("");
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
 
@@ -75,9 +76,14 @@ function Content() {
 
   const start = async () => {
     if (busy || jobRunning) return;
+    if (!String(password || "").trim()) {
+      setError("Enter your sudo password first.");
+      return;
+    }
     setBusy(true);
     try {
-      const result = await runPostUpdate();
+      const result = await runPostUpdate(password);
+      if (result?.ok !== false) setPassword("");
       toaster.toast({
         title: result?.ok === false ? "Playbook failed" : "Playbook",
         body: (result?.message || "Started post-update").slice(0, 220),
@@ -97,9 +103,14 @@ function Content() {
 
   const startTender = async () => {
     if (busy || jobRunning) return;
+    if (!String(password || "").trim()) {
+      setError("Enter your sudo password first.");
+      return;
+    }
     setBusy(true);
     try {
-      const result = await updateTender();
+      const result = await updateTender(password);
+      if (result?.ok !== false) setPassword("");
       toaster.toast({
         title: result?.ok === false ? "Tender failed" : "Tender",
         body: (result?.message || "Started Tender update + wrap").slice(0, 220),
@@ -138,10 +149,27 @@ function Content() {
                 }),
               })
             : null,
+          DFL.TextField
+            ? SP_JSX.jsx(DFL.PanelSectionRow, {
+                children: SP_JSX.jsx(DFL.TextField, {
+                  label: "sudo password",
+                  description:
+                    "Needed for udev / sudoers / plugin copies. Not saved.",
+                  value: password,
+                  bIsPassword: true,
+                  onChange: (event) =>
+                    setPassword(
+                      event?.target?.value != null
+                        ? String(event.target.value)
+                        : String(event || "")
+                    ),
+                }),
+              })
+            : null,
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx(DFL.ButtonItem, {
               layout: "below",
-              disabled: busy || jobRunning,
+              disabled: busy || jobRunning || !String(password || "").trim(),
               onClick: start,
               children: status?.running ? "Running…" : "Run post-update",
             }),

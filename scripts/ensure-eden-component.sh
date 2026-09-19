@@ -16,6 +16,46 @@ PATCHER_SRC="$ROOT/scripts/eden-component/patch-eden-input.py"
 SYSTEMS_SRC="$ROOT/scripts/eden-component/es_systems.xml"
 FIND_SRC="$ROOT/scripts/eden-component/es_find_rules.xml"
 
+wrap_tender_rom_launcher() {
+  # Tender Steam shortcuts exec this file. Huge Switch dumps skip RetroDECK
+  # so they match standalone Game Mode (in-sandbox Eden + Flatpak OOMs).
+  # Tender zip updates overwrite bin/rom-launcher — re-run after every update.
+  local wrap_src="$ROOT/scripts/eden-component/rom-launcher.sh"
+  local wrap_dst wrap_dir
+  while IFS= read -r wrap_dst; do
+    [ -n "$wrap_dst" ] || continue
+    wrap_dir="$(dirname "$wrap_dst")"
+    if mkdir -p "$wrap_dir" 2>/dev/null && install -m 0755 "$wrap_src" "$wrap_dst"; then
+      echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
+      continue
+    fi
+    if sudo -n true 2>/dev/null; then
+      sudo mkdir -p "$wrap_dir"
+      sudo cp "$wrap_src" "$wrap_dst"
+      sudo chmod 0755 "$wrap_dst"
+      sudo chown "${STEAMOS_USER}:${STEAMOS_USER}" "$wrap_dst"
+      echo "Installed host-Eden rom-launcher wrap at $wrap_dst (sudo)"
+      continue
+    fi
+    # Older Steam tiles still exec decky-romm-sync after Tender replaced it.
+    # ~/homebrew/plugins is often root:root.
+    record_manual "Install rom-launcher wrap at $wrap_dst" <<EOF
+sudo mkdir -p '$wrap_dir'
+sudo cp '$wrap_src' '$wrap_dst'
+sudo chmod 0755 '$wrap_dst'
+sudo chown ${STEAMOS_USER}:${STEAMOS_USER} '$wrap_dst'
+EOF
+  done <<EOF
+/home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
+/home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
+EOF
+}
+
+if [ "${1:-}" = "--wrap-launcher" ]; then
+  wrap_tender_rom_launcher
+  exit 0
+fi
+
 if [ ! -f "$EDEN_APPIMAGE" ]; then
   echo "Eden AppImage not found: $EDEN_APPIMAGE"
   record_manual "Place eden.appimage, then re-run ensure-eden-component" <<EOF
@@ -95,28 +135,7 @@ mkdir -p "$RYUBING_SLOT"
 install -m 0755 "$ROOT/scripts/eden-component/ryubing-slot-launcher.sh" \
   "$RYUBING_SLOT/component_launcher.sh"
 
-# Tender Steam shortcuts exec this file. Huge Switch dumps skip RetroDECK
-# so they match standalone Game Mode (in-sandbox Eden + Flatpak OOMs).
-wrap_src="$ROOT/scripts/eden-component/rom-launcher.sh"
-while IFS= read -r wrap_dst; do
-  [ -n "$wrap_dst" ] || continue
-  wrap_dir="$(dirname "$wrap_dst")"
-  if mkdir -p "$wrap_dir" 2>/dev/null && install -m 0755 "$wrap_src" "$wrap_dst"; then
-    echo "Installed host-Eden rom-launcher wrap at $wrap_dst"
-    continue
-  fi
-  # Older Steam tiles still exec decky-romm-sync after Tender replaced it.
-  # ~/homebrew/plugins is often root:root.
-  record_manual "Install rom-launcher wrap at $wrap_dst" <<EOF
-sudo mkdir -p '$wrap_dir'
-sudo cp '$wrap_src' '$wrap_dst'
-sudo chmod 0755 '$wrap_dst'
-sudo chown ${STEAMOS_USER}:${STEAMOS_USER} '$wrap_dst'
-EOF
-done <<EOF
-/home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
-/home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
-EOF
+wrap_tender_rom_launcher
 
 # Eden's standalone library scans ~/emulation/switch/games. Tender dumps live
 # under retrodeck/roms/switch — symlink so the same cart shows up without a copy.

@@ -631,6 +631,15 @@ else
 ./scripts/ensure-playbook-decky.sh
 EOF
 fi
+if [ -f "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" ]; then
+  tender_ver="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" 2>/dev/null || echo unknown)"
+  ok "Decky Tender plugin installed ($tender_ver)"
+else
+  warn "Decky Tender plugin not installed"
+  record_manual "Install / update Tender" <<EOF
+./scripts/ensure-tender.sh
+EOF
+fi
 if command -v fgpc >/dev/null 2>&1 || [ -x "/home/$STEAMOS_USER/.local/bin/fgpc" ]; then
   ok "fgpc CLI installed"
 else

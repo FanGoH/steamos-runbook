@@ -50,7 +50,7 @@ TOPIC_HELP = {
 
   fgpc host status       light: kms / mux / plugins
   fgpc host health       full ./health-check.sh
-  fgpc host post-update  ./post-update.sh
+  fgpc host post-update  ./post-update.sh (includes Tender zip + wrap)
   fgpc host bootstrap    ./bootstrap.sh
 
 QAM Playbook is the same post-update.sh (background oneshot).

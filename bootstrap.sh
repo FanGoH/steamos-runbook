@@ -62,6 +62,7 @@ run_step "ensure-gearlever" "$ROOT/scripts/ensure-gearlever.sh"
 run_step "ensure-cemu-input" "$ROOT/scripts/ensure-cemu-input.sh"
 run_step "ensure-rpcs3-input" "$ROOT/scripts/ensure-rpcs3-input.sh"
 run_step "ensure-pcsx2-bios" "$ROOT/scripts/ensure-pcsx2-bios.sh" warn
+run_step "ensure-tender" "$ROOT/scripts/ensure-tender.sh" warn
 run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-syncthing" "$ROOT/scripts/ensure-syncthing.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"

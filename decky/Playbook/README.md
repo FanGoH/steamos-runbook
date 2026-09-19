@@ -2,7 +2,8 @@
 
 QAM button to run `./post-update.sh` after a SteamOS update. Same steps as
 `fgpc host post-update`: pacman, Sunshine, Game Mode kms unit, mux, Decky
-plugins, health-check. Manual leftover sudo lines show in the panel.
+plugins, official **Tender** zip (then `rom-launcher` wrap), health-check.
+Manual leftover sudo lines show in the panel.
 
 Install: `scripts/ensure-playbook-decky.sh`. PluginLoader is root —
 `main.py` calls `scripts/playbook-post-update.py` as user `deck` (`runuser`

@@ -26,7 +26,7 @@ function statusLine(status) {
   if (!status) return "Checking playbook…";
   if (status.running) return status.message || "post-update is running.";
   if (status.message) return status.message;
-  return "Ready to run post-update after a SteamOS update.";
+  return "Ready to run post-update (Tender zip + rom-launcher wrap included).";
 }
 
 function countsLine(status) {

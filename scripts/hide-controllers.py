@@ -443,6 +443,11 @@ def run_helper(args: list[str]) -> tuple[bool, str]:
         return False, str(exc)
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
+        if "password is required" in err or "a terminal is required" in err:
+            err = (
+                "SSH hide needs sudoers/zzz-hide-controllers "
+                "(QAM does not). " + err
+            )
         return False, err
     return True, ""
 

@@ -320,6 +320,25 @@ def mux_running() -> bool:
     return True
 
 
+def mux_is_ready(
+    running: bool | None = None,
+    sinks: list | None = None,
+    enabled: bool | None = None,
+) -> bool:
+    """Off with no P1/P2 is ready. Do not spawn a second mux for that."""
+    if running is None:
+        running = mux_running()
+    if not running:
+        return False
+    if enabled is None:
+        enabled = bool(load_mux_config().get("enabled", True))
+    if not enabled:
+        return True
+    if sinks is None:
+        sinks = list_sink_joysticks()
+    return bool(sinks)
+
+
 def mux_muted() -> bool:
     return mux_mute_path().is_file()
 
@@ -646,7 +665,7 @@ def bind_sinks_for_mode(mode: str, root: Path = INPUT_ROOT) -> list[dict[str, st
 def ensure_mux_running() -> None:
     if os.environ.get("EMUPADS_MUX_SKIP_START") == "1":
         return
-    if mux_running() and list_sink_joysticks():
+    if mux_is_ready():
         return
     started = subprocess.run(
         ["systemctl", "--user", "start", MUX_SERVICE],
@@ -655,28 +674,13 @@ def ensure_mux_running() -> None:
     )
     if started.returncode == 0:
         for _ in range(20):
-            if mux_running() and list_sink_joysticks():
+            if mux_is_ready():
                 return
             time.sleep(0.25)
-    if mux_running() and list_sink_joysticks():
+    if mux_is_ready():
         return
-    log = Path.home() / "steamos-playbook" / "logs" / "emupads-mux.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    mux_script = Path(__file__).resolve().parent / "emupads-mux.py"
-    env = os.environ.copy()
-    env.setdefault("HOME", str(Path.home()))
-    with log.open("a", encoding="utf-8") as fh:
-        subprocess.Popen(
-            [sys.executable, str(mux_script)],
-            stdout=fh,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            env=env,
-        )
-    for _ in range(40):
-        if mux_running() and list_sink_joysticks():
-            return
-        time.sleep(0.25)
+    # Never Popen a second emupads-mux.py. A leftover copy ignores QAM Off
+    # and leaves P1/P2 visible to native games (Dusklight).
     raise SystemExit(
         "EmuPads mux is not running (P1/P2 missing). Start emupads-mux.service."
     )
@@ -2662,6 +2666,10 @@ def _self_test() -> int:
         write_mux_routing("shared", [], enabled=True)
         assert json.loads(mux_cfg.read_text())["enabled"] is True
         write_mux_routing("shared", [], dual_screen="auto")
+        assert mux_is_ready(running=True, sinks=[], enabled=False) is True
+        assert mux_is_ready(running=True, sinks=[], enabled=True) is False
+        assert mux_is_ready(running=True, sinks=[{"name": "EmuPads P1"}], enabled=True) is True
+        assert mux_is_ready(running=False, sinks=[], enabled=False) is False
         both_log = (
             "Second display requested: 1920x1080@60 at 5600 Kbps\n"
             "CLIENT CONNECTED\n"

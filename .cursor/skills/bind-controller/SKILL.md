@@ -29,7 +29,7 @@ Always-on mux (`scripts/emupads-mux.py`, `emupads-mux.service`): virtual **EmuPa
 - **Multiplayer**: first selected → P1, second → P2 (Cemu Wii U Pro, Azahar profile 2, Eden `player_1_` with product `e302` so GUIDs differ).
 - Do not list sinks as sources. Do not bind emulators to Sunshine pads. If the mux is down, start it — no fallback.
 - Overlay/QAM/Home/Library mutes sinks (`$XDG_RUNTIME_DIR/emupads-mute`); Steam still reads real pads. `checkpoint-2026-09-11-steam-menu-mute`.
-- **Emu Pads Off** writes `mux.json` `enabled: false` and the mux closes P1/P2 uinput (Thor/Odin stay). On recreates the sinks — restart Cemu/Azahar/Eden. Mode / dual-screen / Apply must keep `enabled`; a missing key is On.
+- **Emu Pads Off** writes `mux.json` `enabled: false` and the mux closes P1/P2 uinput (Thor/Odin stay). On recreates the sinks — restart Cemu/Azahar/Eden. Mode / dual-screen / Apply must keep `enabled`; a missing key is On. Do not `Popen` a second `emupads-mux.py` when Off leaves P1/P2 missing — a leftover copy ignores the toggle and native games (Dusklight) still see the pads.
 
 Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`. Source `decky/EmuPads/` (see that README). `~/homebrew/plugins` is often root-owned — sudo is required to copy; then reload Decky plugins.
 

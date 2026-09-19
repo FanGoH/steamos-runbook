@@ -15,6 +15,7 @@ Never pgrep -f sunshine.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import select
@@ -430,6 +431,51 @@ def write_pid() -> None:
     path.write_text(str(os.getpid()) + "\n")
 
 
+def replace_leftover_mux() -> None:
+    """SIGTERM any other emupads-mux.py. bind-gamepad used to Popen a second copy."""
+    path = pid_path()
+    if not path.is_file():
+        return
+    try:
+        old = int(path.read_text().strip())
+    except (OSError, ValueError):
+        return
+    if old <= 0 or old == os.getpid():
+        return
+    try:
+        os.kill(old, 0)
+    except OSError:
+        return
+    try:
+        os.kill(old, signal.SIGTERM)
+        log(f"replaced leftover mux pid {old}")
+    except OSError:
+        return
+    for _ in range(40):
+        try:
+            os.kill(old, 0)
+        except OSError:
+            return
+        time.sleep(0.05)
+    try:
+        os.kill(old, signal.SIGKILL)
+        log(f"killed leftover mux pid {old}")
+    except OSError:
+        return
+
+
+def acquire_mux_lock() -> int:
+    path = runtime_dir() / "emupads-mux.lock"
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        log("another mux already holds emupads-mux.lock")
+        os.close(fd)
+        raise SystemExit(0)
+    return fd
+
+
 def scan_devices(skip_paths: set[str]) -> list[InputDevice]:
     out: list[InputDevice] = []
     for node in list_devices():
@@ -509,6 +555,8 @@ def loop() -> int:
     global _RELOAD
     signal.signal(signal.SIGHUP, request_reload)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    replace_leftover_mux()
+    _lock_fd = acquire_mux_lock()
     write_pid()
     sinks: list = []
     sink_readers: list = []
@@ -694,6 +742,7 @@ def self_test() -> int:
     assert enabled_from({"enabled": True}) is True
     assert enabled_from({"enabled": False}) is False
     assert enabled_from({"enabled": "off"}) is False
+    assert replace_leftover_mux() is None
     tmp_cfg = Path("/tmp/emupads-mux-self-test-enabled.json")
     try:
         tmp_cfg.write_text(

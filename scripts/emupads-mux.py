@@ -168,30 +168,53 @@ def is_source_device(dev) -> bool:
     return True
 
 
+def enabled_from(data: dict | None) -> bool:
+    """QAM Off unplugs P1/P2. Missing key stays on (always-on default)."""
+    if not isinstance(data, dict) or "enabled" not in data:
+        return True
+    val = data.get("enabled")
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() not in ("0", "false", "no", "off")
+
+
 def load_config(path: Path = CONFIG_PATH) -> dict:
+    empty = {"mode": "shared", "sources": [], "enabled": True}
     if not path.is_file():
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     if not isinstance(data, dict):
-        return {"mode": "shared", "sources": []}
+        return dict(empty)
     mode = data.get("mode") or "shared"
     if mode not in ("shared", "multi"):
         mode = "shared"
     sources = data.get("sources") or []
     if not isinstance(sources, list):
         sources = []
-    return {"mode": mode, "sources": sources}
+    return {"mode": mode, "sources": sources, "enabled": enabled_from(data)}
 
 
 def write_config(mode: str, sources: list[dict], path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    prev_file: dict = {}
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text())
+            if isinstance(raw, dict):
+                prev_file = raw
+        except (OSError, json.JSONDecodeError):
+            prev_file = {}
     payload = {
         "mode": mode if mode in ("shared", "multi") else "shared",
         "sources": sources,
+        "enabled": enabled_from(prev_file if prev_file else {"enabled": True}),
     }
+    for key in ("cemu_p1", "dual_screen"):
+        if key in prev_file:
+            payload[key] = prev_file[key]
     path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
@@ -373,6 +396,34 @@ def request_reload(_signum=None, _frame=None) -> None:
     _RELOAD = True
 
 
+def close_uinput(sinks: list, readers: list, grabbed: list[bool]) -> None:
+    grab_sinks(readers, False, grabbed)
+    for reader in readers:
+        if reader is None:
+            continue
+        try:
+            reader.close()
+        except OSError:
+            pass
+    for ui in sinks:
+        if ui is None:
+            continue
+        try:
+            zero_sink(ui)
+            ui.close()
+        except OSError:
+            pass
+
+
+def make_sinks() -> tuple[list, list, list[bool], set[str]]:
+    sinks = [open_sink(0), open_sink(1)]
+    readers = [sink_event_reader(ui) for ui in sinks]
+    grabbed = [False, False]
+    skip = {ui.device.path for ui in sinks if ui.device is not None}
+    log(f"sinks {SINK_NAMES[0]} {SINK_NAMES[1]}")
+    return sinks, readers, grabbed, skip
+
+
 def write_pid() -> None:
     path = pid_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -459,11 +510,10 @@ def loop() -> int:
     signal.signal(signal.SIGHUP, request_reload)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     write_pid()
-    sinks = [open_sink(0), open_sink(1)]
-    sink_readers = [sink_event_reader(ui) for ui in sinks]
-    sink_grabbed = [False, False]
-    skip = {ui.device.path for ui in sinks if ui.device is not None}
-    log(f"sinks {SINK_NAMES[0]} {SINK_NAMES[1]}")
+    sinks: list = []
+    sink_readers: list = []
+    sink_grabbed: list[bool] = []
+    skip: set[str] = set()
     devices: list[InputDevice] = []
     cfg = load_config()
     last_scan = 0.0
@@ -474,6 +524,16 @@ def loop() -> int:
     selected: list[InputDevice] = []
     fds: dict[int, InputDevice] = {}
 
+    def sync_sinks(want: bool) -> None:
+        nonlocal sinks, sink_readers, sink_grabbed, skip
+        have = bool(sinks)
+        if want and not have:
+            sinks, sink_readers, sink_grabbed, skip = make_sinks()
+        elif not want and have:
+            close_uinput(sinks, sink_readers, sink_grabbed)
+            sinks, sink_readers, sink_grabbed, skip = [], [], [], set()
+            log("sinks disconnected")
+
     def housekeep(now: float) -> None:
         global _RELOAD
         nonlocal cfg, devices, selected, fds, muted, last_scan, last_cfg_mtime
@@ -483,12 +543,16 @@ def loop() -> int:
             last_cfg_mtime = mtime
             last_scan = now
             cfg = load_config()
+            sync_sinks(bool(cfg.get("enabled", True)))
             if not devices:
                 devices = scan_devices(skip)
             else:
                 devices = rescan_devices(devices, skip)
             selected = selected_sources(cfg, devices)
             fds = {dev.fd: dev for dev in selected}
+        if not sinks:
+            muted = False
+            return
         steam_ui = steam_ui_active(now)
         grab_sinks(sink_readers, steam_ui, sink_grabbed)
         want_mute = mute_path().is_file() or steam_ui
@@ -505,6 +569,11 @@ def loop() -> int:
         housekeep(time.monotonic())
         last_house = time.monotonic()
         while True:
+            if not sinks:
+                time.sleep(0.2)
+                housekeep(time.monotonic())
+                last_house = time.monotonic()
+                continue
             if not fds:
                 time.sleep(0.05)
                 housekeep(time.monotonic())
@@ -556,20 +625,7 @@ def loop() -> int:
                 housekeep(now)
                 last_house = now
     finally:
-        grab_sinks(sink_readers, False, sink_grabbed)
-        for reader in sink_readers:
-            if reader is None:
-                continue
-            try:
-                reader.close()
-            except OSError:
-                pass
-        for ui in sinks:
-            try:
-                zero_sink(ui)
-                ui.close()
-            except OSError:
-                pass
+        close_uinput(sinks, sink_readers, sink_grabbed)
         for dev in devices:
             try:
                 dev.close()
@@ -634,6 +690,33 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
+    assert enabled_from({}) is True
+    assert enabled_from({"enabled": True}) is True
+    assert enabled_from({"enabled": False}) is False
+    assert enabled_from({"enabled": "off"}) is False
+    tmp_cfg = Path("/tmp/emupads-mux-self-test-enabled.json")
+    try:
+        tmp_cfg.write_text(
+            json.dumps(
+                {
+                    "mode": "shared",
+                    "sources": [],
+                    "cemu_p1": "pro",
+                    "dual_screen": "auto",
+                    "enabled": False,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        write_config("multi", [], path=tmp_cfg)
+        saved = json.loads(tmp_cfg.read_text())
+        assert saved["enabled"] is False
+        assert saved["mode"] == "multi"
+        assert saved["cemu_p1"] == "pro"
+        assert saved["dual_screen"] == "auto"
+    finally:
+        tmp_cfg.unlink(missing_ok=True)
     global _STEAM_UI_CACHE
     parsed = parse_xprop_atoms(
         "GAMESCOPE_FOCUSED_APP(CARDINAL) = 769\n"

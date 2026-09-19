@@ -62,8 +62,8 @@ Manual follow-ups (printed when needed):
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
-- Emu Pads / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
-- `sudoers.d/zzz-sunshine-ds-kms-setcap` after an update wiped `/etc`
+- Emu Pads / Pad Hide / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
+- `sudoers.d/zzz-sunshine-ds-kms-setcap` and `zzz-hide-controllers` after an update wiped `/etc`
 
 Decky is only checked for files under `~/homebrew` (success if present; no reinstall reminder).
 
@@ -116,6 +116,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-hide-controllers.sh` | Detect pad-hide sudoers + udev (SSH). QAM does not need sudoers |
 | `scripts/ensure-pad-hide-decky.sh` | Install Decky **Pad Hide**. `~/homebrew/plugins` may need sudo |
 | `decky/PadHide/` | Pad Hide plugin source (per-pad toggles; UI pad cannot hide itself) |
+| `.cursor/skills/pad-hide/SKILL.md` | Hide extra USB/BT pads without unplugging (NMH3 / Moonlight) |
+| `.cursor/skills/decky-plugins/SKILL.md` | Reload Decky after every plugin edit (copy is not enough) |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |

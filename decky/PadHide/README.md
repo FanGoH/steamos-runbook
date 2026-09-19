@@ -32,4 +32,4 @@ Config: `~/.config/pad-hide/hidden.json`.
 `scripts/ensure-hide-controllers.sh` then `scripts/ensure-pad-hide-decky.sh`.
 `~/homebrew/plugins` is often root-owned; copy needs sudo, then reload Decky.
 
-Skill: `.cursor/skills/decky-plugins/SKILL.md`.
+Skill: `.cursor/skills/pad-hide/SKILL.md`. Reload after edit: `.cursor/skills/decky-plugins/SKILL.md`.

@@ -19,5 +19,7 @@ needs sudo, then reload Decky.
 
 The run is oneshot in the background (a few minutes). Reopen QAM to see
 ok / warn / fail counts. Do not start a second copy while one is active.
-Do not `sudo ./post-update.sh`. Skip a step with `PLAYBOOK_SKIP=name` or
-`SKIP_ENSURE_NAME=1` (Switch 2 is skipped by default).
+Enter the `deck` sudo password in QAM first so udev / sudoers / plugin
+copies can run (password stays in tmpfs askpass, then is wiped). Do not
+`sudo ./post-update.sh`. Skip a step with `PLAYBOOK_SKIP=name` or
+`SKIP_ENSURE_NAME=1` (Switch 2 is skipped by default). OpenRGB always runs.

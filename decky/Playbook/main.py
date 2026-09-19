@@ -77,7 +77,71 @@ def _log(msg: str) -> None:
         logger.info(msg)
 
 
-def _run_as_deck(args: list[str], timeout: int = 20) -> subprocess.CompletedProcess:
+def _sudo_script() -> str:
+    return os.path.join(_playbook(), "scripts", "playbook-sudo.py")
+
+
+def _clear_sudo() -> None:
+    script = _sudo_script()
+    if not os.path.isfile(script):
+        return
+    subprocess.run(
+        ["python3", script, "clear"],
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+
+
+def _prepare_sudo(password: object) -> dict:
+    secret = str(password or "")
+    if not secret.strip():
+        return {"ok": False, "message": "Enter your sudo password first."}
+    script = _sudo_script()
+    if not os.path.isfile(script):
+        return {"ok": False, "message": "playbook-sudo.py missing. Re-run ensure-playbook-decky.sh"}
+    try:
+        written = subprocess.run(
+            ["python3", script, "write"],
+            input=secret,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "sudo password write timed out"}
+    data = _json_from(written)
+    if data.get("ok") is False:
+        return {
+            "ok": False,
+            "message": data.get("message") or "could not store sudo password",
+        }
+    try:
+        checked = subprocess.run(
+            ["python3", script, "verify"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        _clear_sudo()
+        return {"ok": False, "message": "sudo password check timed out"}
+    verified = _json_from(checked)
+    if verified.get("ok") is False:
+        _clear_sudo()
+        return {"ok": False, "message": "sudo password was rejected"}
+    askpass = str(data.get("askpass") or "")
+    if not askpass:
+        _clear_sudo()
+        return {"ok": False, "message": "sudo askpass helper missing"}
+    return {"ok": True, "askpass": askpass}
+
+
+def _run_as_deck(
+    args: list[str],
+    timeout: int = 20,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     uid = _session_uid()
     runtime = f"/run/user/{uid}"
     prefix = [
@@ -89,6 +153,10 @@ def _run_as_deck(args: list[str], timeout: int = 20) -> subprocess.CompletedProc
         "LD_PRELOAD=",
         f"STEAMOS_PLAYBOOK_DIR={_playbook()}",
     ]
+    for key, value in (extra_env or {}).items():
+        if key in ("PASSWORD", "SUDO_PASSWORD") or not value:
+            continue
+        prefix.append(f"{key}={value}")
     if os.getuid() == 0:
         cmd = ["runuser", "-u", "deck", "--", *prefix, *args]
     else:
@@ -141,22 +209,52 @@ class Plugin:
             return {"ok": False, "running": False, "message": "playbook status timed out"}
         return _json_from(proc)
 
-    async def run_post_update(self) -> dict:
+    async def run_post_update(self, password: str = "", **kwargs: object) -> dict:
+        if kwargs:
+            password = str(kwargs.get("password", password) or password)
         script = _script()
         if not os.path.isfile(script):
             return _missing_backend()
+        prep = _prepare_sudo(password)
+        if prep.get("ok") is False:
+            return prep
         try:
-            proc = _run_as_deck(["python3", script, "start"], timeout=20)
+            proc = _run_as_deck(
+                ["python3", script, "start"],
+                timeout=20,
+                extra_env={"SUDO_ASKPASS": str(prep.get("askpass") or "")},
+            )
         except subprocess.TimeoutExpired:
+            _clear_sudo()
             return {"ok": False, "running": False, "message": "start post-update timed out"}
-        return _json_from(proc)
+        data = _json_from(proc)
+        if data.get("ok") is False:
+            _clear_sudo()
+        return data
 
-    async def update_tender(self) -> dict:
+    async def update_tender(self, password: str = "", **kwargs: object) -> dict:
+        if kwargs:
+            password = str(kwargs.get("password", password) or password)
         script = _script()
         if not os.path.isfile(script):
             return _missing_backend()
+        prep = _prepare_sudo(password)
+        if prep.get("ok") is False:
+            return prep
         try:
-            proc = _run_as_deck(["python3", script, "tender-start"], timeout=20)
+            proc = _run_as_deck(
+                ["python3", script, "tender-start"],
+                timeout=20,
+                extra_env={"SUDO_ASKPASS": str(prep.get("askpass") or "")},
+            )
         except subprocess.TimeoutExpired:
-            return {"ok": False, "running": False, "message": "start Tender update timed out"}
-        return _json_from(proc)
+            _clear_sudo()
+            return {
+                "ok": False,
+                "running": False,
+                "message": "start Tender update timed out",
+            }
+        data = _json_from(proc)
+        if data.get("ok") is False:
+            _clear_sudo()
+        return data

@@ -59,12 +59,17 @@ def test_self_test() -> None:
     assert mod.self_test() == 0
 
 
+def test_sudo_askpass_setenv() -> None:
+    assert mod._sudo_askpass_setenv() == []
+
+
 def main() -> int:
     test_summarize()
     test_manual_excerpt()
     test_parse_tender_output()
     test_launcher_wrapped()
     test_self_test()
+    test_sudo_askpass_setenv()
     print("test_playbook_post_update ok")
     return 0
 

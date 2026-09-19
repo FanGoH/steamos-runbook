@@ -16,6 +16,10 @@ if ! bash "$ROOT/scripts/test_playbook_skip.sh" >/dev/null; then
   echo "playbook skip tests failed."
   exit 1
 fi
+if ! python3 "$ROOT/scripts/playbook-sudo.py" self-test >/dev/null; then
+  echo "playbook-sudo self-test failed."
+  exit 1
+fi
 
 SRC="$ROOT/decky/Playbook"
 if [ ! -f "$SRC/main.py" ] || [ ! -f "$SRC/plugin.json" ] || [ ! -f "$SRC/dist/index.js" ]; then
@@ -30,7 +34,7 @@ PLUGIN_NAME="$(python3 -c "import json; print(json.load(open('$SRC/plugin.json')
 
 snapshot_backend() {
   mkdir -p "$SNAPSHOT/scripts" "$SNAPSHOT/logs"
-  cp -a "$ROOT/scripts/playbook-post-update.py" "$SNAPSHOT/scripts/"
+  cp -a "$ROOT/scripts/playbook-post-update.py" "$ROOT/scripts/playbook-sudo.py" "$SNAPSHOT/scripts/"
 }
 
 snapshot_backend

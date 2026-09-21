@@ -23,6 +23,14 @@ Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → 
 
 Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
+## Status (2026-09-21)
+
+- Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
+- **NUXBT** (NXBT fork) installed in Distrobox `steamos-tools` venv: `~/code/nuxbt/.venv` via `scripts/ensure-nuxbt.sh`.
+- BlueZ override **not yet enabled** (needs interactive `sudo` / `nuxbt toggle`). Override is **tmpfs** (`/run/systemd/system/bluetooth.service.d/nuxbt.conf`) — clears on reboot.
+- Gate A (Grip/Order pair) **blocked on**: (1) enable plugin, (2) Switch 2 on Change Grip/Order, (3) `nuxbt demo`.
+- Note: `nso-gc.service` may be running on this box; stop it for the NXBT test only, then start again if you still want the pad→PC bridge. This project still keeps that stack **skipped** as a playbook default.
+
 ## Decisions (locked)
 
 | Topic | Decision |
@@ -33,7 +41,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 | First milestone | Controller only (NXBT path). Not video. |
 | BT adapter | Prefer **motherboard** Bluetooth. Dedicated USB dongle only if onboard fails for chipset/MAC/agent reasons, not as day-one spend. |
 | While Switch RP session is up | **EmuPads off** (session-scoped only; restore previous mux state on exit). Sunshine Moonlight pad **shared with Steam** (no EVIOCGRAB / exclusive grab that blocks overlay nav). |
-| Sunshine servers | End state should work through **all three** (`:47989` Decky, `:48100` desktop DS, `:48200` Game Mode kms) because Sunshine mainly encodes whatever is on screen / launched as an app. **MVP**: prove one path first (prefer Decky `:47989` Desktop app) — do not dual-stream this. Do not alter existing Cemu/Azahar DS apps. |
+| Sunshine servers | Prefer **Decky Sunshine `:47989` first**, then **sunshine-ds-kms Game Mode `:48200`**. Desktop DS `:48100` is optional later. **MVP**: Decky only — do not dual-stream Switch capture. Do not alter existing Cemu/Azahar DS apps. |
 | Video viewer | Prefer **non-OBS** first (see below). Capture card exists; OBS is fallback if mpv/ffplay fail under gamescope. |
 | Latency polish | **Make it work first**, then measure and optimize. |
 | Switch wake / dock power | **Deferred**. Manual wake OK for MVP. |
@@ -78,7 +86,7 @@ Controller and video are independent pipes. Controller milestone does **not** re
 7. **Stability** (30+ min session) — latency numbers come after “works.”
 8. **HDMI capture** → low-latency fullscreen viewer (mpv/ffplay first) → Sunshine app / Steam tile.
 9. **Automate** start/stop with the “Nintendo Switch 2” entry.
-10. Only then: Switch 1 + KVM design.
+10. **Only after Switch 2 RP works:** optional Switch 1 + KVM as a separate project.
 
 If step 2 fails because Switch 2 **rejects** the emulated Pro Con protocol (after MAC/agent/fork triage), investigate Linux alternatives, then reWASD/ESP32 — do not buy ESP32 solely to “try Proton.”
 
@@ -86,11 +94,12 @@ If step 2 fails because Switch 2 **rejects** the emulated Pro Con protocol (afte
 
 ## Controller stack
 
-### Primary: NXBT family
+### Primary: NUXBT (NXBT fork)
 
-- Upstream: [Brikwerk/nxbt](https://github.com/Brikwerk/nxbt) (aging; Python/BlueZ friction).
-- Community: forks / fixed builds (e.g. NUXBT, typenoob-style packages) — pick whatever **installs cleanly on this host** and pairs to Switch 2.
+- Use **[hannahbee91/nuxbt](https://github.com/hannahbee91/nuxbt)** on this box (upstream NXBT is stale / Python-painful).
+- Install / restore: `scripts/ensure-nuxbt.sh` → Distrobox `steamos-tools` + `~/code/nuxbt/.venv`.
 - Expect possible needs: Pro Controller alias, MAC prefix spoof (`7C:BB:8A…`), BlueZ agent trust, Grip/Order for first pair / reconnect.
+- `nuxbt toggle` enables a **reboot-cleared** BlueZ override (`--compat --noplugin=*`). Toggle **off** when the session ends.
 
 ### Alternatives if NXBT is painful (same direction: PC → Switch)
 
@@ -154,8 +163,10 @@ Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT
 
 ### Sunshine ports
 
-- **MVP:** one working Moonlight app (prefer Decky `:47989`).
-- **Later:** same launch story on `:48100` / `:48200` if useful. Dual-panel / gamescope-virtual is **out of scope** for Switch capture.
+- **Prefer:** Decky Sunshine `:47989`, then Game Mode sunshine-ds-kms `:48200`.
+- Desktop DS `:48100` only if useful later.
+- Dual-panel / gamescope-virtual is **out of scope** for Switch capture.
+- Do not alter existing Cemu/Azahar DS app entries.
 
 ---
 

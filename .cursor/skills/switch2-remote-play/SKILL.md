@@ -9,7 +9,9 @@ description: >-
 
 # Switch 2 remote play (handover)
 
-**Steam Machine** (`steammachine` / `gpc`). Do not redesign Headscale, WoL, SSH, Decky Sunshine, or sunshine-ds dual-stream unless this path forces it.
+**Steam Machine** (`steammachine` / `gpc`).
+
+**Hard rule:** this project must **not mess with anything already built**. Additive only — new scripts/services/apps for Switch 2 remote play. Do not change working dual-stream, EmuPads mux defaults, Pad Hide, Tender wraps, Eden/Cemu/Azahar binds, sunshine-ds/kms, Tailscale, or Syncthing to “make Switch easier.”
 
 ## North star (immediate)
 
@@ -19,32 +21,36 @@ description: >-
 Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → Switch 2
 ```
 
-Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**.
+Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
 ## Decisions (locked)
 
 | Topic | Decision |
 |-------|----------|
+| Existing stack | **Do not break or rework** dual-stream, EmuPads, Pad Hide, Tender, emulator binds, Decky Sunshine, sunshine-ds, Tailscale, Syncthing, or skipped Switch 2 pad→PC bridge. Isolate Switch RP in its own start/stop path. |
 | Existing `switch2-controllers-linux` / `ensure-switch2-controllers` | Stays **skipped forever** (`PLAYBOOK_SKIP` default). Opposite direction (pad → PC). Do not enable for this project. |
+| Consoles in scope | **Switch 2 only** until remote play works end-to-end. No Switch 1, no KVM, no dual-console switching. |
 | First milestone | Controller only (NXBT path). Not video. |
 | BT adapter | Prefer **motherboard** Bluetooth. Dedicated USB dongle only if onboard fails for chipset/MAC/agent reasons, not as day-one spend. |
-| While Switch RP session is up | **EmuPads off**. Sunshine Moonlight pad **shared with Steam** (no EVIOCGRAB / exclusive grab that blocks overlay nav). |
-| Sunshine servers | End state should work through **all three** (`:47989` Decky, `:48100` desktop DS, `:48200` Game Mode kms) because Sunshine mainly encodes whatever is on screen / launched as an app. **MVP**: prove one path first (prefer Decky `:47989` Desktop app) — do not dual-stream this. |
+| While Switch RP session is up | **EmuPads off** (session-scoped only; restore previous mux state on exit). Sunshine Moonlight pad **shared with Steam** (no EVIOCGRAB / exclusive grab that blocks overlay nav). |
+| Sunshine servers | End state should work through **all three** (`:47989` Decky, `:48100` desktop DS, `:48200` Game Mode kms) because Sunshine mainly encodes whatever is on screen / launched as an app. **MVP**: prove one path first (prefer Decky `:47989` Desktop app) — do not dual-stream this. Do not alter existing Cemu/Azahar DS apps. |
 | Video viewer | Prefer **non-OBS** first (see below). Capture card exists; OBS is fallback if mpv/ffplay fail under gamescope. |
 | Latency polish | **Make it work first**, then measure and optimize. |
 | Switch wake / dock power | **Deferred**. Manual wake OK for MVP. |
-| Switch 1 + HDMI/USB KVM | **Deferred**. Do not purchase. Prefer software pad selection if NXBT; do not block a later KVM. |
+| Switch 1 + HDMI/USB KVM | **Out of scope** until Switch 2 RP works. Do not purchase. |
 | reWASD / ESP32 | Fallback only if NXBT-class BT Pro Con emulation fails Switch 2. Prefer not buying ESP32 until a meaningful fallback path is chosen. |
 
-## Explicit non-goals (until controller MVP passes)
+## Explicit non-goals (until Switch 2 controller MVP passes)
 
+- Touching or “improving” existing GameStream / emulator / Decky paths as a side effect
 - OBS / capture card Steam tile polish
 - Fullscreen Gaming Mode automation beyond a manual test
 - Switch wake / dock scripts
-- KVM purchase or dual-console switching
+- Switch 1, KVM, or dual-console switching
 - Enabling `ensure-switch2-controllers` / pairing Switch 2 pads to this PC
-- Changing sunshine-ds dual-stream / GamePad inject / EmuPads mux behavior for emulators
+- Changing sunshine-ds dual-stream / GamePad inject / EmuPads **defaults** or emulator bind scripts
 - Buying a second Bluetooth adapter “just in case”
+- Global BlueZ / Steam Bluetooth changes that break normal Game Mode play when Switch RP is not running
 
 ## Architecture (target)
 
@@ -111,7 +117,7 @@ Whatever is **most seamless** after reboot and SteamOS updates:
 ### BlueZ coexistence
 
 - Do **not** turn on the skipped Switch 2 pad bridge.
-- Steam `Bluetooth.Enabled` / adapter sharing: document whatever NXBT requires; avoid breaking normal Game Mode pads long-term.
+- Any BlueZ / Steam BT tweak for NXBT must be **session-scoped or fully reversible** so normal Game Mode (no Switch RP) keeps working as today.
 - Motherboard BT first; USB dongle only if onboard cannot advertise/pair stably.
 
 ### Bridge rules (Phase 3)
@@ -140,7 +146,7 @@ Switch 2 HDMI → capture card → /dev/videoN → fullscreen viewer → Sunshin
 | **Consolation** | Dedicated UVC viewer; optional if mpv fails UX-wise. |
 | **OBS** | Fallback if gamescope/Flatpak/audio needs a compositor path — not the default. |
 
-Audio: capture-card ALSA/Pulse into the same session without breaking existing Game Mode HDMI / VSS recipes used by Cemu dual-stream. Defer polish.
+Audio: capture-card ALSA/Pulse for the Switch session only — do **not** rewrite the proven Cemu dual-stream HDMI / VSS capture recipes. Defer polish.
 
 HDCP: if the capture is black, check Switch HDMI/HDCP settings before blaming Sunshine.
 
@@ -182,13 +188,7 @@ Only if software BT Pro Con emulation cannot satisfy gates A–B after fork/MAC/
 
 ## Future: Switch 1 + Switch 2
 
-Out of scope now. When revisiting:
+**After** Switch 2 remote play works (gates through H). Not before.
 
-- NXBT path → prefer **software** which fake pad is connected; USB KVM may be unnecessary for pads.
-- Do not buy KVM until Switch 2 remote play is done.
-
----
-
-## Open item
-
-**KVM USB vs software pad selection (#12):** deferred with the rest of dual-console; no purchase. Revisit only after gate E+.
+- One console first is mandatory; dual-console is a separate project.
+- Prefer software pad selection if still on NXBT; KVM purchase only if still needed then.

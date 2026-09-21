@@ -36,6 +36,7 @@ exec distrobox enter "$CONTAINER" -- bash -lc "
 set -e
 export PATH=$(printf '%q' "$VENV/bin"):\"\$HOME/.local/bin:\$PATH\"
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket
+export PYTHONUNBUFFERED=1
 mkdir -p \"\$HOME/.local/bin\"
 if [ ! -x \"\$HOME/.local/bin/bluetoothd\" ]; then
   if [ -x /usr/libexec/bluetooth/bluetoothd ]; then

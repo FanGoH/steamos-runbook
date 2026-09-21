@@ -29,6 +29,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 - **NUXBT** (NXBT fork) installed in Distrobox `steamos-tools` venv: `~/code/nuxbt/.venv` via `scripts/ensure-nuxbt.sh`.
 - BlueZ override must be applied **on the host**: `sudo scripts/nuxbt-bluez-override.sh enable` (tmpfs; clears on reboot). Do **not** use `nuxbt toggle` inside Distrobox — `systemctl restart bluetooth` fails with no host system bus.
 - Venv must use Distrobox **system** `/usr/bin/python3.12` (`AF_BLUETOOTH`). uv standalone CPython lacks it → `AttributeError: socket.AF_BLUETOOTH`.
+- Gate A: host override on → Switch Change Grip/Order → `scripts/nuxbt-run.sh demo` (sets host `DBUS_SYSTEM_BUS_ADDRESS`).
 - Note: `nso-gc.service` may be running on this box; `systemctl --user stop` it for the NXBT test only (no `sudo systemctl --user`). This project still keeps that stack **skipped** as a playbook default.
 
 ## Decisions (locked)

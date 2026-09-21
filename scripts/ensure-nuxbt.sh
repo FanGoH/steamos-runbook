@@ -39,14 +39,19 @@ sudo dnf install -y python3.12 python3-pip python3-devel gcc \
   python3-gobject python3-cairo >/dev/null
 '
 
-if [ ! -x "$NUXBT" ]; then
-  echo "Creating venv and installing nuxbt into $DIR"
+if [ ! -x "$NUXBT" ] || ! distrobox enter "$CONTAINER" -- bash -lc "
+'$VENV/bin/python' -c 'import socket; import sys; sys.exit(0 if hasattr(socket,\"AF_BLUETOOTH\") else 1)'
+" 2>/dev/null; then
+  echo "Creating venv with Distrobox system Python 3.12 (needs AF_BLUETOOTH; uv builds lack it)"
   distrobox enter "$CONTAINER" -- bash -lc "
 set -e
 cd '$DIR'
-python3.12 -m venv .venv
+rm -rf .venv
+/usr/bin/python3.12 -m venv .venv
 .venv/bin/pip install -U pip wheel
 .venv/bin/pip install nuxbt
+.venv/bin/python -c 'import socket; assert hasattr(socket, \"AF_BLUETOOTH\")'
+sudo setcap 'cap_net_raw,cap_net_admin,cap_net_bind_service+eip' /usr/bin/python3.12
 "
 fi
 

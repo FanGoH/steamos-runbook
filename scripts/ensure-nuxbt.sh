@@ -63,7 +63,7 @@ sudo $OVERRIDE enable
 $OVERRIDE status
 
 # On Switch 2: Controllers → Change Grip/Order, then:
-distrobox enter $CONTAINER -- bash -lc 'export PATH=$VENV/bin:\$PATH; nuxbt demo'
+$ROOT/scripts/nuxbt-run.sh demo
 
 # When finished:
 sudo $OVERRIDE disable
@@ -75,11 +75,11 @@ fi
 
 record_manual "Pair NUXBT Pro Controller with Switch 2" <<EOF
 # On Switch 2: Controllers → Change Grip/Order, then:
-distrobox enter $CONTAINER -- bash -lc 'export PATH=$VENV/bin:\$PATH; nuxbt demo'
+$ROOT/scripts/nuxbt-run.sh demo
 # When finished:
 sudo $OVERRIDE disable
 systemctl --user start nso-gc.service 2>/dev/null || true
 EOF
 
-echo "BlueZ override present. Open Switch 2 Change Grip/Order, then run nuxbt demo."
+echo "BlueZ override present. Open Switch 2 Change Grip/Order, then: $ROOT/scripts/nuxbt-run.sh demo"
 exit 0

@@ -23,14 +23,32 @@ Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → 
 
 Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
-## Status (2026-09-21)
+## Status (2026-09-21 → 2026-09-22)
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
-- **NUXBT** (NXBT fork) installed in Distrobox `steamos-tools` venv: `~/code/nuxbt/.venv` via `scripts/ensure-nuxbt.sh`.
-- BlueZ override must be applied **on the host**: `sudo scripts/nuxbt-bluez-override.sh enable` (tmpfs; clears on reboot). Do **not** use `nuxbt toggle` inside Distrobox — `systemctl restart bluetooth` fails with no host system bus.
-- Venv must use Distrobox **system** `/usr/bin/python3.12` (`AF_BLUETOOTH`). uv standalone CPython lacks it → `AttributeError: socket.AF_BLUETOOTH`.
-- Gate A: host override on → Switch Change Grip/Order → `scripts/nuxbt-run.sh demo` (sets host `DBUS_SYSTEM_BUS_ADDRESS`).
-- Note: `nso-gc.service` may be running on this box; `systemctl --user stop` it for the NXBT test only (no `sudo systemctl --user`). This project still keeps that stack **skipped** as a playbook default.
+- **NUXBT** works on **lab** (Pi): demo finished; Switch 2 accepted emulated Pro Controller.
+- **NUXBT on De-FanGoH fails to pair** so far: adapter advertises, but `hci0` stays `RX … acl:0` (no ACL link).
+- Venv must use Distrobox **system** `/usr/bin/python3.12` (`AF_BLUETOOTH`). Host BlueZ override: `scripts/nuxbt-bluez-override.sh`. Run via `scripts/nuxbt-run.sh`.
+
+### Why lab works and De-FanGoH does not (so far)
+
+| | **lab (works)** | **De-FanGoH (no pair)** |
+|--|-----------------|-------------------------|
+| Radio | Cypress/Broadcom **BCM43438** UART (`hci_uart_bcm`) | MediaTek **MT7922** USB combo WiFi+BT (`btusb` `0e8d:0616`) |
+| HCI | BT 5.0, Bus UART | BT 5.3, Bus USB |
+| BlueZ | 5.66 (native) | 5.87 (host) + Distrobox Python |
+| Proof | After demo: `RX acl=216` `TX acl=1361`; Switch MAC `48:F1:EB:C3:F4:85` in `/var/lib/bluetooth/…/cache` | During all demos: **`acl=0` always** |
+| Runtime | Native `~/code/nuxbt/.venv` | Distrobox `steamos-tools` + host D-Bus |
+
+**Not the primary failure mode:** Distrobox D-Bus (adapters list; alias becomes Pro Controller). Protocol is proven on Switch 2 via lab.
+
+**Likely causes (ordered):**
+1. **MediaTek MT7922 RF / controller-emulation quirks** (combo chip; NXBT’s happy path is typically Broadcom/CSR-class adapters — lab matches that).
+2. **Broken MAC spoof state on GPC:** after `btmgmt public-addr`, BlueZ showed `7C:BB:8A:…` while `hciconfig` still showed `04:68:74:…`. `power on` → `Invalid Index` is expected (BlueZ removes/re-adds the controller index). Must **restart bluetooth** to resync before another fair test.
+3. WiFi/BT coexistence on the same MT7922 die (secondary experiment: disable WiFi briefly).
+4. Range / placement (lab was closer when it worked).
+
+**Next experiments:** (1) `sudo systemctl restart bluetooth` to clear address desync, (2) phone Bluetooth scan while `nuxbt-run.sh demo` — must see **Pro Controller**, (3) if phone sees it but Switch does not → MediaTek↔Switch rejection, (4) USB BT dongle (CSR8510-class) as control.
 
 ## Decisions (locked)
 

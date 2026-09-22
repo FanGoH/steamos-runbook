@@ -38,5 +38,6 @@ if [ "$#" -eq 0 ]; then
 fi
 
 export PYTHONUNBUFFERED=1
-export PATH="$VENV/bin:$PATH"
+# bluetoothd lives in /usr/lib/bluetooth (not on PATH); nuxbt only uses it for -v
+export PATH="$VENV/bin:/usr/lib/bluetooth:$PATH"
 exec "$NUXBT" "$@"

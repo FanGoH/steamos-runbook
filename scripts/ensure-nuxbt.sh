@@ -44,6 +44,13 @@ if [ ! -x "$NUXBT" ]; then
     'uvicorn>=0.38,<0.39'
 fi
 
+# Stock nuxbt times out discoverable after 180s — Grip/Order windows die mid-demo.
+CTRL_PY="$VENV/lib/python3.14/site-packages/nuxbt/controller/controller.py"
+if [ -f "$CTRL_PY" ] && grep -q 'set_discoverable_timeout(180)' "$CTRL_PY"; then
+  sed -i 's/set_discoverable_timeout(180)/set_discoverable_timeout(0)/' "$CTRL_PY"
+  echo "patched: discoverable_timeout 180 → 0 in $CTRL_PY"
+fi
+
 echo "NUXBT: $("$NUXBT" --version 2>/dev/null || true)"
 "$OVERRIDE" status || true
 

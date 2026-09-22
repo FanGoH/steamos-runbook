@@ -43,12 +43,12 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 **Not the primary failure mode:** Distrobox D-Bus (adapters list; alias becomes Pro Controller). Protocol is proven on Switch 2 via lab.
 
 **Likely causes (ordered):**
-1. **Raw-HCI `set_class` needs file caps** — bind works as `deck`, but HCI *send* → `PermissionError` without `cap_net_raw`. NXBT leaves Class at **`0x400000`** instead of Pro Controller **`0x002508`**. Phone still sees the *name* “Pro Controller”; Switch cares about CoD. Lab sets CoD natively. Fix: `sudo scripts/nuxbt-bluez-override.sh enable` (home python copy + setcap). Fallback while demo runs: `sudo scripts/nuxbt-set-class.sh`.
-2. MediaTek MT7922 quirks vs BCM43438 (secondary if CoD fix is not enough).
-3. WiFi/BT coexistence on the same MT7922 die.
-4. Range / placement.
+1. **Raw-HCI `set_class` needs file caps** — bind works as `deck`, but HCI *send* → `PermissionError` without `cap_net_raw`. Fixed via home python copy + setcap.
+2. **DiscoverableTimeout 180s** — stock nuxbt drops inquiry after 3 minutes; toggling Discoverable also **resets Class to `0x400000`**. Patched timeout → 0; `nuxbt-run.sh` re-asserts CoD.
+3. **MT7922 vs BCM43438** — Switch MAC `48:F1:EB:C3:F4:85` did appear once (`sdp_process: Protocol error` / ACL climbed) then stalled. USB CSR dongle next if still no Grip/Order.
+4. WiFi/BT coexistence on the same MT7922 die / range.
 
-**Proven so far:** Phone Bluetooth scan **does** see “Pro Controller” from De-FanGoH while demo runs → RF advertising works; Switch-side rejection / wrong CoD is the gap.
+**Dongle (if MT7922 stays ACL-dead):** TP-Link **UB400** (CSR 4.0, `0a12:0001`) — Amazon ASIN [B07V1SZCY6](https://www.amazon.com/dp/B07V1SZCY6) (TP-Link listing). Prefer **Sold by Amazon** / ships from Amazon. Do **not** buy UB500 (Realtek) for this.
 
 ## Decisions (locked)
 

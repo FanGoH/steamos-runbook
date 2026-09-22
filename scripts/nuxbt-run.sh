@@ -20,6 +20,9 @@ LOG_DIR="${NUXBT_LOG_DIR:-$ROOT/logs}"
 LOG_FILE="${NUXBT_LOG:-$LOG_DIR/nuxbt-$(date +%Y%m%d-%H%M%S).log}"
 QUIET="${NUXBT_QUIET:-0}"
 
+# Pro Controller CoD. Setting Discoverable can reset Class to 0x400000 — re-assert.
+COD_HEX=002508
+
 if [ ! -x "$NUXBT" ]; then
   echo "Host NUXBT missing. Run: $ROOT/scripts/ensure-nuxbt.sh"
   exit 1
@@ -44,6 +47,40 @@ fi
 
 mkdir -p "$LOG_DIR"
 
+# Pin discoverable forever before NUXBT (stock nuxbt used 180s — Grip/Order died mid-demo).
+# Also re-apply after; toggling Discoverable resets Class on BlueZ 5.87 / MT7922.
+pin_bt_visibility() {
+  "$CAP_PY" - <<'PY' 2>/dev/null || true
+import dbus
+bus = dbus.SystemBus()
+obj = bus.get_object("org.bluez", "/org/bluez/hci0")
+p = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+iface = "org.bluez.Adapter1"
+p.Set(iface, "DiscoverableTimeout", dbus.UInt32(0))
+p.Set(iface, "PairableTimeout", dbus.UInt32(0))
+p.Set(iface, "Pairable", dbus.Boolean(True))
+p.Set(iface, "Discoverable", dbus.Boolean(True))
+print("dbus: DiscoverableTimeout=0 Discoverable=on")
+PY
+}
+
+write_cod() {
+  "$CAP_PY" - <<PY 2>/dev/null || true
+import socket, struct
+s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
+s.bind((0,))
+# HCI Write Class of Device → 0x${COD_HEX}
+pkt = struct.pack("<BHB", 0x01, 0x0c24, 3) + bytes.fromhex("${COD_HEX}")[::-1]
+s.send(pkt)
+s.close()
+print("hci: class 0x${COD_HEX}")
+PY
+}
+
+current_cod() {
+  bluetoothctl show 2>/dev/null | awk '/Class:/{print $2; exit}'
+}
+
 # Preflight snapshot (also mirrored into the log file)
 {
   echo "=== nuxbt-run preflight $(date -Is) ==="
@@ -64,6 +101,9 @@ mkdir -p "$LOG_DIR"
   echo "========================================"
 } | tee -a "$LOG_FILE"
 
+pin_bt_visibility | tee -a "$LOG_FILE"
+write_cod | tee -a "$LOG_FILE"
+
 export PYTHONUNBUFFERED=1
 # bluetoothd lives in /usr/lib/bluetooth (not on PATH); nuxbt only uses it for -v
 export PATH="$VENV/bin:/usr/lib/bluetooth:$PATH"
@@ -74,32 +114,34 @@ if [ "$QUIET" != "1" ]; then
   echo "NUXBT debug on → stderr + $LOG_FILE"
 fi
 
-# Keep a side channel of CoD / ACL while demo runs (debug only)
-if [ "$QUIET" != "1" ]; then
-  (
-    for _ in $(seq 1 120); do
-      {
-        echo "--- monitor $(date -Is) ---"
-        hciconfig hci0 2>/dev/null | grep -E 'BD Address|RX bytes|TX bytes|Class:' || true
-        bluetoothctl show 2>/dev/null | grep -E 'Alias:|Class:|Discoverable:|Pairable:' || true
-      } >>"$LOG_FILE"
-      sleep 2
-    done
-  ) &
-  MON_PID=$!
-  trap 'kill "$MON_PID" 2>/dev/null || true' EXIT
-fi
+# Side channel: CoD/ACL + re-assert CoD if BlueZ resets it (discoverable toggle)
+(
+  for _ in $(seq 1 180); do
+    {
+      echo "--- monitor $(date -Is) ---"
+      hciconfig hci0 2>/dev/null | grep -E 'BD Address|RX bytes|TX bytes|Class:' || true
+      bluetoothctl show 2>/dev/null | grep -E 'Alias:|Class:|Discoverable:|Pairable:|DiscoverableTimeout:' || true
+      cod="$(current_cod || true)"
+      if [ -n "$cod" ] && [ "$cod" != "0x00002508" ] && [ "$cod" != "0x002508" ]; then
+        echo "warn: Class drifted to $cod — rewriting 0x${COD_HEX}"
+        write_cod
+        pin_bt_visibility
+      fi
+    } >>"$LOG_FILE"
+    sleep 2
+  done
+) &
+MON_PID=$!
+trap 'kill "$MON_PID" 2>/dev/null || true' EXIT
 
 # Click global opts must precede the subcommand: nuxbt -d --logfile … demo
 set +e
 "$NUXBT" "${NUXBT_OPTS[@]}" "$@"
 rc=$?
 set -e
-if [ -n "${MON_PID:-}" ]; then
-  kill "$MON_PID" 2>/dev/null || true
-  wait "$MON_PID" 2>/dev/null || true
-  trap - EXIT
-fi
+kill "$MON_PID" 2>/dev/null || true
+wait "$MON_PID" 2>/dev/null || true
+trap - EXIT
 {
   echo "=== nuxbt-run exit rc=$rc $(date -Is) ==="
   hciconfig hci0 2>/dev/null | grep -E 'BD Address|RX bytes|TX bytes|Class:' || true

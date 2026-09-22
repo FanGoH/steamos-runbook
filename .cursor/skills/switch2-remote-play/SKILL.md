@@ -28,7 +28,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (Pi): demo finished; Switch 2 accepted emulated Pro Controller.
 - **NUXBT on De-FanGoH:** host venv `~/code/nuxbt-host` via `scripts/nuxbt-run.sh` (SteamOS `python3` has `AF_BLUETOOTH`). Distrobox cannot raw-HCI `set_class`.
-- BlueZ override + **setcap on host `/usr/bin/python3`**: `sudo scripts/nuxbt-bluez-override.sh enable`.
+- BlueZ override + **setcap on home copy** `~/code/nuxbt-host/bin/python3-nuxbt` (SteamOS `/usr` is immutable — `setcap /usr/bin/python3.14` → *Read-only file system*): `sudo scripts/nuxbt-bluez-override.sh enable`.
 
 ### Why lab works and De-FanGoH does not (so far)
 
@@ -36,14 +36,14 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 |--|-----------------|-------------------------|
 | Radio | Cypress/Broadcom **BCM43438** UART (`hci_uart_bcm`) | MediaTek **MT7922** USB combo WiFi+BT (`btusb` `0e8d:0616`) |
 | HCI | BT 5.0, Bus UART | BT 5.3, Bus USB |
-| BlueZ | 5.66 (native) | 5.87 (host) + Distrobox Python |
+| BlueZ | 5.66 (native) | 5.87 (host) |
 | Proof | After demo: `RX acl=216` `TX acl=1361`; Switch MAC `48:F1:EB:C3:F4:85` in `/var/lib/bluetooth/…/cache` | During all demos: **`acl=0` always** |
-| Runtime | Native `~/code/nuxbt/.venv` | Distrobox `steamos-tools` + host D-Bus |
+| Runtime | Native `~/code/nuxbt/.venv` | Host `~/code/nuxbt-host` + capped `bin/python3-nuxbt` |
 
 **Not the primary failure mode:** Distrobox D-Bus (adapters list; alias becomes Pro Controller). Protocol is proven on Switch 2 via lab.
 
 **Likely causes (ordered):**
-1. **Distrobox cannot raw-HCI `set_class`** → `PermissionError` on `SOCK_RAW` HCI. NXBT leaves Class at **`0x400000`** instead of Pro Controller **`0x002508`**. Phone still sees the *name* “Pro Controller”; Switch cares about CoD. Lab sets CoD natively (observed `0x00002508` during successful demo). Fix: `sudo scripts/nuxbt-set-class.sh` while demo advertises.
+1. **Raw-HCI `set_class` needs file caps** — bind works as `deck`, but HCI *send* → `PermissionError` without `cap_net_raw`. NXBT leaves Class at **`0x400000`** instead of Pro Controller **`0x002508`**. Phone still sees the *name* “Pro Controller”; Switch cares about CoD. Lab sets CoD natively. Fix: `sudo scripts/nuxbt-bluez-override.sh enable` (home python copy + setcap). Fallback while demo runs: `sudo scripts/nuxbt-set-class.sh`.
 2. MediaTek MT7922 quirks vs BCM43438 (secondary if CoD fix is not enough).
 3. WiFi/BT coexistence on the same MT7922 die.
 4. Range / placement.
@@ -116,9 +116,9 @@ If step 2 fails because Switch 2 **rejects** the emulated Pro Con protocol (afte
 ### Primary: NUXBT (NXBT fork)
 
 - Use **[hannahbee91/nuxbt](https://github.com/hannahbee91/nuxbt)** on this box (upstream NXBT is stale / Python-painful).
-- Install / restore: `scripts/ensure-nuxbt.sh` → Distrobox `steamos-tools` + `~/code/nuxbt/.venv`.
+- Install / restore: `scripts/ensure-nuxbt.sh` → host `~/code/nuxbt-host/.venv` (not Distrobox).
 - Expect possible needs: Pro Controller alias, MAC prefix spoof (`7C:BB:8A…`), BlueZ agent trust, Grip/Order for first pair / reconnect.
-- `scripts/nuxbt-bluez-override.sh enable|disable|status` — **host** tmpfs BlueZ override (`--compat --noplugin=*`). Never `nuxbt toggle` inside Distrobox.
+- `scripts/nuxbt-bluez-override.sh enable|disable|status` — **host** tmpfs BlueZ override (`--compat --noplugin=*`) + setcap on `~/code/nuxbt-host/bin/python3-nuxbt`. Never setcap `/usr/bin/python*`. Never `nuxbt toggle` inside Distrobox.
 
 ### Alternatives if NXBT is painful (same direction: PC → Switch)
 

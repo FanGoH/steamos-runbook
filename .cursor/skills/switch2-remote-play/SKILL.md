@@ -43,12 +43,12 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 **Not the primary failure mode:** Distrobox D-Bus (adapters list; alias becomes Pro Controller). Protocol is proven on Switch 2 via lab.
 
 **Likely causes (ordered):**
-1. **MediaTek MT7922 RF / controller-emulation quirks** (combo chip; NXBT’s happy path is typically Broadcom/CSR-class adapters — lab matches that).
-2. **Broken MAC spoof state on GPC:** after `btmgmt public-addr`, BlueZ showed `7C:BB:8A:…` while `hciconfig` still showed `04:68:74:…`. `power on` → `Invalid Index` is expected (BlueZ removes/re-adds the controller index). Must **restart bluetooth** to resync before another fair test.
-3. WiFi/BT coexistence on the same MT7922 die (secondary experiment: disable WiFi briefly).
-4. Range / placement (lab was closer when it worked).
+1. **Distrobox cannot raw-HCI `set_class`** → `PermissionError` on `SOCK_RAW` HCI. NXBT leaves Class at **`0x400000`** instead of Pro Controller **`0x002508`**. Phone still sees the *name* “Pro Controller”; Switch cares about CoD. Lab sets CoD natively (observed `0x00002508` during successful demo). Fix: `sudo scripts/nuxbt-set-class.sh` while demo advertises.
+2. MediaTek MT7922 quirks vs BCM43438 (secondary if CoD fix is not enough).
+3. WiFi/BT coexistence on the same MT7922 die.
+4. Range / placement.
 
-**Next experiments:** (1) `sudo systemctl restart bluetooth` to clear address desync, (2) phone Bluetooth scan while `nuxbt-run.sh demo` — must see **Pro Controller**, (3) if phone sees it but Switch does not → MediaTek↔Switch rejection, (4) USB BT dongle (CSR8510-class) as control.
+**Proven so far:** Phone Bluetooth scan **does** see “Pro Controller” from De-FanGoH while demo runs → RF advertising works; Switch-side rejection / wrong CoD is the gap.
 
 ## Decisions (locked)
 

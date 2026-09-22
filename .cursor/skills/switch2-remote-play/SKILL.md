@@ -27,8 +27,8 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (Pi): demo finished; Switch 2 accepted emulated Pro Controller.
-- **NUXBT on De-FanGoH fails to pair** so far: adapter advertises, but `hci0` stays `RX … acl:0` (no ACL link).
-- Venv must use Distrobox **system** `/usr/bin/python3.12` (`AF_BLUETOOTH`). Host BlueZ override: `scripts/nuxbt-bluez-override.sh`. Run via `scripts/nuxbt-run.sh`.
+- **NUXBT on De-FanGoH:** host venv `~/code/nuxbt-host` via `scripts/nuxbt-run.sh` (SteamOS `python3` has `AF_BLUETOOTH`). Distrobox cannot raw-HCI `set_class`.
+- BlueZ override + **setcap on host `/usr/bin/python3`**: `sudo scripts/nuxbt-bluez-override.sh enable`.
 
 ### Why lab works and De-FanGoH does not (so far)
 

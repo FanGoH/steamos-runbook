@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run NUXBT against the host BlueZ stack from Distrobox steamos-tools.
-# Distrobox does not mount /run/dbus; host /run is at /run/host/run.
+# Run NUXBT on the HOST (not Distrobox).
+# SteamOS /usr/bin/python3 has AF_BLUETOOTH; Distrobox cannot raw-HCI set_class
+# (PermissionError) so Switch never sees CoD 0x002508.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,12 +9,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 
-DIR="${NUXBT_DIR:-/home/${STEAMOS_USER}/code/nuxbt}"
-CONTAINER="${NUXBT_DISTROBOX:-steamos-tools}"
+DIR="${NUXBT_HOST_DIR:-/home/${STEAMOS_USER}/code/nuxbt-host}"
 VENV="$DIR/.venv"
+NUXBT="$VENV/bin/nuxbt"
+# Real interpreter behind the venv (needs setcap for raw HCI)
+HOST_PY="$(readlink -f /usr/bin/python3)"
 
-if [ ! -x "$VENV/bin/nuxbt" ]; then
-  echo "NUXBT missing. Run: $ROOT/scripts/ensure-nuxbt.sh"
+if [ ! -x "$NUXBT" ]; then
+  echo "Host NUXBT missing. Run: $ROOT/scripts/ensure-nuxbt.sh"
   exit 1
 fi
 
@@ -23,27 +26,16 @@ if [ ! -f /run/systemd/system/bluetooth.service.d/nuxbt.conf ]; then
   exit 2
 fi
 
+# Warn if setcap missing (set_class will fail silently for Switch)
+if ! getcap "$HOST_PY" 2>/dev/null | grep -q cap_net_raw; then
+  echo "warn: $HOST_PY lacks cap_net_raw — Switch may ignore wrong CoD."
+  echo "      sudo $ROOT/scripts/nuxbt-bluez-override.sh enable"
+fi
+
 if [ "$#" -eq 0 ]; then
   set -- demo
 fi
 
-args_q=
-for a in "$@"; do
-  args_q+=" $(printf '%q' "$a")"
-done
-
-exec distrobox enter "$CONTAINER" -- bash -lc "
-set -e
-export PATH=$(printf '%q' "$VENV/bin"):\"\$HOME/.local/bin:\$PATH\"
-export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket
 export PYTHONUNBUFFERED=1
-mkdir -p \"\$HOME/.local/bin\"
-if [ ! -x \"\$HOME/.local/bin/bluetoothd\" ]; then
-  if [ -x /usr/libexec/bluetooth/bluetoothd ]; then
-    ln -sfn /usr/libexec/bluetooth/bluetoothd \"\$HOME/.local/bin/bluetoothd\"
-  elif [ -x /run/host/usr/lib/bluetooth/bluetoothd ]; then
-    ln -sfn /run/host/usr/lib/bluetooth/bluetoothd \"\$HOME/.local/bin/bluetoothd\"
-  fi
-fi
-exec nuxbt${args_q}
-"
+export PATH="$VENV/bin:$PATH"
+exec "$NUXBT" "$@"

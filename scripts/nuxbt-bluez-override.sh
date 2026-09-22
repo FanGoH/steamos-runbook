@@ -11,19 +11,18 @@ load_env "$ROOT"
 ACTION="${1:-}"
 OVERRIDE_DIR=/run/systemd/system/bluetooth.service.d
 OVERRIDE_PATH="$OVERRIDE_DIR/nuxbt.conf"
-CONTAINER="${NUXBT_DISTROBOX:-steamos-tools}"
-# NUXBT runs Distrobox Fedora /usr/bin/python3.12 (uv standalone Python lacks AF_BLUETOOTH).
-PYTHON_BIN="${NUXBT_PYTHON:-/usr/bin/python3.12}"
+# Host Python (SteamOS) — used by ~/code/nuxbt-host venv for raw HCI set_class
+PYTHON_BIN="${NUXBT_PYTHON:-$(readlink -f /usr/bin/python3)}"
 
 usage() {
   cat <<EOF
 Usage: $0 enable|disable|status
 
-enable   — tmpfs bluetoothd --compat --noplugin=*, setcap on Distrobox python, restart BT
+enable   — tmpfs bluetoothd --compat --noplugin=*, setcap on host python, restart BT
 disable  — remove override, drop setcap, restart BT
-status   — show override + bluetoothd args
+status   — show override + bluetoothd args + python caps
 
-Run on the host. Distrobox cannot systemctl-restart host bluetooth.
+Run on the host.
 EOF
 }
 
@@ -42,10 +41,8 @@ status() {
     echo "override: absent"
   fi
   echo "bluetoothd: $(ps -o args= -C bluetoothd 2>/dev/null || echo '(not running)')"
-  if command -v distrobox >/dev/null 2>&1; then
-    distrobox enter "$CONTAINER" -- bash -lc "getcap $PYTHON_BIN 2>/dev/null || echo python caps: none" 2>/dev/null \
-      | sed 's/^/python caps: /' || echo "python caps: (distrobox unavailable)"
-  fi
+  echo "python: $PYTHON_BIN"
+  echo "python caps: $(getcap "$PYTHON_BIN" 2>/dev/null || echo none)"
 }
 
 enable_override() {
@@ -56,11 +53,10 @@ enable_override() {
 ExecStart=
 ExecStart=/usr/lib/bluetooth/bluetoothd --compat --noplugin=*
 EOF
-  # setcap inside Distrobox (that is the interpreter NUXBT uses)
-  if command -v distrobox >/dev/null 2>&1; then
-    runuser -u "${STEAMOS_USER}" -- distrobox enter "$CONTAINER" -- \
-      bash -lc "sudo setcap 'cap_net_raw,cap_net_admin,cap_net_bind_service+eip' $PYTHON_BIN && getcap $PYTHON_BIN" \
-      || echo "warn: setcap inside Distrobox failed"
+  if [ -x "$PYTHON_BIN" ]; then
+    /usr/bin/setcap 'cap_net_raw,cap_net_admin,cap_net_bind_service+eip' "$PYTHON_BIN"
+  else
+    echo "warn: python not found at $PYTHON_BIN"
   fi
   systemctl daemon-reload
   systemctl restart bluetooth
@@ -73,9 +69,8 @@ disable_override() {
   need_root
   rm -f "$OVERRIDE_PATH"
   rmdir "$OVERRIDE_DIR" 2>/dev/null || true
-  if command -v distrobox >/dev/null 2>&1; then
-    runuser -u "${STEAMOS_USER}" -- distrobox enter "$CONTAINER" -- \
-      bash -lc "sudo setcap -r $PYTHON_BIN 2>/dev/null || true" || true
+  if [ -x "$PYTHON_BIN" ]; then
+    /usr/bin/setcap -r "$PYTHON_BIN" 2>/dev/null || true
   fi
   systemctl daemon-reload
   systemctl restart bluetooth

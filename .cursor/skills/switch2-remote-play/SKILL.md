@@ -27,7 +27,9 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
 
-**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect keep-alive: `/tmp/nuxbt-usb-reconnect.py` on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85` — **connected** (ACL up) without Grip/Order when override is on.
+**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: `/tmp/nuxbt-usb-reconnect.py` or **`scripts/nuxbt-bridge.sh`** (Sunshine → NUXBT) on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85`. After killing a live pad, Switch may need Grip/Order once; with override on, reconnect without Grip is possible.
+
+**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. Reads Sunshine libvirtualhid pad (no `EVIOCGRAB`), maps face buttons by position, feeds NUXBT at 120 Hz. EmuPads off for the session. NUXBT is **Bluetooth HID only** — the USB stick is the host BT radio, not a USB link to the Switch.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).
@@ -150,6 +152,7 @@ Whatever is **most seamless** after reboot and SteamOS updates:
 - EmuPads: **off** for the Switch RP session.
 - Do **not** exclusive-grab the Sunshine pad — Steam needs it for overlay / QAM nav.
 - Map 1:1 sticks, d-pad, ABXY, L/R/ZL/ZR, +/−, Home, stick clicks. No fancy remaps unless required.
+- **Implemented:** `scripts/nuxbt-bridge.sh` / `scripts/nuxbt-sunshine-bridge.py` (prefer `Sunshine (libvirtualhid)*`, skip `28de:11ff` / EmuPads; face buttons by position; 120 Hz `set_controller_input`).
 
 ---
 

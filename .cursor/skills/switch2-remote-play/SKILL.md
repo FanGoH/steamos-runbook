@@ -162,7 +162,7 @@ Whatever is **most seamless** after reboot and SteamOS updates:
 - Do **not** exclusive-grab the Sunshine pad — Steam needs it for overlay / QAM nav.
 - Map 1:1 sticks, d-pad, ABXY, L/R/ZL/ZR, +/−, Home, stick clicks. No fancy remaps unless required.
 - **Implemented:** `scripts/nuxbt-bridge.sh` / `scripts/nuxbt-sunshine-bridge.py` (prefer `Sunshine (libvirtualhid)*`, skip `28de:11ff` / EmuPads; face buttons by position; 120 Hz `set_controller_input`).
-
+- **Rumble (2026-09-24):** Switch HD rumble on the emulated Pro Con → `$XDG_RUNTIME_DIR/nuxbt-switch-rumble` (via `scripts/nuxbt_runtime/sitecustomize.py`) → `SunshineRumble` FF_RUMBLE on the Sunshine pad → Moonlight. `NUXBT_RUMBLE=0` disables. Amplitude decode is approximate (HD packing). Muted with Steam QAM/overlay.
 ---
 
 ## Video stack (after controller MVP)
@@ -236,6 +236,7 @@ Ordered by expected impact. Keep additive — do not rewrite dual-stream / EmuPa
 
 | Idea | Notes |
 |------|--------|
+| **Rumble fidelity** | HD rumble decode is approximate; refine bitfields / per-motor L→strong R→weak if games feel weak/strong wrong. `NUXBT_RUMBLE=0` to disable. |
 | **Better capture card** | MS2109 USB2 MJPEG is the main host-side video tax. **Elgato HD60 X** (~45–65 ms capture, Linux UVC) or **Magewell USB Capture HDMI Gen 2 / 4K Plus**; cheap **MS2130 / UGREEN “4K30”** USB3 helps 1080p60 more than lag. UGREEN alone will not halve the ~141 ms pad→V4L2 median. |
 | **Dock at 1080p60** | Avoid 4K-in → card downscale; small win, free to try. |
 | **Host `mpv` (pacman)** | AppImage is stuck on `vo=x11` (no GLX/GBM/`libsensors` under gamescope). System mpv may use `vo=gpu` and shave a little viewer delay. Needs `steamos-readonly` + sudo — `record_manual` if desired. |

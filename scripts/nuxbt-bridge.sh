@@ -50,6 +50,9 @@ PY
 export NUXBT_ADAPTER="${NUXBT_ADAPTER:-/org/bluez/hci1}"
 export NUXBT_SWITCH_MAC="${NUXBT_SWITCH_MAC:-48:F1:EB:C3:F4:85}"
 
+# Site hook: Switch→file rumble for Sunshine FF forward (child process imports nuxbt).
+export PYTHONPATH="$ROOT/scripts/nuxbt_runtime${PYTHONPATH:+:$PYTHONPATH}"
+
 # Shared Steam QAM/overlay mute flag ($XDG_RUNTIME_DIR/emupads-mute). The bridge
 # also polls gamescope atoms; this watcher is the proven EmuPads path.
 "$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true

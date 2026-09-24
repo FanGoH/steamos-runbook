@@ -419,10 +419,9 @@ def main() -> int:
     use_advertise = bool(args.no_reconnect)
     reconnect_addr: str | None = None if use_advertise else args.switch
     idx = _spawn_controller(nx, args.adapter, reconnect_address=reconnect_addr)
-    try:
-        wait_connected(nx, idx, timeout=0.0)
-    except SystemExit as e:
-        _log(f"initial connect failed ({e}); will keep trying in loop")
+    # Do not block forever here — the main loop owns reconnect/advertise + want-grip.
+    if nx.state.get(idx, {}).get("state") != "connected":
+        _log(f"initial state={nx.state.get(idx, {}).get('state')} — entering loop (auto-recover / want-grip live)")
 
     grip_until = 0.0
     pending_grip_lr = bool(args.grip)

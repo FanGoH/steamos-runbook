@@ -8,6 +8,7 @@ LOG_DIR="${SWITCH2_CAPTURE_LOG_DIR:-$ROOT/logs}"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/switch2-capture-viewer.log"
 HELPER="$ROOT/scripts/hide-controllers-sysfs.sh"
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/switch2-capture-viewer.lock"
 
 # Steam non-Steam launches inject a runtime that breaks host V4L2/ffplay.
 unset LD_PRELOAD || true
@@ -102,65 +103,111 @@ except Exception:
     raise SystemExit
 for o in data:
     p = (o.get("info") or {}).get("props") or {}
-    path = str(p.get("object.path") or "") + str(p.get("api.v4l2.path") or "")
+    path = " ".join(
+        str(p.get(k) or "")
+        for k in ("object.path", "api.v4l2.path", "node.name", "device.name")
+    )
     if dev and dev in path:
         print(o.get("id"))
 ')
+  sleep 0.3
 }
 
-# Prior Steam Play / agent ffplay leaves /dev/video0 busy → instant exit = "crash".
-kill_stale_viewers() {
+# Only kill leftover *ffplay* holders. Never pgrep -f the script name —
+# Steam's reaper cmdline embeds this path; killing it looks like an instant crash.
+kill_stale_ffplay() {
   local self=$$
   local pid cmd
   while read -r pid; do
     [ -n "$pid" ] || continue
     [ "$pid" = "$self" ] && continue
-    cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-    case "$cmd" in
-      *switch2-capture-viewer.sh*|*"/dev/video"*|*v4l2*)
-        log "stopping stale viewer pid $pid"
-        kill "$pid" 2>/dev/null || true
-        ;;
-    esac
-  done < <(pgrep -f 'switch2-capture-viewer\.sh|ffplay.*(/dev/video|v4l2)' || true)
-  # ffplay only (exact name) that still holds the capture node
-  while read -r pid; do
-    [ -n "$pid" ] || continue
+    # Skip anything in our own process tree (steam-launch-wrapper / reaper / bash).
+    if [ -r "/proc/$pid/stat" ]; then
+      # If pid is an ancestor of self, leave it alone.
+      local walk=$self
+      while [ "$walk" -gt 1 ]; do
+        [ "$walk" = "$pid" ] && continue 2
+        walk="$(awk '{print $4}' "/proc/$walk/stat" 2>/dev/null || echo 1)"
+      done
+    fi
     cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *ffplay*"$DEV"*|*ffplay*v4l2*|*ffplay*/dev/video*)
-        log "stopping stale ffplay pid $pid"
-        kill "$pid" 2>/dev/null || true
+      *ffplay*)
+        case "$cmd" in
+          *v4l2*|*"/dev/video"*|*"$DEV"*)
+            log "stopping stale ffplay pid $pid"
+            kill "$pid" 2>/dev/null || true
+            sleep 0.2
+            kill -9 "$pid" 2>/dev/null || true
+            ;;
+        esac
         ;;
     esac
   done < <(pgrep -x ffplay || true)
-  sleep 0.4
+  sleep 0.3
+}
+
+# v4l2-ctl often exits 0 even when STREAMON printed EBUSY — parse output.
+probe_stream() {
+  local dev="$1" out
+  out="$(timeout 3 v4l2-ctl -d "$dev" --stream-mmap=1 --stream-count=2 --stream-poll 2>&1 || true)"
+  if printf '%s' "$out" | grep -qiE 'busy|Device or resource|VIDIOC_STREAMON returned -1'; then
+    return 1
+  fi
+  if printf '%s' "$out" | grep -qiE 'error|fail|No such device'; then
+    return 1
+  fi
+  # Success if we saw any frame / no busy
+  return 0
+}
+
+pci_rebind_card() {
+  local busid
+  busid="$(find_usb_busid || true)"
+  [ -n "$busid" ] || return 1
+  [ -x "$HELPER" ] || return 1
+  log "STREAMON busy — PCI-rebinding capture USB $busid"
+  sudo -n "$HELPER" usb-pci-rebind "$busid" >/dev/null 2>&1 || return 1
+  sleep 2.5
+  return 0
 }
 
 ensure_streamable() {
-  local dev="$1" busid
+  local dev="$1" tries=0
+  kill_stale_ffplay
   release_pipewire_v4l "$dev"
-  kill_stale_viewers
-  # DEV may be set after find; refresh kill match for this node
-  DEV="$dev" kill_stale_viewers
-  if timeout 2 v4l2-ctl -d "$dev" --stream-mmap=1 --stream-count=1 >/dev/null 2>&1; then
-    return 0
-  fi
-  log "STREAMON busy — PCI-rebinding capture USB controller"
-  busid="$(find_usb_busid || true)"
-  if [ -n "$busid" ] && [ -x "$HELPER" ]; then
-    sudo -n "$HELPER" usb-pci-rebind "$busid" >/dev/null 2>&1 || true
-    sleep 2
+  while [ "$tries" -lt 3 ]; do
+    tries=$((tries + 1))
+    if probe_stream "$dev"; then
+      return 0
+    fi
+    log "probe $tries: $dev busy — reclaim"
+    kill_stale_ffplay
     release_pipewire_v4l "$dev"
-    kill_stale_viewers
-  fi
-  if timeout 2 v4l2-ctl -d "$dev" --stream-mmap=1 --stream-count=1 >/dev/null 2>&1; then
-    return 0
+    sleep 0.5
+  done
+  if pci_rebind_card; then
+    # Device node path may stay the same after rebind.
+    sleep 1
+    kill_stale_ffplay
+    release_pipewire_v4l "$dev"
+    if probe_stream "$dev"; then
+      return 0
+    fi
   fi
   log "error: $dev still busy after reclaim — refusing to start (Steam would show a crash)"
-  log "hint: sudo $HELPER usb-pci-rebind \${busid:-5-2}  or unplug/replug the stick"
+  log "hint: $ROOT/scripts/reset-switch2-capture.sh"
   return 1
 }
+
+# Single Steam Play at a time (second Play used to SIGTERM the reaper via bad pgrep).
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  log "another Switch capture viewer holds $LOCK — taking over"
+  # Soft: kill only ffplay; then wait for lock
+  kill_stale_ffplay
+  flock 9
+fi
 
 if ! command -v ffplay >/dev/null 2>&1; then
   log "ffplay missing"
@@ -169,7 +216,7 @@ fi
 
 DEV="$(find_capture_dev)" || {
   log "MacroSilicon capture card ${USB_VID}:${USB_PID} not found (/dev/video*)"
-  log "hint: sudo $HELPER usb-pci-rebind 5-2   # or unplug/replug the stick"
+  log "hint: $ROOT/scripts/reset-switch2-capture.sh"
   exit 2
 }
 log "capture device: $DEV (${WIDTH}x${HEIGHT}@${FPS} MJPG)"
@@ -177,17 +224,40 @@ if ! ensure_streamable "$DEV"; then
   exit 3
 fi
 
-# gamescope / Steam set DISPLAY; do not override.
+# Game Mode: Steam usually sets DISPLAY=:0. Prefer it if unset.
+if [ -z "${DISPLAY:-}" ]; then
+  if [ -S /tmp/.X11-unix/X0 ]; then
+    export DISPLAY=:0
+  elif [ -S /tmp/.X11-unix/X1 ]; then
+    export DISPLAY=:1
+  fi
+  log "DISPLAY unset — using $DISPLAY"
+fi
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 
-log "starting fullscreen ffplay (video-only; capture audio deferred)"
+log "starting fullscreen ffplay on DISPLAY=${DISPLAY:-?} (video-only)"
 # Note: ffplay multi -i (v4l2+pulse) mis-parses and exits immediately — keep video only.
-# Keep a tiny wrapper so a V4L2 busy/error is logged before Steam marks Exit.
+set +e
 ffplay -hide_banner -loglevel warning \
   -fflags nobuffer -flags low_delay -framedrop \
   -fs -alwaysontop -an \
   -f v4l2 -input_format mjpeg -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" \
   -i "$DEV" 2>>"$LOG"
 rc=$?
+set -e
 log "ffplay exited rc=$rc"
+# Busy after probe race — one reclaim + retry
+if [ "$rc" -eq 0 ] || [ "$rc" -eq 1 ]; then
+  if tail -n 5 "$LOG" | grep -qi 'Device or resource busy'; then
+    log "ffplay hit busy — reclaim and retry once"
+    ensure_streamable "$DEV" || exit 3
+    ffplay -hide_banner -loglevel warning \
+      -fflags nobuffer -flags low_delay -framedrop \
+      -fs -alwaysontop -an \
+      -f v4l2 -input_format mjpeg -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" \
+      -i "$DEV" 2>>"$LOG"
+    rc=$?
+    log "ffplay retry exited rc=$rc"
+  fi
+fi
 exit "$rc"

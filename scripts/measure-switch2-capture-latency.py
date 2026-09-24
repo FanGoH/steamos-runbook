@@ -31,12 +31,63 @@ THRESH = float(os.environ.get("SWITCH2_LATENCY_THRESH", "0.15"))
 SETTLE_S = float(os.environ.get("SWITCH2_LATENCY_SETTLE", "0.45"))
 CAPTURE_S = float(os.environ.get("SWITCH2_LATENCY_CAPTURE", "1.8"))
 HOLD_S = float(os.environ.get("SWITCH2_LATENCY_HOLD", "0.7"))
-DEV = os.environ.get("SWITCH2_CAPTURE_DEV", "/dev/video0")
+DEV = os.environ.get("SWITCH2_CAPTURE_DEV", "")
 CAP_W = os.environ.get("SWITCH2_CAPTURE_WIDTH", "1280")
 CAP_H = os.environ.get("SWITCH2_CAPTURE_HEIGHT", "720")
+USB_VID = os.environ.get("SWITCH2_CAPTURE_USB_VID", "534d")
+USB_PID = os.environ.get("SWITCH2_CAPTURE_USB_PID", "2109")
 FRAME = WIDTH * HEIGHT
 TILE = 40  # px; max-tile MAD catches small Test Input highlights
 VIEWER = ROOT / "scripts" / "switch2-capture-viewer.sh"
+
+
+def find_capture_dev() -> str:
+    """Resolve MS2109 capture node (number can flip video0↔video1 after reclaim)."""
+    if DEV:
+        return DEV
+    import re
+
+    for vd in sorted(Path("/sys/class/video4linux").glob("video*")):
+        resolved = vd.resolve()
+        parent = resolved
+        vid = pid = ""
+        while parent != parent.parent:
+            idv = parent / "idVendor"
+            idp = parent / "idProduct"
+            if idv.is_file() and idp.is_file():
+                vid = idv.read_text().strip()
+                pid = idp.read_text().strip()
+                break
+            parent = parent.parent
+        if vid != USB_VID or pid != USB_PID:
+            continue
+        node = f"/dev/{vd.name}"
+        try:
+            out = subprocess.check_output(
+                ["v4l2-ctl", "-d", node, "--list-formats-ext"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        if re.search(r"MJPG|Motion-JPEG|YUYV", out):
+            return node
+    raise RuntimeError(
+        f"MacroSilicon capture card {USB_VID}:{USB_PID} not found under /dev/video*"
+    )
+
+
+def wait_capture_dev(timeout_s: float = 5.0) -> str:
+    deadline = time.time() + timeout_s
+    last_err = "not found"
+    while time.time() < deadline:
+        try:
+            return find_capture_dev()
+        except RuntimeError as e:
+            last_err = str(e)
+            time.sleep(0.15)
+    raise RuntimeError(last_err)
 
 
 def mean_abs_diff(a: bytes, b: bytes) -> float:
@@ -156,9 +207,10 @@ def start_viewer() -> None:
 
 
 class FrameStream:
-    def __init__(self, mode: str, display: str) -> None:
+    def __init__(self, mode: str, display: str, dev: str) -> None:
         self.mode = mode
         self.display = display
+        self.dev = dev
         self.proc: subprocess.Popen | None = None
         self._open()
 
@@ -178,7 +230,7 @@ class FrameStream:
             "-use_wallclock_as_timestamps", "1",
             "-f", "v4l2", "-input_format", "mjpeg",
             "-video_size", f"{CAP_W}x{CAP_H}", "-framerate", str(FPS),
-            "-i", DEV, "-an",
+            "-i", self.dev, "-an",
             "-vsync", "0",
             "-vf", f"scale={WIDTH}:{HEIGHT},format=gray",
             "-f", "rawvideo", "-pix_fmt", "gray", "-",
@@ -227,6 +279,11 @@ class FrameStream:
         except RuntimeError:
             print("ffmpeg pipe closed — reopening capture…", flush=True)
             time.sleep(0.3)
+            if self.mode == "v4l2":
+                try:
+                    self.dev = wait_capture_dev(4.0)
+                except RuntimeError:
+                    pass
             self._open()
             return self.read_frame()
 
@@ -273,10 +330,26 @@ def main() -> int:
     mode = "desktop" if args.desktop else "v4l2"
 
     stopped: list[int] = []
+    cap_dev = ""
     if mode == "v4l2" and not args.keep_ffplay:
         stopped = stop_ffplay()
         if stopped:
-            print(f"Stopped ffplay {stopped} to open {DEV} (viewer restarts after).")
+            print(f"Stopped ffplay {stopped} to open capture device (viewer restarts after).")
+        try:
+            cap_dev = wait_capture_dev(5.0)
+        except RuntimeError as e:
+            print(f"FAIL: {e}", file=sys.stderr)
+            if stopped:
+                start_viewer()
+            return 2
+        print(f"Using capture device {cap_dev}")
+    elif mode == "v4l2":
+        try:
+            cap_dev = find_capture_dev()
+        except RuntimeError as e:
+            print(f"FAIL: {e}", file=sys.stderr)
+            return 2
+        print(f"Using capture device {cap_dev}")
 
     print(f"Sampling {mode} ({WIDTH}x{HEIGHT} gray @ {FPS}fps)")
     print("Pipeline: NUXBT/pad → Switch UI → HDMI → MS2109" + (
@@ -286,7 +359,7 @@ def main() -> int:
 
     stream: FrameStream | None = None
     try:
-        stream = FrameStream(mode, args.display)
+        stream = FrameStream(mode, args.display, cap_dev or ":1")
         _, probe = stream.read_frame_reopen()
         mean = sum(probe) / len(probe)
         print(f"Probe frame mean luminance={mean:.1f} (0=black)")

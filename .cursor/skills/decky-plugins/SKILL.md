@@ -34,6 +34,7 @@ the files already looked installed.
 | `decky/PadHide/` | `scripts/ensure-pad-hide-decky.sh` | `Pad Hide` |
 | `decky/Playbook/` | `scripts/ensure-playbook-decky.sh` | `Playbook` |
 | `decky/FGPC/` | `scripts/ensure-fgpc-decky.sh` | `FGPC` |
+| `decky/Switch2/` | `scripts/ensure-switch2-decky.sh` | `Switch 2` |
 | `decky/EmuQuick/` | `scripts/ensure-emu-quick-decky.sh` | `Emu Quick` |
 | `decky/sunshine-ds/` | `scripts/ensure-sunshine-ds-decky.sh` | `Sunshine DS` |
 | Tailscale Control | `scripts/ensure-tailscale-control.sh` | `Tailscale Control` |

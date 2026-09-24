@@ -8,6 +8,12 @@ LOG_DIR="${SWITCH2_CAPTURE_LOG_DIR:-$ROOT/logs}"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/switch2-capture-viewer.log"
 
+# Steam non-Steam launches inject a runtime that breaks host V4L2/ffplay.
+unset LD_PRELOAD || true
+export LD_LIBRARY_PATH=""
+export STEAM_RUNTIME="${STEAM_RUNTIME:-0}"
+export PATH="/usr/bin:/bin:${PATH:-}"
+
 USB_VID="${SWITCH2_CAPTURE_USB_VID:-534d}"
 USB_PID="${SWITCH2_CAPTURE_USB_PID:-2109}"
 WIDTH="${SWITCH2_CAPTURE_WIDTH:-1920}"
@@ -18,15 +24,18 @@ AUDIO="${SWITCH2_CAPTURE_AUDIO:-1}"
 log() { printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$LOG" >&2; }
 
 find_capture_dev() {
-  local vd name parent vid pid
+  local vd resolved name parent vid pid
   if [ -n "${SWITCH2_CAPTURE_DEV:-}" ]; then
     printf '%s\n' "$SWITCH2_CAPTURE_DEV"
     return 0
   fi
   for vd in /sys/class/video4linux/video*; do
     [ -e "$vd" ] || continue
+    # videoN under /sys/class is a symlink — walk the real USB path.
+    resolved="$(readlink -f "$vd" 2>/dev/null || true)"
+    [ -n "$resolved" ] || resolved="$vd"
     name="$(cat "$vd/name" 2>/dev/null || true)"
-    parent="$vd"
+    parent="$resolved"
     vid="" pid=""
     while [ "$parent" != "/" ]; do
       if [ -f "$parent/idVendor" ]; then
@@ -37,20 +46,18 @@ find_capture_dev() {
       parent="$(dirname "$parent")"
     done
     if [ "$vid" = "$USB_VID" ] && [ "$pid" = "$USB_PID" ]; then
-      # Prefer the capture node (video0); skip metadata-only siblings when possible.
-      if v4l2-ctl -d "/dev/${vd##*/}" --all 2>/dev/null | grep -q 'Video Capture'; then
-        # Prefer MJPG-capable capture (not the empty metadata node).
-        if v4l2-ctl -d "/dev/${vd##*/}" --list-formats-ext 2>/dev/null | grep -q "MJPG\|Motion-JPEG\|YUYV"; then
-          printf '%s\n' "/dev/${vd##*/}"
-          return 0
-        fi
+      if v4l2-ctl -d "/dev/${vd##*/}" --list-formats-ext 2>/dev/null | grep -qE 'MJPG|Motion-JPEG|YUYV'; then
+        printf '%s\n' "/dev/${vd##*/}"
+        return 0
       fi
     fi
   done
   # Fallback: first node matching USB id
   for vd in /sys/class/video4linux/video*; do
     [ -e "$vd" ] || continue
-    parent="$vd"
+    resolved="$(readlink -f "$vd" 2>/dev/null || true)"
+    [ -n "$resolved" ] || resolved="$vd"
+    parent="$resolved"
     while [ "$parent" != "/" ]; do
       if [ -f "$parent/idVendor" ]; then
         vid="$(cat "$parent/idVendor")"
@@ -87,9 +94,6 @@ wait_for_device() {
   return 0
 }
 
-# Drop unused FF_AUDIO array remnant
-:
-
 if ! command -v ffplay >/dev/null 2>&1; then
   log "ffplay missing"
   exit 1
@@ -103,12 +107,10 @@ log "capture device: $DEV (${WIDTH}x${HEIGHT}@${FPS} MJPG)"
 wait_for_device "$DEV" || true
 
 PULSE_SRC=""
-FF_AUDIO=(-an)
 if [ "$AUDIO" = "1" ] && command -v pactl >/dev/null 2>&1; then
   PULSE_SRC="$(find_pulse_source || true)"
   if [ -n "$PULSE_SRC" ]; then
     log "audio source: $PULSE_SRC"
-    FF_AUDIO=(-f pulse -i "$PULSE_SRC")
   else
     log "warn: no MacroSilicon Pulse source; video only"
   fi

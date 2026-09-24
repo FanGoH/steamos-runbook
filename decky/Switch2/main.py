@@ -85,7 +85,8 @@ def _run(args: list[str], timeout: int = 45) -> subprocess.CompletedProcess:
         f"STEAMOS_PLAYBOOK_DIR={_playbook()}",
     ]
     inner = [*prefix, "python3", _script(), *args]
-    if os.getuid() == 0:
+    # PluginLoader is root — always drop to deck (BlueZ + tmux live in the user session).
+    if os.geteuid() == 0:
         cmd = ["runuser", "-u", "deck", "--", *inner]
     else:
         cmd = inner
@@ -97,13 +98,21 @@ def _json_from(proc: subprocess.CompletedProcess) -> dict:
     text = (proc.stdout or "").strip()
     if not text:
         err = (proc.stderr or "").strip() or f"exit {proc.returncode}"
+        _log(f"empty stdout rc={proc.returncode} err={err[:300]}")
         return {"ok": False, "message": err, "rc": proc.returncode}
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return {"ok": False, "message": (proc.stderr or text)[:400], "rc": proc.returncode}
+        err = (proc.stderr or text)[:400]
+        _log(f"bad json rc={proc.returncode}: {err}")
+        return {"ok": False, "message": err, "rc": proc.returncode}
     if isinstance(data, dict) and "ok" not in data:
         data["ok"] = proc.returncode == 0
+    if isinstance(data, dict):
+        _log(
+            f"result ok={data.get('ok')} via={data.get('via')} "
+            f"state={data.get('state')} msg={(data.get('message') or '')[:160]}"
+        )
     return data if isinstance(data, dict) else {"ok": False, "message": "bad json"}
 
 
@@ -112,18 +121,19 @@ class Plugin:
         return _json_from(_run(["status"], timeout=15))
 
     async def start(self) -> dict:
-        return _json_from(_run(["start"], timeout=60))
+        # Hard start can wait on BlueZ; allow headroom.
+        return _json_from(_run(["start"], timeout=90))
 
     async def stop(self) -> dict:
-        return _json_from(_run(["stop"], timeout=20))
+        return _json_from(_run(["stop"], timeout=30))
 
     async def grip(self) -> dict:
-        """Change Grip/Order: advertise + hold L+R on NUXBT."""
-        return _json_from(_run(["grip"], timeout=60))
+        """Change Grip/Order: hard restart advertise + L+R (same as CLI)."""
+        return _json_from(_run(["grip"], timeout=90))
 
     async def reconnect(self) -> dict:
-        """MAC reconnect (Switch on, not on Grip/Order)."""
-        return _json_from(_run(["reconnect"], timeout=60))
+        """MAC reconnect via hard bridge restart (flag-only was too weak for QAM)."""
+        return _json_from(_run(["reconnect"], timeout=90))
 
     async def _main(self) -> None:
-        _log(f"Switch 2 / NUXBT plugin loaded; playbook={_playbook()}")
+        _log(f"Switch 2 / NUXBT plugin loaded; playbook={_playbook()} euid={os.geteuid()}")

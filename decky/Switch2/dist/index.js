@@ -146,7 +146,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.6, fontSize: "0.78em", lineHeight: 1.35 },
               children:
-                "On Change Grip/Order use Grip / Order. Day-to-day use Reconnect. Does not change EmuPads or dual-stream.",
+                "Reconnect / Grip always hard-restart the bridge (same as SSH). Close overlay so inputs reach Switch.",
             }),
           }),
         ],

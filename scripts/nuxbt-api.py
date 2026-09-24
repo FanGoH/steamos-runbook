@@ -195,21 +195,54 @@ def cmd_status(_: argparse.Namespace) -> dict:
 
 def _stop_bridge() -> None:
     _tmux("kill-session", "-t", SESSION)
-    # Best-effort: only the bridge script (not agent shells)
-    proc = subprocess.run(
-        ["pgrep", "-f", "scripts/nuxbt-sunshine-bridge.py"],
-        capture_output=True,
-        text=True,
+    # Kill every bridge helper — soft respawn can leave several python children.
+    patterns = (
+        "scripts/nuxbt-sunshine-bridge.py",
+        "scripts/nuxbt-bridge.sh",
     )
-    for pid in (proc.stdout or "").split():
-        try:
-            os.kill(int(pid), signal.SIGTERM)
-        except (ProcessLookupError, ValueError, PermissionError):
-            pass
-    time.sleep(0.6)
+    for pat in patterns:
+        proc = subprocess.run(
+            ["pgrep", "-f", pat],
+            capture_output=True,
+            text=True,
+        )
+        for pid in (proc.stdout or "").split():
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except (ProcessLookupError, ValueError, PermissionError):
+                pass
+    time.sleep(0.8)
+    for pat in patterns:
+        proc = subprocess.run(
+            ["pgrep", "-f", pat],
+            capture_output=True,
+            text=True,
+        )
+        for pid in (proc.stdout or "").split():
+            try:
+                os.kill(int(pid), signal.SIGKILL)
+            except (ProcessLookupError, ValueError, PermissionError):
+                pass
+    time.sleep(0.3)
 
 
-def _start_bridge(extra: list[str]) -> dict:
+def _wait_connected(timeout_s: float = 12.0) -> str:
+    """Poll bridge log / process until connected or timeout."""
+    deadline = time.time() + timeout_s
+    last = "unknown"
+    while time.time() < deadline:
+        tail = _tail_out(30)
+        st = _parse_state(tail) or last
+        last = st or last
+        if st == "connected":
+            return st
+        if not bridge_running():
+            last = "stopped"
+        time.sleep(0.4)
+    return last
+
+
+def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
     if not BRIDGE_SH.is_file():
         return _err(f"missing {BRIDGE_SH}")
     _stop_bridge()
@@ -217,9 +250,8 @@ def _start_bridge(extra: list[str]) -> dict:
         OUT.write_text("", encoding="utf-8")
     except OSError:
         pass
-    # Prefer portal tmux so agents can inspect; fall back to plain tmux
+    # Prefer portal tmux so agents can inspect; fall back to plain tmux / no-tmux
     conf = ["-f", TMUX_CONF] if Path(TMUX_CONF).is_file() else []
-    # Fresh session running the bridge
     _tmux("kill-session", "-t", SESSION)
     cmd = [
         "tmux",
@@ -237,7 +269,7 @@ def _start_bridge(extra: list[str]) -> dict:
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     if proc.returncode != 0:
-        # plain bash background fallback
+        # plain bash background fallback (no portal tmux)
         log = open(OUT, "w", encoding="utf-8")
         bg = subprocess.Popen(
             ["bash", "-lc", f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {' '.join(extra)}"],
@@ -246,22 +278,31 @@ def _start_bridge(extra: list[str]) -> dict:
             cwd=str(ROOT),
             start_new_session=True,
         )
+        state = _wait_connected(12.0) if wait else "started"
         return _ok(
-            message=f"started pid {bg.pid} (no tmux)",
+            message=f"started pid {bg.pid} (no tmux); state={state}",
             pid=bg.pid,
             mode="grip" if "--grip" in extra else "reconnect",
+            state=state,
+            via="hard",
+            log_tail=_tail_out(25),
         )
-    # Wait briefly for state
     for _ in range(20):
         time.sleep(0.5)
         if bridge_running():
             break
-    return _ok(
-        message="started " + ("grip/advertise" if "--grip" in extra else "reconnect"),
-        running=bridge_running(),
-        mode="grip" if "--grip" in extra else "reconnect",
-        log_tail=_tail_out(20),
-    )
+    state = _wait_connected(12.0) if wait else ("running" if bridge_running() else "unknown")
+    mode = "grip/advertise" if "--grip" in extra else "reconnect"
+    ok = state == "connected" or bridge_running()
+    return {
+        "ok": ok,
+        "message": f"started {mode}; state={state}",
+        "running": bridge_running(),
+        "mode": "grip" if "--grip" in extra else "reconnect",
+        "state": state,
+        "via": "hard",
+        "log_tail": _tail_out(25),
+    }
 
 
 def cmd_start(ns: argparse.Namespace) -> dict:
@@ -271,11 +312,12 @@ def cmd_start(ns: argparse.Namespace) -> dict:
 
 def cmd_stop(_: argparse.Namespace) -> dict:
     _stop_bridge()
-    return _ok(message="stopped", running=bridge_running())
+    return _ok(message="stopped", running=bridge_running(), via="hard")
 
 
-def cmd_grip(_: argparse.Namespace) -> dict:
-    if bridge_running():
+def cmd_grip(ns: argparse.Namespace) -> dict:
+    """Advertise + L+R. Default: hard restart (QAM-reliable). --soft = flag only."""
+    if getattr(ns, "soft", False) and bridge_running():
         WANT_GRIP.touch()
         return _ok(
             message="requested advertise + L+R (nuxbt-want-grip)",
@@ -285,8 +327,9 @@ def cmd_grip(_: argparse.Namespace) -> dict:
     return _start_bridge(["--grip"])
 
 
-def cmd_reconnect(_: argparse.Namespace) -> dict:
-    if bridge_running():
+def cmd_reconnect(ns: argparse.Namespace) -> dict:
+    """MAC reconnect. Default: hard restart (QAM-reliable). --soft = flag only."""
+    if getattr(ns, "soft", False) and bridge_running():
         WANT_RECONNECT.touch()
         return _ok(
             message="requested MAC reconnect (nuxbt-want-reconnect)",
@@ -303,8 +346,18 @@ def main() -> int:
     p_start = sub.add_parser("start")
     p_start.add_argument("--grip", action="store_true")
     sub.add_parser("stop")
-    sub.add_parser("grip")
-    sub.add_parser("reconnect")
+    p_grip = sub.add_parser("grip")
+    p_grip.add_argument(
+        "--soft",
+        action="store_true",
+        help="only touch nuxbt-want-grip (weaker; default is hard restart)",
+    )
+    p_re = sub.add_parser("reconnect")
+    p_re.add_argument(
+        "--soft",
+        action="store_true",
+        help="only touch nuxbt-want-reconnect (weaker; default is hard restart)",
+    )
     ns = ap.parse_args()
     handlers = {
         "status": cmd_status,

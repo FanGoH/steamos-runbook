@@ -38,6 +38,13 @@ SESSION = "nuxbt-bridge"
 UNIT = "nuxbt-bridge.service"
 SWITCH_MAC = os.environ.get("NUXBT_SWITCH_MAC", "48:F1:EB:C3:F4:85")
 ADAPTER = os.environ.get("NUXBT_ADAPTER", "/org/bluez/hci1")
+CONTROLLER_MAC_FILE = Path(
+    os.environ.get(
+        "NUXBT_CONTROLLER_MAC_FILE",
+        str(HOME / ".config" / "nuxbt" / "controller-mac"),
+    )
+)
+PIN_MAC_PY = ROOT / "scripts" / "nuxbt-pin-controller-mac.py"
 
 
 def _ok(data: dict | None = None, **extra) -> dict:
@@ -86,6 +93,8 @@ def _user_bus_env() -> dict[str, str]:
     env["STEAMOS_PLAYBOOK_DIR"] = str(ROOT)
     env["NUXBT_ADAPTER"] = ADAPTER
     env["NUXBT_SWITCH_MAC"] = SWITCH_MAC
+    if os.environ.get("NUXBT_CONTROLLER_MAC"):
+        env["NUXBT_CONTROLLER_MAC"] = os.environ["NUXBT_CONTROLLER_MAC"]
     env["PATH"] = env.get("PATH") or "/usr/bin:/bin"
     # Ensure common bins even if PluginLoader handed us a root-ish PATH.
     for p in ("/usr/bin", "/bin", "/usr/local/bin", str(HOME / ".local" / "bin")):
@@ -176,12 +185,37 @@ def _sunshine_source() -> dict | None:
     return None
 
 
+def _controller_mac_info() -> dict:
+    """Resolve pinned controller BD_ADDR (no HCI write)."""
+    env = _user_bus_env()
+    py = HOME / "code" / "nuxbt-host" / "bin" / "python3-nuxbt"
+    if not py.is_file():
+        py = Path(sys.executable)
+    try:
+        proc = subprocess.run(
+            [str(py), str(PIN_MAC_PY), "--print"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env=env,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout.strip().splitlines()[-1])
+        return {
+            "ok": False,
+            "message": (proc.stderr or proc.stdout or "pin --print failed")[:200],
+        }
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
 def cmd_status(_: argparse.Namespace) -> dict:
     running = bridge_running()
     tail = _tail_out()
     state = _parse_state(tail) if running else ""
     switch = _bluez_switch()
     source = _sunshine_source()
+    ctrl = _controller_mac_info()
     messages = []
     if running and state:
         messages.append(f"NUXBT {state}")
@@ -201,11 +235,17 @@ def cmd_status(_: argparse.Namespace) -> dict:
         messages.append(f"source {source.get('name')}")
     else:
         messages.append("no Sunshine pad")
+    ctrl_mac = ctrl.get("controller_mac") or switch.get("adapter_address") or ""
+    if ctrl_mac:
+        messages.append(f"controller MAC {ctrl_mac}")
     return _ok(
         running=running,
         state=state or ("stopped" if not running else "unknown"),
         adapter=ADAPTER,
         switch_mac=SWITCH_MAC,
+        controller_mac=ctrl_mac,
+        controller_mac_source=ctrl.get("source"),
+        controller_mac_file=str(CONTROLLER_MAC_FILE),
         switch=switch,
         source=source,
         want_grip=WANT_GRIP.is_file(),
@@ -213,8 +253,9 @@ def cmd_status(_: argparse.Namespace) -> dict:
         log_tail=tail[-800:],
         message="; ".join(messages),
         tips=[
-            "Grip/Order: stay on that Switch screen, then Grip (advertise + L+R).",
-            "Day-to-day: Start / Reconnect (MAC). Auto-recovers on drop.",
+            "Day-to-day: Start / Reconnect (same controller MAC — no Grip).",
+            "Grip/Order only for first pair, after changing ~/.config/nuxbt/controller-mac, or after a BlueZ wipe.",
+            "Do not randomize NUXBT_CONTROLLER_MAC — a new BD_ADDR forces Grip.",
             f"SSH: touch {WANT_GRIP} or {WANT_RECONNECT}",
         ],
     )
@@ -321,6 +362,10 @@ def _launch_via_systemd(extra: list[str]) -> tuple[bool, str]:
         "-lc",
         inner,
     ]
+    ctrl_env = os.environ.get("NUXBT_CONTROLLER_MAC")
+    if ctrl_env:
+        # Insert before /bin/bash
+        cmd.insert(-3, f"--setenv=NUXBT_CONTROLLER_MAC={ctrl_env}")
     proc = subprocess.run(
         cmd, capture_output=True, text=True, timeout=20, env=_user_bus_env()
     )

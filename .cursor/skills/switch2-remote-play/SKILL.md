@@ -31,7 +31,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **Latency (pad → V4L2, Test Input Devices, 2026-09-24):** `scripts/measure-switch2-capture-latency.py` — median ~**141 ms** (n=6; mean ~340 ms with outliers; min ~29 ms max ~833 ms). Includes BT/NUXBT + Switch UI + HDMI + MS2109 MJPEG dequeue. **Not** included: mpv/ffplay, gamescope, Sunshine encode, Wi‑Fi, Moonlight decode (~+30–80 ms rough). Native Switch press→pixels is already a large share; software will not halve this number alone.
 
-**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: **`scripts/nuxbt-api.py reconnect|grip`** (hard via `systemd-run --user`) or `scripts/nuxbt-bridge.sh --grip` on Change Grip/Order. After killing a live pad / BlueZ wedge (`DBus NoReply`), re-run `nuxbt-bluez enable` then **Grip** while Switch is on Controllers → Change Grip/Order. Kill leftover bridge PIDs by argv (`…/nuxbt-sunshine-bridge.py` as its own arg) — never `pgrep -f` / never match agent shells that embed the script path in `bash -c`.
+**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). **Controller MAC is pinned** in `~/.config/nuxbt/controller-mac` (first run locks the live dongle Address; `scripts/nuxbt-pin-controller-mac.py` re-applies on every bridge start). Do **not** randomize — a new BD_ADDR forces Change Grip/Order. Optional Nintendo OUI: `NUXBT_CONTROLLER_MAC=7C:BB:8A:DE:F0:01` once, Grip once, then leave it. Reconnect: **`scripts/nuxbt-api.py reconnect|grip`** (hard via `systemd-run --user`) or `scripts/nuxbt-bridge.sh --grip` on Change Grip/Order. After a BlueZ wedge (`DBus NoReply`), re-run `nuxbt-bluez enable` then **Reconnect** first (same MAC); **Grip** only if reconnect fails while Switch is on Controllers → Change Grip/Order. Kill leftover bridge PIDs by argv (`…/nuxbt-sunshine-bridge.py` as its own arg) — never `pgrep -f` / never match agent shells that embed the script path in `bash -c`.
 
 **Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position (**west→X north→Y**), Plus/Minus inverted vs naive SDL, **HOME = LB + D-Pad Down + Plus** (Guide still works), 120 Hz. **Steam overlay / QAM / Home (769)** → idle to Switch (drain pad, discard presses; also honors `$XDG_RUNTIME_DIR/emupads-mute` via `start-emu-steam-ui-inhibit.sh`). EmuPads off for the session. NUXBT is **Bluetooth HID only**.
 
@@ -124,7 +124,7 @@ If step 2 fails because Switch 2 **rejects** the emulated Pro Con protocol (afte
 
 - Use **[hannahbee91/nuxbt](https://github.com/hannahbee91/nuxbt)** on this box (upstream NXBT is stale / Python-painful).
 - Install / restore: `scripts/ensure-nuxbt.sh` → host `~/code/nuxbt-host/.venv` (not Distrobox).
-- Expect possible needs: Pro Controller alias, MAC prefix spoof (`7C:BB:8A…`), BlueZ agent trust, Grip/Order for first pair / reconnect.
+- Expect possible needs: Pro Controller alias, **stable** MAC (pinned dongle Address or fixed Nintendo OUI `7C:BB:8A:DE:F0:01` — never random per spawn), BlueZ agent trust, Grip/Order for **first** pair or after MAC/BlueZ wipe.
 - `scripts/nuxbt-bluez-override.sh enable|disable|status` — **host** tmpfs BlueZ override (`--compat --noplugin=*`) + setcap on `~/code/nuxbt-host/bin/python3-nuxbt`. Never setcap `/usr/bin/python*`. Never `nuxbt toggle` inside Distrobox.
 
 ### Alternatives if NXBT is painful (same direction: PC → Switch)
@@ -247,9 +247,10 @@ Ordered by expected impact. Keep additive — do not rewrite dual-stream / EmuPa
 | Idea | Notes |
 |------|--------|
 | **Bridge process hygiene** | `systemd-run` `KillMode=process` can leave orphan `nuxbt-sunshine-bridge.py` children after stop/restart. Harden `_stop_bridge` / unit `KillMode=control-group` (test Decky QAM still cannot SIGTERM the live bridge). |
-| **BlueZ wedge recovery** | `org.freedesktop.DBus.Error.NoReply` → `nuxbt-bluez enable` (restarts bluetoothd with override) then **Grip**. Could auto-detect NoReply in `nuxbt-api.py grip` and re-enable once. |
+| **BlueZ wedge recovery** | `org.freedesktop.DBus.Error.NoReply` → `nuxbt-bluez enable` (restarts bluetoothd with override) then **Reconnect** (pinned MAC). **Grip** only if that fails on Change Grip/Order. Could auto-detect NoReply in `nuxbt-api.py` and re-enable once. |
 | **WirePlumber V4L2 hold** | Camera monitor leaves `STREAMON` EBUSY with no userspace opener. Viewer already `pw-cli destroy`s nodes; optional WirePlumber rule to not auto-open MS2109. |
-| **Grip still sometimes required** | MAC reconnect often enough with override; document “open Grip/Order, then QAM Grip” as the reliable path after a wedge. |
+| **Grip still sometimes required** | Needed for **first pair**, after changing `~/.config/nuxbt/controller-mac` / `NUXBT_CONTROLLER_MAC`, or after a BlueZ wipe. Day-to-day: same pinned MAC → **Reconnect**. Auto-advertise fallback after ~25s stuck reconnect still needs the Grip menu if you follow it. |
+| **Stable controller MAC** | `scripts/nuxbt-pin-controller-mac.py` + `~/.config/nuxbt/controller-mac`. Never call NXBT’s random `7C:BB:8A:…` generator per spawn. Body/button colours are fixed too (`NUXBT_COLOUR_BODY` / `NUXBT_COLOUR_BUTTONS`). |
 | **Decky UX** | Status copy when advertising vs connected; avoid soft reconnect as default; one-tap “clean restart” that waits for single bridge PID. |
 | **Steam tile one-shot** | Launch viewer + ensure BlueZ override + start bridge (or attach if already up) from one desktop entry — without touching other Game Mode services. |
 

@@ -104,6 +104,7 @@ EOF
   status
   echo "NUXBT BlueZ override enabled (tmpfs; reboot clears override)."
   echo "File caps on $CAP_PY survive reboot; re-run enable after SteamOS updates if python changes."
+  echo "Controller MAC: bridge start re-applies ~/.config/nuxbt/controller-mac (spoofed MACs die on BT restart)."
 }
 
 disable_override() {

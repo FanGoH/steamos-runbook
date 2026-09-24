@@ -49,6 +49,19 @@ PY
 
 export NUXBT_ADAPTER="${NUXBT_ADAPTER:-/org/bluez/hci1}"
 export NUXBT_SWITCH_MAC="${NUXBT_SWITCH_MAC:-48:F1:EB:C3:F4:85}"
+# Controller BD_ADDR (what the Switch pairs to). Locked in ~/.config/nuxbt/controller-mac
+# on first run (dongle hardware MAC). Do not randomize — a new MAC forces Grip/Order.
+# Override with NUXBT_CONTROLLER_MAC=7C:BB:8A:DE:F0:01 (Nintendo OUI) only when
+# deliberately re-pairing; then Grip once and leave it alone.
+
+# Pin / re-apply before create_controller (spoofed MACs die across BlueZ restart).
+if [ -x "$CAP_PY" ]; then
+  "$CAP_PY" "$ROOT/scripts/nuxbt-pin-controller-mac.py" 2>/dev/null \
+    || echo "warn: controller MAC pin failed (continuing with live adapter Address)"
+else
+  "$PY" "$ROOT/scripts/nuxbt-pin-controller-mac.py" 2>/dev/null \
+    || echo "warn: controller MAC pin failed (continuing with live adapter Address)"
+fi
 
 # Shared Steam QAM/overlay mute flag ($XDG_RUNTIME_DIR/emupads-mute). The bridge
 # also polls gamescope atoms; this watcher is the proven EmuPads path.

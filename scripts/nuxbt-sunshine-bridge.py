@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import random
 import signal
 import subprocess
 import sys
@@ -63,6 +62,31 @@ RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
 # Respawning every ~25s wedged BlueZ (DBus NoReply) and killed the bridge.
 ADVERTISE_GIVEUP_S = float(os.environ.get("NUXBT_ADVERTISE_GIVEUP_S", "180.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
+# Stable body/button colours (do not randomize — same look as the paired pad).
+# Override with NUXBT_COLOUR_BODY / NUXBT_COLOUR_BUTTONS as "R,G,B".
+_DEFAULT_BODY = (0x32, 0x32, 0x32)
+_DEFAULT_BUTTONS = (0x0A, 0x0A, 0x0A)
+
+
+def _parse_rgb(env_name: str, default: tuple[int, int, int]) -> list[int]:
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return list(default)
+    try:
+        parts = [int(x.strip(), 0) for x in raw.split(",")]
+        if len(parts) != 3 or any(p < 0 or p > 255 for p in parts):
+            raise ValueError(raw)
+        return parts
+    except ValueError:
+        print(
+            f"warn: bad {env_name}={raw!r} — using default {default}",
+            flush=True,
+        )
+        return list(default)
+
+
+COLOUR_BODY = _parse_rgb("NUXBT_COLOUR_BODY", _DEFAULT_BODY)
+COLOUR_BUTTONS = _parse_rgb("NUXBT_COLOUR_BUTTONS", _DEFAULT_BUTTONS)
 
 # Steam virtual / EmuPads — never treat as the Moonlight source
 SKIP_VID_PID = {
@@ -433,8 +457,8 @@ def _spawn_controller(
     idx = nx.create_controller(
         PRO_CONTROLLER,
         adapter,
-        colour_body=[random.randint(0, 255) for _ in range(3)],
-        colour_buttons=[random.randint(0, 255) for _ in range(3)],
+        colour_body=list(COLOUR_BODY),
+        colour_buttons=list(COLOUR_BUTTONS),
         reconnect_address=reconnect_address,
     )
     mode = "advertise" if reconnect_address is None else f"reconnect→{reconnect_address}"
@@ -484,6 +508,10 @@ def main() -> int:
         args.no_reconnect = True
 
     _log(f"NUXBT Sunshine bridge adapter={args.adapter} switch={args.switch}")
+    _log(
+        f"colours body={COLOUR_BODY} buttons={COLOUR_BUTTONS} "
+        "(stable; set NUXBT_COLOUR_* to override)"
+    )
     _log(f"control: touch {WANT_GRIP} (advertise+L+R) or {WANT_RECONNECT} (MAC reconnect)")
     if args.grip:
         _log(

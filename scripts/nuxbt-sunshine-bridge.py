@@ -580,9 +580,19 @@ def main() -> int:
             disconnected_since = None
             grip_until = 0.0
         elif _consume_flag(WANT_TAP):
-            # Latency / Test Input Devices: pulse Switch A without touching Moonlight.
-            tap_until = now + 0.12
-            _log("nuxbt-want-tap → pulse A 120ms")
+            # Latency / Test Input Devices: pulse Switch A (hold via nuxbt-want-tap.hold).
+            hold = 0.45
+            hold_path = Path(str(WANT_TAP) + ".hold")
+            try:
+                raw = hold_path.read_text(encoding="utf-8").strip()
+                hold_path.unlink(missing_ok=True)
+                if raw:
+                    v = float(raw)
+                    hold = v / 1000.0 if v > 5 else v
+            except (OSError, ValueError):
+                pass
+            tap_until = now + max(0.2, min(hold, 2.0))
+            _log(f"nuxbt-want-tap → pulse A {tap_until - now:.2f}s")
 
         st = nx.state.get(idx, {}).get("state")
         if st != last_st:

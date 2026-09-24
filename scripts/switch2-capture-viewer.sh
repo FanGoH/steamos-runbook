@@ -17,8 +17,9 @@ export PATH="/usr/bin:/bin:${PATH:-}"
 
 USB_VID="${SWITCH2_CAPTURE_USB_VID:-534d}"
 USB_PID="${SWITCH2_CAPTURE_USB_PID:-2109}"
-WIDTH="${SWITCH2_CAPTURE_WIDTH:-1920}"
-HEIGHT="${SWITCH2_CAPTURE_HEIGHT:-1080}"
+# MS2109 is USB2: 1080p60 MJPEG only delivers ~30fps. 720p60 is real 60fps.
+WIDTH="${SWITCH2_CAPTURE_WIDTH:-1280}"
+HEIGHT="${SWITCH2_CAPTURE_HEIGHT:-720}"
 FPS="${SWITCH2_CAPTURE_FPS:-60}"
 
 log() { printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$LOG" >&2; }

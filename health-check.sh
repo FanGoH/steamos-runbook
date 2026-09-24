@@ -615,6 +615,47 @@ else
 ./scripts/ensure-second-screen-decky.sh
 EOF
 fi
+if [ -f "$HOMEBREW_DIR/plugins/PadHide/main.py" ]; then
+  ok "Decky Pad Hide plugin installed"
+else
+  warn "Decky Pad Hide plugin not installed"
+  record_manual "Install Pad Hide Decky plugin" <<EOF
+./scripts/ensure-pad-hide-decky.sh
+EOF
+fi
+if [ -f "$HOMEBREW_DIR/plugins/Playbook/main.py" ]; then
+  ok "Decky Playbook plugin installed"
+else
+  warn "Decky Playbook plugin not installed"
+  record_manual "Install Playbook Decky plugin" <<EOF
+./scripts/ensure-playbook-decky.sh
+EOF
+fi
+if [ -f "$HOMEBREW_DIR/plugins/FGPC/main.py" ]; then
+  ok "Decky FGPC plugin installed"
+else
+  warn "Decky FGPC plugin not installed"
+  record_manual "Install FGPC Decky plugin" <<EOF
+./scripts/ensure-fgpc-decky.sh
+EOF
+fi
+if [ -f "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" ]; then
+  tender_ver="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' "${TENDER_PLUGIN_DIR:-$HOMEBREW_DIR/plugins/romm-tender}/plugin.json" 2>/dev/null || echo unknown)"
+  ok "Decky Tender plugin installed ($tender_ver)"
+else
+  warn "Decky Tender plugin not installed"
+  record_manual "Install / update Tender" <<EOF
+./scripts/ensure-tender.sh
+EOF
+fi
+if command -v fgpc >/dev/null 2>&1 || [ -x "/home/$STEAMOS_USER/.local/bin/fgpc" ]; then
+  ok "fgpc CLI installed"
+else
+  warn "fgpc CLI not on PATH"
+  record_manual "Install fgpc CLI" <<EOF
+./scripts/ensure-fgpc.sh
+EOF
+fi
 if [ -f "$HOMEBREW_DIR/plugins/tailscale-control/main.py" ]; then
   if grep -Fq 'cmd_list.append("--reset")' "$HOMEBREW_DIR/plugins/tailscale-control/main.py"; then
     warn "Tailscale Control still runs up --reset (overrides hostname / Headscale)"

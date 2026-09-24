@@ -1,0 +1,20 @@
+[project]
+name = "fgpc"
+version = "1.0.0"
+description = "FanGoH Gaming PC — pretty CLI for the Steam Machine playbook"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.16",
+  "rich>=13.9",
+]
+
+[project.scripts]
+fgpc = "fgpc.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fgpc"]

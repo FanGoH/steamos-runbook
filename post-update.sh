@@ -76,6 +76,7 @@ run_step "ensure-gearlever" "$ROOT/scripts/ensure-gearlever.sh"
 run_step "ensure-cemu-input" "$ROOT/scripts/ensure-cemu-input.sh"
 run_step "ensure-rpcs3-input" "$ROOT/scripts/ensure-rpcs3-input.sh"
 run_step "ensure-pcsx2-bios" "$ROOT/scripts/ensure-pcsx2-bios.sh" warn
+run_step "ensure-tender" "$ROOT/scripts/ensure-tender.sh" warn
 run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-syncthing" "$ROOT/scripts/ensure-syncthing.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
@@ -89,6 +90,10 @@ run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
 run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "ensure-emu-quick-decky" "$ROOT/scripts/ensure-emu-quick-decky.sh" warn
 run_step "ensure-second-screen-decky" "$ROOT/scripts/ensure-second-screen-decky.sh" warn
+run_step "ensure-pad-hide-decky" "$ROOT/scripts/ensure-pad-hide-decky.sh" warn
+run_step "ensure-playbook-decky" "$ROOT/scripts/ensure-playbook-decky.sh" warn
+run_step "ensure-fgpc-decky" "$ROOT/scripts/ensure-fgpc-decky.sh" warn
+run_step "ensure-fgpc" "$ROOT/scripts/ensure-fgpc.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn
 run_step "ensure-tailscale-control" "$ROOT/scripts/ensure-tailscale-control.sh" warn
 run_step "check-tailscale" "$ROOT/scripts/check-tailscale.sh" warn

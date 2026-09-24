@@ -1,0 +1,24 @@
+---
+description: Kernel-hide extra pads via hide-controllers.py; never unplug hubs or the QAM pad
+globs: scripts/hide-controllers.py,scripts/hide-controllers-sysfs.sh,scripts/ensure-hide-controllers.sh,scripts/ensure-pad-hide-decky.sh,decky/PadHide/**,sudoers/zzz-hide-controllers,udev/99-hide-controllers.rules
+alwaysApply: false
+---
+
+# Pad Hide
+
+`scripts/hide-controllers.py` is the JSON API. Decky / SSH / a later web wrapper call it. Do not duplicate hide logic in `main.py`.
+
+```bash
+# ❌ BAD — hub 1-1 kills every device on that port
+echo 0 > /sys/bus/usb/devices/1-1/authorized
+
+# ✅ GOOD — leaf Xbox on this box
+python3 scripts/hide-controllers.py hide --id usb:045e:028e:5F19FC0A
+```
+
+- USB `authorized=0` on the **leaf** (`1-1.3`), never a hub (`bDeviceClass=09` / `1d6b`).
+- The pad driving Steam/QAM cannot hide itself. Decky never passes `--force`.
+- Do not hide Sunshine / Steam virtual / EmuPads (no USB/HID target).
+- Do not EVIOCGRAB the Sunshine pad.
+- PluginLoader stays root for sysfs. SSH as `deck` needs `sudoers/zzz-hide-controllers`.
+- Reload **Pad Hide** after editing (`scripts/ensure-pad-hide-decky.sh`). Skill `.cursor/skills/pad-hide/SKILL.md`.

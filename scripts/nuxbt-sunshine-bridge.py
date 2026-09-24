@@ -8,6 +8,11 @@ Mux-like: NUXBT↔Switch is the long-lived sink. Sunshine/Odin pads are hotplug
 sources — Moonlight drop sends idle to the Switch; when Odin reconnects, the
 same NUXBT controller picks the new event node up without re-pairing.
 
+Rumble (optional, default on): Switch HD rumble on the emulated Pro Con is
+mirrored to Sunshine FF_RUMBLE so Moonlight clients feel it
+(``NUXBT_RUMBLE=0`` disables). Requires ``scripts/nuxbt_runtime/sitecustomize.py``
+via ``nuxbt-bridge.sh`` PYTHONPATH.
+
 USB note: NUXBT talks to the Switch over classic Bluetooth HID only. A USB
 dongle here is the *host BT radio*, not a USB link to the Switch. USB gadget
 HID would be a different stack (deferred fallback in the skill).
@@ -32,6 +37,17 @@ from typing import Any
 
 from evdev import InputDevice, ecodes, list_devices
 from nuxbt.nuxbt import PRO_CONTROLLER, Nuxbt
+
+# Optional Switch→Sunshine rumble (same scripts/ tree; safe if missing).
+try:
+    from nuxbt_switch_rumble import SunshineRumble, read_rumble_file
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from nuxbt_switch_rumble import SunshineRumble, read_rumble_file
+    except ImportError:
+        SunshineRumble = None  # type: ignore[misc, assignment]
+        read_rumble_file = None  # type: ignore[misc, assignment]
 
 ADAPTER = os.environ.get("NUXBT_ADAPTER", "/org/bluez/hci1")
 SWITCH = os.environ.get("NUXBT_SWITCH_MAC", "48:F1:EB:C3:F4:85")
@@ -63,6 +79,8 @@ RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
 # Respawning every ~25s wedged BlueZ (DBus NoReply) and killed the bridge.
 ADVERTISE_GIVEUP_S = float(os.environ.get("NUXBT_ADVERTISE_GIVEUP_S", "180.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
+# Forward Switch HD rumble → Sunshine FF (Moonlight). Set NUXBT_RUMBLE=0 to disable.
+RUMBLE_FORWARD = os.environ.get("NUXBT_RUMBLE", "1") not in ("0", "false", "no")
 
 # Steam virtual / EmuPads — never treat as the Moonlight source
 SKIP_VID_PID = {
@@ -547,6 +565,12 @@ def main() -> int:
     )
     last_active = False
     last_muted: bool | None = None
+    rumble: SunshineRumble | None = None
+    if RUMBLE_FORWARD and SunshineRumble is not None:
+        rumble = SunshineRumble()
+        _log("rumble forward: Switch HD rumble → Sunshine FF (Moonlight)")
+    elif RUMBLE_FORWARD:
+        _log("rumble forward requested but nuxbt_switch_rumble missing")
 
     while not stop:
         now = time.time()
@@ -762,6 +786,14 @@ def main() -> int:
             disconnected_since = now
             continue
 
+        # Switch → Sunshine rumble (skip while Steam UI muted / no live link).
+        if rumble is not None and read_rumble_file is not None:
+            if muted or st != "connected":
+                rumble.apply(0, 0)
+            else:
+                strong, weak = read_rumble_file()
+                rumble.apply(strong, weak)
+
         active = (not muted) and (
             forcing_grip or (
                 (not no_source) and (
@@ -784,6 +816,12 @@ def main() -> int:
         time.sleep(period)
 
     _log("stopping")
+    if rumble is not None:
+        try:
+            rumble.apply(0, 0)
+            rumble.close()
+        except Exception:
+            pass
     try:
         nx.remove_controller(idx)
     except Exception:

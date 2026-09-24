@@ -19,6 +19,7 @@ import argparse
 import os
 import random
 import signal
+import subprocess
 import sys
 import time
 from typing import Any
@@ -32,6 +33,10 @@ HZ = float(os.environ.get("NUXBT_BRIDGE_HZ", "120"))
 TRIGGER_AXIS_THRESHOLD = int(os.environ.get("NUXBT_TRIGGER_AXIS_THRESHOLD", "128"))
 STICK_DEADZONE = float(os.environ.get("NUXBT_STICK_DEADZONE", "0.08"))
 LOG = os.environ.get("NUXBT_BRIDGE_LOG", "/tmp/nuxbt-bridge.log")
+# gamescope Steam UI atoms live on the session HDMI display
+STEAM_UI_DISPLAY = os.environ.get("NUXBT_STEAM_UI_DISPLAY", ":0")
+STEAM_UI_POLL_S = float(os.environ.get("NUXBT_STEAM_UI_POLL_S", "0.1"))
+STEAM_CLIENT_ID = "769"
 
 # Steam virtual / EmuPads — never treat as the Moonlight source
 SKIP_VID_PID = {
@@ -48,9 +53,67 @@ FACE = {
     ecodes.BTN_NORTH: "X",  # Y / north
 }
 
+_STEAM_UI_CACHE = (0.0, False)
+
 
 def _log(msg: str) -> None:
     print(msg, flush=True)
+
+
+def steam_ui_active(display: str = STEAM_UI_DISPLAY) -> bool:
+    """True while Steam overlay / QAM / Home-Library should not reach the Switch.
+
+    Same atoms as EmuPads mute: STEAM_OVERLAY=1, GAMESCOPE_BLUR_MODE!=0,
+    or FOCUSED_APP=769. Polled lightly so 120 Hz input is not blocked on xprop.
+    """
+    global _STEAM_UI_CACHE
+    now = time.time()
+    ts, cached = _STEAM_UI_CACHE
+    if now - ts < STEAM_UI_POLL_S:
+        return cached
+    active = False
+    try:
+        out = subprocess.check_output(
+            [
+                "xprop", "-display", display, "-root",
+                "STEAM_OVERLAY", "GAMESCOPE_BLUR_MODE", "GAMESCOPE_FOCUSED_APP",
+            ],
+            timeout=0.2,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        out = ""
+    overlay = ""
+    blur = ""
+    app = ""
+    for line in out.splitlines():
+        name = line.split("(", 1)[0].split(":", 1)[0].strip()
+        if "not found" in line.lower():
+            val = ""
+        elif "=" in line:
+            val = line.split("=", 1)[1].strip()
+        else:
+            continue
+        if name == "STEAM_OVERLAY":
+            overlay = val
+        elif name == "GAMESCOPE_BLUR_MODE":
+            blur = val
+        elif name == "GAMESCOPE_FOCUSED_APP":
+            app = val
+    if overlay in ("1", "0x1"):
+        active = True
+    elif blur.isdigit() and int(blur) != 0:
+        active = True
+    elif app == STEAM_CLIENT_ID:
+        active = True
+    _STEAM_UI_CACHE = (now, active)
+    return active
+
+
+def idle_packet(nx: Nuxbt) -> dict:
+    """Neutral report — no buttons/sticks (Steam UI mute)."""
+    return nx.create_input_packet()
 
 
 def find_sunshine_pad(prefer: str | None = None) -> InputDevice:
@@ -290,6 +353,7 @@ def main() -> int:
 
     _log(f"bridging at {args.hz:.0f} Hz (no EVIOCGRAB). Ctrl-C to stop.")
     last_active = False
+    last_muted: bool | None = None
     while not stop:
         # Drain pending events without blocking the 120 Hz loop
         try:
@@ -328,17 +392,30 @@ def main() -> int:
             time.sleep(0.5)
             continue
 
-        pkt = build_packet(nx, buttons, abs_vals, absinfo)
+        muted = steam_ui_active()
+        if muted != last_muted:
+            _log("steam UI mute — idle to Switch" if muted else "steam UI clear — bridging")
+            last_muted = muted
+            if muted:
+                # Drop held buttons so unmute does not dump a chord
+                buttons.clear()
+
+        if muted:
+            pkt = idle_packet(nx)
+        else:
+            pkt = build_packet(nx, buttons, abs_vals, absinfo)
         nx.set_controller_input(idx, pkt)
 
-        active = any(
-            pkt[k] for k in (
-                "A", "B", "X", "Y", "L", "R", "ZL", "ZR",
-                "PLUS", "MINUS", "HOME", "CAPTURE",
-                "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+        active = (not muted) and (
+            any(
+                pkt[k] for k in (
+                    "A", "B", "X", "Y", "L", "R", "ZL", "ZR",
+                    "PLUS", "MINUS", "HOME", "CAPTURE",
+                    "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+                )
+            ) or pkt["L_STICK"]["PRESSED"] or pkt["R_STICK"]["PRESSED"] or any(
+                abs(pkt[s][a]) > 0 for s in ("L_STICK", "R_STICK") for a in ("X_VALUE", "Y_VALUE")
             )
-        ) or pkt["L_STICK"]["PRESSED"] or pkt["R_STICK"]["PRESSED"] or any(
-            abs(pkt[s][a]) > 0 for s in ("L_STICK", "R_STICK") for a in ("X_VALUE", "Y_VALUE")
         )
         if active != last_active:
             _log("input: active" if active else "input: idle")

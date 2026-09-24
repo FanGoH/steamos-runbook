@@ -42,6 +42,15 @@ LOG = os.environ.get("NUXBT_BRIDGE_LOG", "/tmp/nuxbt-bridge.log")
 STEAM_UI_DISPLAY = os.environ.get("NUXBT_STEAM_UI_DISPLAY", ":0")
 STEAM_UI_POLL_S = float(os.environ.get("NUXBT_STEAM_UI_POLL_S", "0.1"))
 STEAM_CLIENT_ID = "769"
+# Runtime control (touch these while the bridge runs):
+#   $XDG_RUNTIME_DIR/nuxbt-want-grip      → advertise + hold L+R (Grip/Order)
+#   $XDG_RUNTIME_DIR/nuxbt-want-reconnect → MAC reconnect (no Grip menu)
+_RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+WANT_GRIP = os.path.join(_RUNTIME, "nuxbt-want-grip")
+WANT_RECONNECT = os.path.join(_RUNTIME, "nuxbt-want-reconnect")
+DISCONNECT_GRACE_S = float(os.environ.get("NUXBT_DISCONNECT_GRACE_S", "2.0"))
+RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
+GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
 
 # Steam virtual / EmuPads — never treat as the Moonlight source
 SKIP_VID_PID = {
@@ -322,6 +331,52 @@ def wait_connected(nx: Nuxbt, idx: int, timeout: float = 0.0) -> None:
         time.sleep(0.25)
 
 
+def _consume_flag(path: str) -> bool:
+    if not os.path.exists(path):
+        return False
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return True
+
+
+def _spawn_controller(
+    nx: Nuxbt,
+    adapter: str,
+    *,
+    reconnect_address: str | None,
+) -> int:
+    """Create a Pro Controller; reconnect_address=None means advertise (Grip/Order)."""
+    idx = nx.create_controller(
+        PRO_CONTROLLER,
+        adapter,
+        colour_body=[random.randint(0, 255) for _ in range(3)],
+        colour_buttons=[random.randint(0, 255) for _ in range(3)],
+        reconnect_address=reconnect_address,
+    )
+    mode = "advertise" if reconnect_address is None else f"reconnect→{reconnect_address}"
+    _log(f"controller {idx} created ({mode})")
+    return idx
+
+
+def _respawn(
+    nx: Nuxbt,
+    old_idx: int | None,
+    adapter: str,
+    *,
+    reconnect_address: str | None,
+) -> int:
+    if old_idx is not None:
+        try:
+            nx.remove_controller(old_idx)
+            _log(f"removed controller {old_idx}")
+        except Exception as e:
+            _log(f"remove_controller({old_idx}): {e}")
+        time.sleep(0.4)
+    return _spawn_controller(nx, adapter, reconnect_address=reconnect_address)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--adapter", default=ADAPTER)
@@ -336,49 +391,46 @@ def main() -> int:
     ap.add_argument(
         "--grip-hold",
         type=float,
-        default=float(os.environ.get("NUXBT_GRIP_HOLD_S", "5")),
-        help="Seconds to hold L+R after BT connect in --grip mode (default 5)",
+        default=GRIP_HOLD_DEFAULT,
+        help="Seconds to hold L+R after BT connect in grip mode (default 5)",
     )
     ap.add_argument("--hz", type=float, default=HZ)
     args = ap.parse_args()
 
     period = 1.0 / max(args.hz, 30.0)
-    # Grip/Order needs advertise + L/R on the emulated pad. Reconnect skips that UI.
     if args.grip:
         args.no_reconnect = True
 
     _log(f"NUXBT Sunshine bridge adapter={args.adapter} switch={args.switch}")
+    _log(f"control: touch {WANT_GRIP} (advertise+L+R) or {WANT_RECONNECT} (MAC reconnect)")
     if args.grip:
         _log(
             "GRIP MODE: advertising Pro Controller — stay on Change Grip/Order. "
             f"After BT connects, holding L+R for {args.grip_hold:.0f}s on NUXBT "
             "(does not rely on Odin/Sunshine bumpers)."
         )
+
     nx = Nuxbt(debug=False, log_file_path=LOG)
     adapters = nx.get_available_adapters()
     _log(f"adapters: {adapters}")
     if args.adapter not in adapters:
         raise SystemExit(f"{args.adapter} missing")
 
-    reconnect = None if args.no_reconnect else args.switch
-    idx = nx.create_controller(
-        PRO_CONTROLLER,
-        args.adapter,
-        colour_body=[random.randint(0, 255) for _ in range(3)],
-        colour_buttons=[random.randint(0, 255) for _ in range(3)],
-        reconnect_address=reconnect,
-    )
-    _log(f"controller {idx} created (reconnect={'off' if reconnect is None else reconnect})")
-    wait_connected(nx, idx)
+    use_advertise = bool(args.no_reconnect)
+    reconnect_addr: str | None = None if use_advertise else args.switch
+    idx = _spawn_controller(nx, args.adapter, reconnect_address=reconnect_addr)
+    try:
+        wait_connected(nx, idx, timeout=0.0)
+    except SystemExit as e:
+        _log(f"initial connect failed ({e}); will keep trying in loop")
 
-    # After Grip/Order BT link-up, force L+R on the *emulated* pad so the Switch
-    # registers the slot even when Moonlight never delivers Odin bumpers.
     grip_until = 0.0
-    if args.grip:
+    pending_grip_lr = bool(args.grip)
+    if pending_grip_lr and nx.state.get(idx, {}).get("state") == "connected":
         grip_until = time.time() + max(0.5, args.grip_hold)
+        pending_grip_lr = False
         _log(f"connected — holding L+R until {grip_until:.0f} (wall clock)")
 
-    # NUXBT↔Switch is the sink. Sunshine/Odin is a hotplug source (mux-like).
     want_abs = (
         ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
         ecodes.ABS_Z, ecodes.ABS_RZ, ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y,
@@ -393,6 +445,10 @@ def main() -> int:
     source_path: str | None = None
     last_source_scan = 0.0
     waiting_logged = False
+    disconnected_since: float | None = None
+    reconnect_attempt_since: float | None = None
+    last_st: str | None = None
+    grip_logged_done = False
 
     stop = False
 
@@ -405,23 +461,93 @@ def main() -> int:
 
     _log(
         f"bridging at {args.hz:.0f} Hz (no EVIOCGRAB). "
-        "Sunshine pad hotplugs onto this NUXBT controller. Ctrl-C to stop."
+        "Auto-reconnect on drop; --grip / nuxbt-want-grip for advertise. Ctrl-C to stop."
     )
     last_active = False
     last_muted: bool | None = None
-    grip_logged_done = False
+
     while not stop:
         now = time.time()
+
+        # B) Explicit advertise / reconnect requests (no full process restart needed)
+        if _consume_flag(WANT_GRIP):
+            _log("nuxbt-want-grip → advertise + L+R hold")
+            idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+            use_advertise = True
+            pending_grip_lr = True
+            reconnect_attempt_since = now
+            disconnected_since = None
+            grip_until = 0.0
+            grip_logged_done = False
+        elif _consume_flag(WANT_RECONNECT):
+            _log(f"nuxbt-want-reconnect → MAC {args.switch}")
+            idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+            use_advertise = False
+            pending_grip_lr = False
+            reconnect_attempt_since = now
+            disconnected_since = None
+            grip_until = 0.0
+
+        st = nx.state.get(idx, {}).get("state")
+        if st != last_st:
+            _log(f"state={st}")
+            if st == "connecting":
+                _log("advertising — open Switch Controllers → Change Grip/Order if it does not auto-join")
+            last_st = st
+
+        if st == "connected":
+            if disconnected_since is not None or reconnect_attempt_since is not None:
+                _log("Switch link up")
+            disconnected_since = None
+            reconnect_attempt_since = None
+            if pending_grip_lr and grip_until <= 0:
+                grip_until = now + max(0.5, args.grip_hold)
+                pending_grip_lr = False
+                grip_logged_done = False
+                _log(f"connected — holding L+R until {grip_until:.0f}")
+        else:
+            if disconnected_since is None:
+                disconnected_since = now
+            down_for = now - disconnected_since
+
+            # A) Auto-recover: after grace, respawn (reconnect first; advertise if stuck)
+            if st == "crashed" or down_for >= DISCONNECT_GRACE_S:
+                if reconnect_attempt_since is None:
+                    if use_advertise:
+                        _log("link down — respawning advertise (Grip/Order)")
+                        idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                        pending_grip_lr = True
+                    else:
+                        _log(f"link down ({st}) — respawning MAC reconnect → {args.switch}")
+                        idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                        use_advertise = False
+                        pending_grip_lr = False
+                    reconnect_attempt_since = now
+                    disconnected_since = now
+                    grip_until = 0.0
+                    grip_logged_done = False
+                elif (now - reconnect_attempt_since) >= RECONNECT_GIVEUP_S and not use_advertise:
+                    _log(
+                        f"reconnect stuck {RECONNECT_GIVEUP_S:.0f}s — "
+                        "falling back to advertise (open Grip/Order)"
+                    )
+                    idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                    use_advertise = True
+                    pending_grip_lr = True
+                    reconnect_attempt_since = now
+                    grip_until = 0.0
+                    grip_logged_done = False
+
+            time.sleep(min(0.5, period * 4))
+            continue
+
         forcing_grip = now < grip_until
-        if args.grip and not forcing_grip and not grip_logged_done and grip_until > 0:
+        if grip_until > 0 and not forcing_grip and not grip_logged_done:
             _log("grip L+R hold done — continue bridging; press + on Switch to exit Grip/Order")
             grip_logged_done = True
-
-        # Rescan when missing, or every 2s in case Moonlight replaced the node.
-        need_scan = (
-            not _source_alive(source)
-            or (now - last_source_scan >= 2.0)
-        )
+            grip_until = 0.0  # latch so we don't re-enter
+        # Sunshine hotplug source
+        need_scan = not _source_alive(source) or (now - last_source_scan >= 2.0)
         if need_scan:
             last_source_scan = now
             found = find_sunshine_pad(args.source)
@@ -460,14 +586,6 @@ def main() -> int:
                 abs_vals = {k: 0 for k in abs_vals}
                 last_source_scan = 0.0
 
-        if nx.state[idx].get("state") != "connected":
-            st = nx.state[idx].get("state")
-            _log(f"NUXBT state={st}; waiting")
-            if st == "crashed":
-                return 1
-            time.sleep(0.5)
-            continue
-
         muted = steam_ui_active() and not forcing_grip
         no_source = source is None
         if muted != last_muted:
@@ -479,7 +597,6 @@ def main() -> int:
         if muted:
             pkt = idle_packet(nx)
         elif forcing_grip:
-            # Direct NUXBT L+R — Grip/Order registration (ignore Sunshine gaps)
             pkt = idle_packet(nx)
             pkt["L"] = True
             pkt["R"] = True
@@ -487,7 +604,12 @@ def main() -> int:
             pkt = idle_packet(nx)
         else:
             pkt = build_packet(nx, buttons, abs_vals, absinfo)
-        nx.set_controller_input(idx, pkt)
+        try:
+            nx.set_controller_input(idx, pkt)
+        except ValueError:
+            _log("controller index gone; will respawn")
+            disconnected_since = now
+            continue
 
         active = (not muted) and (
             forcing_grip or (
@@ -511,6 +633,10 @@ def main() -> int:
         time.sleep(period)
 
     _log("stopping")
+    try:
+        nx.remove_controller(idx)
+    except Exception:
+        pass
     return 0
 
 

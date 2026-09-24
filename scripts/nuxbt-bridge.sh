@@ -3,8 +3,10 @@
 # Requires BlueZ override: sudo -n "$ROOT/scripts/hide-controllers-sysfs.sh" nuxbt-bluez enable
 #
 # Usage:
-#   ./scripts/nuxbt-bridge.sh              # reconnect to last Switch MAC
+#   ./scripts/nuxbt-bridge.sh              # reconnect to last Switch MAC (+ auto-recover)
 #   ./scripts/nuxbt-bridge.sh --grip       # Change Grip/Order: advertise + hold L+R
+#   touch "$XDG_RUNTIME_DIR/nuxbt-want-grip"      # request advertise while bridge runs
+#   touch "$XDG_RUNTIME_DIR/nuxbt-want-reconnect" # request MAC reconnect while running
 #   ./scripts/nuxbt-bridge.sh --no-reconnect
 set -euo pipefail
 

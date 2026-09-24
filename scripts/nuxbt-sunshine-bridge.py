@@ -27,6 +27,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from evdev import InputDevice, ecodes, list_devices
@@ -53,6 +54,8 @@ STEAM_CLIENT_ID = "769"
 _RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 WANT_GRIP = os.path.join(_RUNTIME, "nuxbt-want-grip")
 WANT_RECONNECT = os.path.join(_RUNTIME, "nuxbt-want-reconnect")
+# Shared with inhibit-emu-input-on-steam-ui.py / EmuPads mux — prefer this when present.
+EMU_MUTE_FILE = Path(_RUNTIME) / "emupads-mute"
 DISCONNECT_GRACE_S = float(os.environ.get("NUXBT_DISCONNECT_GRACE_S", "2.0"))
 RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
@@ -150,8 +153,14 @@ def _blur_nonzero(raw: str) -> bool:
 
 
 def steam_ui_kind() -> str:
-    """overlay | qam | menu | '' — same rules as inhibit-emu-input-on-steam-ui."""
-    # Cheap root atoms first (QAM / Home); overlay window walk only if needed.
+    """overlay | qam | menu | file | '' — same rules as inhibit-emu-input-on-steam-ui.
+
+    Prefer the shared ``emupads-mute`` file when the inhibit watcher is running
+    (authoritative for QAM/overlay). Fall back to gamescope atoms; cheap root
+    checks before the xdotool overlay walk.
+    """
+    if EMU_MUTE_FILE.is_file():
+        return "file"
     if _blur_nonzero(_xprop_root(STEAM_UI_DISPLAY, "GAMESCOPE_BLUR_MODE")):
         return "qam"
     if _xprop_root(STEAM_UI_DISPLAY, "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID:
@@ -171,13 +180,22 @@ def steam_ui_active(display: str = STEAM_UI_DISPLAY) -> bool:
     if now - ts < STEAM_UI_POLL_S:
         return cached
     kind = steam_ui_kind()
-    active = kind in ("overlay", "qam", "menu")
+    active = kind in ("overlay", "qam", "menu", "file")
     _STEAM_UI_CACHE = (now, active, kind)
     return active
 
 
 def steam_ui_kind_cached() -> str:
     return _STEAM_UI_CACHE[2]
+
+
+def _clear_pad_state(
+    buttons: dict[int, int], abs_vals: dict[int, int]
+) -> None:
+    """Drop held QAM/overlay nav so it never reaches the Switch on unmute."""
+    buttons.clear()
+    for k in list(abs_vals.keys()):
+        abs_vals[k] = 0
 
 
 def idle_packet(nx: Nuxbt) -> dict:
@@ -638,12 +656,19 @@ def main() -> int:
                 _log("no Sunshine pad yet — NUXBT stays connected; waiting for Moonlight…")
                 waiting_logged = True
 
+        # Mute *before* applying source events. While Steam QAM/overlay/Home is
+        # up we still drain the Sunshine pad (no EVIOCGRAB — Steam needs it)
+        # but must not accumulate those presses for a later unmute burst.
+        muted = steam_ui_active() and not forcing_grip
+
         if source is not None:
             try:
                 while True:
                     event = source.read_one()
                     if event is None:
                         break
+                    if muted:
+                        continue
                     if event.type == ecodes.EV_KEY:
                         buttons[event.code] = 1 if event.value else 0
                     elif event.type == ecodes.EV_ABS:
@@ -652,11 +677,9 @@ def main() -> int:
                 _log(f"source read error ({e}); will rescan")
                 source = None
                 source_path = None
-                buttons.clear()
-                abs_vals = {k: 0 for k in abs_vals}
+                _clear_pad_state(buttons, abs_vals)
                 last_source_scan = 0.0
 
-        muted = steam_ui_active() and not forcing_grip
         no_source = source is None
         if muted != last_muted:
             kind = steam_ui_kind_cached() or "?"
@@ -666,10 +689,8 @@ def main() -> int:
                 else "steam UI clear — bridging"
             )
             last_muted = muted
-            if muted:
-                buttons.clear()
-                for k in list(abs_vals.keys()):
-                    abs_vals[k] = 0
+            # Clear both ways: QAM nav must not stick as a pressed A/B on unmute.
+            _clear_pad_state(buttons, abs_vals)
 
         if muted:
             pkt = idle_packet(nx)

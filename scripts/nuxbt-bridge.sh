@@ -50,4 +50,8 @@ PY
 export NUXBT_ADAPTER="${NUXBT_ADAPTER:-/org/bluez/hci1}"
 export NUXBT_SWITCH_MAC="${NUXBT_SWITCH_MAC:-48:F1:EB:C3:F4:85}"
 
+# Shared Steam QAM/overlay mute flag ($XDG_RUNTIME_DIR/emupads-mute). The bridge
+# also polls gamescope atoms; this watcher is the proven EmuPads path.
+"$ROOT/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
+
 exec "$PY" "$ROOT/scripts/nuxbt-sunshine-bridge.py" "$@"

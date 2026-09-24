@@ -165,19 +165,22 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
     return pkt
 
 
-def wait_connected(nx: Nuxbt, idx: int, timeout: float = 120.0) -> None:
+def wait_connected(nx: Nuxbt, idx: int, timeout: float = 0.0) -> None:
+    """Wait until NUXBT reports connected. timeout=0 means wait forever."""
     start = time.time()
     last = None
     while True:
         st = nx.state[idx].get("state")
         if st != last:
             _log(f"state={st}")
+            if st == "connecting":
+                _log("advertising — open Switch Controllers → Change Grip/Order if it does not auto-join")
             last = st
         if st == "connected":
             return
         if st == "crashed":
             raise SystemExit(f"NUXBT crashed: {nx.state[idx].get('errors')}")
-        if time.time() - start > timeout:
+        if timeout > 0 and time.time() - start > timeout:
             raise SystemExit(f"timed out waiting for connected (last={st})")
         time.sleep(0.25)
 

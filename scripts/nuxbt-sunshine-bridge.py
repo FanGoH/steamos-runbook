@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Bridge Sunshine/Moonlight pad → NUXBT Pro Controller (Switch 2).
 
-Reads the host Sunshine virtual pad via evdev (no EVIOCGRAB — Steam needs it
+Reads host Sunshine/Moonlight pads via evdev (no EVIOCGRAB — Steam needs them
 for overlay/QAM) and feeds NUXBT set_controller_input at ~120 Hz.
+
+Mux-like: NUXBT↔Switch is the long-lived sink. Sunshine/Odin pads are hotplug
+sources — Moonlight drop sends idle to the Switch; when Odin reconnects, the
+same NUXBT controller picks the new event node up without re-pairing.
 
 USB note: NUXBT talks to the Switch over classic Bluetooth HID only. A USB
 dongle here is the *host BT radio*, not a USB link to the Switch. USB gadget
@@ -12,6 +16,7 @@ Locked rules (switch2-remote-play skill):
   - Prefer Sunshine libvirtualhid pad; skip Steam 28de:11ff and EmuPads
   - EmuPads should already be off for Switch RP
   - Face buttons map by *position* (Xbox south→Switch B, etc.)
+  - HOME = LB + D-Pad Down + Plus; Steam overlay/QAM/Home mute → idle packets
 """
 from __future__ import annotations
 
@@ -116,11 +121,17 @@ def idle_packet(nx: Nuxbt) -> dict:
     return nx.create_input_packet()
 
 
-def find_sunshine_pad(prefer: str | None = None) -> InputDevice:
-    """Pick the Sunshine Moonlight pad. Prefer libvirtualhid Sunshine name."""
+def find_sunshine_pad(prefer: str | None = None) -> InputDevice | None:
+    """Pick the Sunshine Moonlight pad (hotplug source). Prefer libvirtualhid.
+
+    Returns None while Moonlight is down — NUXBT↔Switch stays up (mux-like).
+    """
     prefer = (prefer or os.environ.get("NUXBT_SOURCE_EVENT") or "").strip()
     if prefer:
-        dev = InputDevice(prefer)
+        try:
+            dev = InputDevice(prefer)
+        except OSError:
+            return None
         _log(f"source: forced {dev.path} ({dev.name})")
         return dev
 
@@ -149,17 +160,55 @@ def find_sunshine_pad(prefer: str | None = None) -> InputDevice:
             candidates.append(dev)
 
     if sunshine:
-        dev = sunshine[0]
-        _log(f"source: {dev.path} ({dev.name}) vid={dev.info.vendor:04x} pid={dev.info.product:04x}")
-        return dev
+        # Prefer Odin/Thor-named Sunshine pads when several exist
+        ranked = sorted(
+            sunshine,
+            key=lambda d: (
+                0 if any(x in (d.name or "") for x in ("Odin", "Thor", "Portal")) else 1,
+                d.path,
+            ),
+        )
+        return ranked[0]
     if candidates:
-        dev = candidates[0]
-        _log(f"source: {dev.path} ({dev.name}) vid={dev.info.vendor:04x} pid={dev.info.product:04x}")
-        return dev
-    raise SystemExit(
-        "No Sunshine/Xbox pad found. Connect Moonlight first "
-        "(expect Sunshine libvirtualhid or 045e:*)."
+        return candidates[0]
+    return None
+
+
+def _bind_source(dev: InputDevice, want_abs: tuple[int, ...]) -> tuple[dict, dict[int, int]]:
+    """Snapshot absinfo + zeroed abs state for a newly attached Sunshine pad."""
+    present = _abs_codes(dev)
+    absinfo: dict = {}
+    for code in want_abs:
+        if code not in present:
+            continue
+        try:
+            absinfo[code] = dev.absinfo(code)
+        except OSError:
+            continue
+    abs_vals: dict[int, int] = {
+        ecodes.ABS_X: 0, ecodes.ABS_Y: 0, ecodes.ABS_RX: 0, ecodes.ABS_RY: 0,
+        ecodes.ABS_Z: 0, ecodes.ABS_RZ: 0, ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0,
+    }
+    for code, info in absinfo.items():
+        try:
+            abs_vals[code] = int(info.value)
+        except Exception:
+            pass
+    _log(
+        f"source: {dev.path} ({dev.name}) "
+        f"vid={dev.info.vendor:04x} pid={dev.info.product:04x} "
+        f"abs={sorted(absinfo.keys())}"
     )
+    return absinfo, abs_vals
+
+
+def _source_alive(dev: InputDevice | None) -> bool:
+    if dev is None:
+        return False
+    try:
+        return os.path.exists(dev.path)
+    except Exception:
+        return False
 
 
 def _abs_codes(dev: InputDevice) -> set[int]:
@@ -302,46 +351,21 @@ def main() -> int:
     _log(f"controller {idx} created")
     wait_connected(nx, idx)
 
-    # Source pad may appear only after Moonlight is up — retry briefly
-    source = None
-    for attempt in range(1, 31):
-        try:
-            source = find_sunshine_pad(args.source)
-            break
-        except SystemExit as e:
-            if attempt == 30:
-                raise
-            _log(f"waiting for Sunshine pad ({attempt}/30): {e}")
-            time.sleep(1.0)
-    assert source is not None
-
-    # Snapshot absinfo once; re-open if the node disappears
+    # NUXBT↔Switch is the sink. Sunshine/Odin is a hotplug source (mux-like).
     want_abs = (
         ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
         ecodes.ABS_Z, ecodes.ABS_RZ, ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y,
     )
-    present = _abs_codes(source)
-    absinfo = {}
-    for code in want_abs:
-        if code not in present:
-            continue
-        try:
-            absinfo[code] = source.absinfo(code)
-        except OSError:
-            continue
-    _log(f"abs axes: {sorted(absinfo.keys())}")
-
+    source: InputDevice | None = None
+    absinfo: dict = {}
     buttons: dict[int, int] = {}
     abs_vals: dict[int, int] = {
         ecodes.ABS_X: 0, ecodes.ABS_Y: 0, ecodes.ABS_RX: 0, ecodes.ABS_RY: 0,
         ecodes.ABS_Z: 0, ecodes.ABS_RZ: 0, ecodes.ABS_HAT0X: 0, ecodes.ABS_HAT0Y: 0,
     }
-    # Seed current abs positions
-    try:
-        for code, info in absinfo.items():
-            abs_vals[code] = int(info.value)
-    except Exception:
-        pass
+    source_path: str | None = None
+    last_source_scan = 0.0
+    waiting_logged = False
 
     stop = False
 
@@ -352,38 +376,56 @@ def main() -> int:
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
-    _log(f"bridging at {args.hz:.0f} Hz (no EVIOCGRAB). Ctrl-C to stop.")
+    _log(
+        f"bridging at {args.hz:.0f} Hz (no EVIOCGRAB). "
+        "Sunshine pad hotplugs onto this NUXBT controller. Ctrl-C to stop."
+    )
     last_active = False
     last_muted: bool | None = None
     while not stop:
-        # Drain pending events without blocking the 120 Hz loop
-        try:
-            while True:
-                event = source.read_one()
-                if event is None:
-                    break
-                if event.type == ecodes.EV_KEY:
-                    buttons[event.code] = 1 if event.value else 0
-                elif event.type == ecodes.EV_ABS:
-                    abs_vals[event.code] = event.value
-        except OSError as e:
-            _log(f"source lost ({e}); reopening…")
-            time.sleep(0.5)
+        now = time.time()
+        # Rescan when missing, or every 2s in case Moonlight replaced the node.
+        need_scan = (
+            not _source_alive(source)
+            or (now - last_source_scan >= 2.0)
+        )
+        if need_scan:
+            last_source_scan = now
+            found = find_sunshine_pad(args.source)
+            if found is not None and found.path != source_path:
+                source = found
+                source_path = found.path
+                absinfo, abs_vals = _bind_source(source, want_abs)
+                buttons.clear()
+                waiting_logged = False
+            elif found is None and source_path is not None:
+                _log(f"source lost ({source_path}); idle to Switch — waiting for Sunshine pad…")
+                source = None
+                source_path = None
+                buttons.clear()
+                abs_vals = {k: 0 for k in abs_vals}
+                waiting_logged = True
+            elif found is None and not waiting_logged:
+                _log("no Sunshine pad yet — NUXBT stays connected; waiting for Moonlight…")
+                waiting_logged = True
+
+        if source is not None:
             try:
-                source = find_sunshine_pad(args.source)
-                present = _abs_codes(source)
-                absinfo = {}
-                for code in want_abs:
-                    if code not in present:
-                        continue
-                    try:
-                        absinfo[code] = source.absinfo(code)
-                    except OSError:
-                        continue
-            except SystemExit as err:
-                _log(str(err))
-                time.sleep(1.0)
-                continue
+                while True:
+                    event = source.read_one()
+                    if event is None:
+                        break
+                    if event.type == ecodes.EV_KEY:
+                        buttons[event.code] = 1 if event.value else 0
+                    elif event.type == ecodes.EV_ABS:
+                        abs_vals[event.code] = event.value
+            except OSError as e:
+                _log(f"source read error ({e}); will rescan")
+                source = None
+                source_path = None
+                buttons.clear()
+                abs_vals = {k: 0 for k in abs_vals}
+                last_source_scan = 0.0
 
         if nx.state[idx].get("state") != "connected":
             st = nx.state[idx].get("state")
@@ -394,20 +436,20 @@ def main() -> int:
             continue
 
         muted = steam_ui_active()
+        no_source = source is None
         if muted != last_muted:
             _log("steam UI mute — idle to Switch" if muted else "steam UI clear — bridging")
             last_muted = muted
             if muted:
-                # Drop held buttons so unmute does not dump a chord
                 buttons.clear()
 
-        if muted:
+        if muted or no_source:
             pkt = idle_packet(nx)
         else:
             pkt = build_packet(nx, buttons, abs_vals, absinfo)
         nx.set_controller_input(idx, pkt)
 
-        active = (not muted) and (
+        active = (not muted) and (not no_source) and (
             any(
                 pkt[k] for k in (
                     "A", "B", "X", "Y", "L", "R", "ZL", "ZR",

@@ -309,7 +309,20 @@ def main() -> int:
 
         for i in range(1, args.trials + 1):
             try:
-                time.sleep(SETTLE_S)
+                # Wait until the picture is quiet again (previous A highlight gone).
+                quiet_needed = 8
+                quiet = 0
+                _, baseline = stream.read_frame_reopen()
+                settle_deadline = time.time() + 3.0
+                while time.time() < settle_deadline and quiet < quiet_needed:
+                    _, frame = stream.read_frame_reopen()
+                    if max_tile_mad(baseline, frame) <= max(floor * 2, 0.05):
+                        quiet += 1
+                        baseline = frame
+                    else:
+                        quiet = 0
+                        baseline = frame
+                time.sleep(0.05)
                 _, baseline = stream.read_frame_reopen()
                 _, baseline = stream.read_frame_reopen()
                 if args.manual:
@@ -330,9 +343,12 @@ def main() -> int:
                     glob = mean_abs_diff(baseline, frame)
                     peak = max(peak, tile)
                     peak_global = max(peak_global, glob)
+                    # Sub-20ms is not physical for BT+Switch+HDMI+USB2 MJPEG.
                     if tile >= thresh and t_grab >= t0:
-                        ms = (t_grab - t0) * 1000.0
-                        break
+                        cand = (t_grab - t0) * 1000.0
+                        if cand >= 20.0:
+                            ms = cand
+                            break
                 if ms is None:
                     print(
                         f"trial {i}: no change "

@@ -25,7 +25,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 ## Status (2026-09-24)
 
-**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
+**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). **Default 1280×720@60** — MS2109 USB2 only delivers ~30fps at 1080p MJPEG; 720p is real 60. Override `SWITCH2_CAPTURE_WIDTH/HEIGHT`. If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
 
 **USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: `/tmp/nuxbt-usb-reconnect.py` or **`scripts/nuxbt-bridge.sh`** (Sunshine → NUXBT) on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85`. After killing a live pad, Switch may need Grip/Order once; with override on, reconnect without Grip is possible.
 
@@ -186,7 +186,7 @@ Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT
 
 ### Capture card (this box) + upgrade notes (2026-09-24)
 
-**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0`, **1920×1080 MJPEG @ 60** (v4l2 max at 1080p; **no 120**). 20s USB `urbnum` sample was rock-steady **250 URB/s**. Chop on Moonlight with this path was **not** the card — was **`encoder = software` (libx264)** on `:48200` after AMF missing and VAAPI shaders empty at compile-time `/usr/local/assets`. **Now:** `encoder = vaapi` + `minimum_fps_target = 60` (Mesa on RX 9060 XT; `amf` needs amfrt, not on SteamOS). Host `sunshine-ds-kms` is patched to read shaders from `/home/deck/sdsast` → `~/.local/share/sunshine-ds/assets` (`ensure-sunshine-ds-gamemode.sh`). Override with `SUNSHINE_DS_KMS_ENCODER` / `SUNSHINE_DS_KMS_MIN_FPS`.
+**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0` on USB **2.0**. Advertises 1080p60 MJPEG but **measured ~30fps** at 1920×1080; **720p60 is real ~60fps** (viewer default). Chop at 1080p is the card bandwidth, not Moonlight. Encoder path separately fixed: `encoder = vaapi` + `minimum_fps_target = 60` (Mesa on RX 9060 XT). Host `sunshine-ds-kms` reads shaders from `/home/deck/sdsast` → `~/.local/share/sunshine-ds/assets`.
 
 Switch 2 dock: **4K60** or **1080p/1440p @ 120** — **4K120 is irrelevant**; **1080p120** is the useful high-FPS target. Prefer USB3 **NV12/raw UVC**, not USB2 MJPEG.
 

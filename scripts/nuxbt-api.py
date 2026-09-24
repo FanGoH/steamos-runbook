@@ -193,36 +193,48 @@ def cmd_status(_: argparse.Namespace) -> dict:
     )
 
 
+def _bridge_pids() -> list[int]:
+    """PIDs of the real bridge python only — never shells that merely mention it."""
+    proc = subprocess.run(
+        ["pgrep", "-af", "nuxbt-sunshine-bridge.py"],
+        capture_output=True,
+        text=True,
+    )
+    out: list[int] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            pid_s, cmd = line.split(None, 1)
+            pid = int(pid_s)
+        except ValueError:
+            continue
+        # Require the interpreter running the script (not bash/tmux/agent wrappers).
+        if "nuxbt-sunshine-bridge.py" not in cmd:
+            continue
+        if not (cmd.startswith("python") or "/python" in cmd.split()[0]):
+            continue
+        if "nuxbt-api.py" in cmd or "fix-nuxbt" in cmd:
+            continue
+        out.append(pid)
+    return out
+
+
 def _stop_bridge() -> None:
     _tmux("kill-session", "-t", SESSION)
-    # Kill every bridge helper — soft respawn can leave several python children.
-    patterns = (
-        "scripts/nuxbt-sunshine-bridge.py",
-        "scripts/nuxbt-bridge.sh",
-    )
-    for pat in patterns:
-        proc = subprocess.run(
-            ["pgrep", "-f", pat],
-            capture_output=True,
-            text=True,
-        )
-        for pid in (proc.stdout or "").split():
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-            except (ProcessLookupError, ValueError, PermissionError):
-                pass
+    pids = _bridge_pids()
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
     time.sleep(0.8)
-    for pat in patterns:
-        proc = subprocess.run(
-            ["pgrep", "-f", pat],
-            capture_output=True,
-            text=True,
-        )
-        for pid in (proc.stdout or "").split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ProcessLookupError, ValueError, PermissionError):
-                pass
+    for pid in _bridge_pids():
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
     time.sleep(0.3)
 
 

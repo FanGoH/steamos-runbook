@@ -40,7 +40,12 @@ STICK_DEADZONE = float(os.environ.get("NUXBT_STICK_DEADZONE", "0.08"))
 LOG = os.environ.get("NUXBT_BRIDGE_LOG", "/tmp/nuxbt-bridge.log")
 # gamescope Steam UI atoms live on the session HDMI display
 STEAM_UI_DISPLAY = os.environ.get("NUXBT_STEAM_UI_DISPLAY", ":0")
-STEAM_UI_POLL_S = float(os.environ.get("NUXBT_STEAM_UI_POLL_S", "0.1"))
+STEAM_UI_DISPLAYS = tuple(
+    d.strip()
+    for d in os.environ.get("NUXBT_STEAM_UI_DISPLAYS", ":0,:1").split(",")
+    if d.strip()
+)
+STEAM_UI_POLL_S = float(os.environ.get("NUXBT_STEAM_UI_POLL_S", "0.05"))
 STEAM_CLIENT_ID = "769"
 # Runtime control (touch these while the bridge runs):
 #   $XDG_RUNTIME_DIR/nuxbt-want-grip      → advertise + hold L+R (Grip/Order)
@@ -60,71 +65,119 @@ SKIP_VID_PID = {
 }
 
 # Xbox/Sunshine face → Switch face by *physical position* (not Xbox labels).
-# Diamond: south/east/west/north → Switch B/A/Y/X. If X/Y feel swapped on a
-# client, the west/north names here are the ones to flip (A/B stay).
 FACE = {
     ecodes.BTN_SOUTH: "B",  # bottom
     ecodes.BTN_EAST: "A",   # right
-    ecodes.BTN_WEST: "X",   # left  (was Y — felt swapped vs Switch)
-    ecodes.BTN_NORTH: "Y",  # top   (was X — felt swapped vs Switch)
+    ecodes.BTN_WEST: "X",   # left
+    ecodes.BTN_NORTH: "Y",  # top
 }
 
-_STEAM_UI_CACHE = (0.0, False)
+_STEAM_UI_CACHE = (0.0, False, "")
 
 
 def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def steam_ui_active(display: str = STEAM_UI_DISPLAY) -> bool:
-    """True while Steam overlay / QAM / Home-Library should not reach the Switch.
+def _x11_env(display: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env["DISPLAY"] = display
+    return env
 
-    Same atoms as EmuPads mute: STEAM_OVERLAY=1, GAMESCOPE_BLUR_MODE!=0,
-    or FOCUSED_APP=769. Polled lightly so 120 Hz input is not blocked on xprop.
-    """
-    global _STEAM_UI_CACHE
-    now = time.time()
-    ts, cached = _STEAM_UI_CACHE
-    if now - ts < STEAM_UI_POLL_S:
-        return cached
-    active = False
+
+def _xprop_root(display: str, atom: str) -> str:
     try:
         out = subprocess.check_output(
-            [
-                "xprop", "-display", display, "-root",
-                "STEAM_OVERLAY", "GAMESCOPE_BLUR_MODE", "GAMESCOPE_FOCUSED_APP",
-            ],
-            timeout=0.2,
+            ["xprop", "-root", atom],
+            env=_x11_env(display),
             stderr=subprocess.DEVNULL,
             text=True,
+            timeout=0.35,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        out = ""
-    overlay = ""
-    blur = ""
-    app = ""
-    for line in out.splitlines():
-        name = line.split("(", 1)[0].split(":", 1)[0].strip()
-        if "not found" in line.lower():
-            val = ""
-        elif "=" in line:
-            val = line.split("=", 1)[1].strip()
-        else:
+        return ""
+    if "=" not in out or "not found" in out.lower():
+        return ""
+    return out.split("=", 1)[1].strip().split(",")[0].strip()
+
+
+def _overlay_on(display: str) -> bool:
+    """STEAM_OVERLAY=1 on a steam window (root atom is often missing)."""
+    if _xprop_root(display, "STEAM_OVERLAY") in ("1", "0x1"):
+        return True
+    ids: list[str] = []
+    for kind, val in (("class", "steam"), ("class", "steamwebhelper"), ("name", "Steam")):
+        try:
+            ids += subprocess.check_output(
+                ["xdotool", "search", f"--{kind}", val],
+                env=_x11_env(display),
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=0.35,
+            ).split()
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+    seen: set[str] = set()
+    for xid in ids:
+        if xid in seen:
             continue
-        if name == "STEAM_OVERLAY":
-            overlay = val
-        elif name == "GAMESCOPE_BLUR_MODE":
-            blur = val
-        elif name == "GAMESCOPE_FOCUSED_APP":
-            app = val
-    if overlay in ("1", "0x1"):
-        active = True
-    elif blur.isdigit() and int(blur) != 0:
-        active = True
-    elif app == STEAM_CLIENT_ID:
-        active = True
-    _STEAM_UI_CACHE = (now, active)
+        seen.add(xid)
+        try:
+            out = subprocess.check_output(
+                ["xprop", "-id", xid, "STEAM_OVERLAY"],
+                env=_x11_env(display),
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=0.2,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        if "=" in out and out.split("=", 1)[1].strip().split(",")[0].strip() in ("1", "0x1"):
+            return True
+    return False
+
+
+def _blur_nonzero(raw: str) -> bool:
+    if not raw:
+        return False
+    s = raw.strip().lower()
+    if s in ("0", "0x0"):
+        return False
+    try:
+        return int(s, 0) != 0
+    except ValueError:
+        return True
+
+
+def steam_ui_kind() -> str:
+    """overlay | qam | menu | '' — same rules as inhibit-emu-input-on-steam-ui."""
+    # Cheap root atoms first (QAM / Home); overlay window walk only if needed.
+    if _blur_nonzero(_xprop_root(STEAM_UI_DISPLAY, "GAMESCOPE_BLUR_MODE")):
+        return "qam"
+    if _xprop_root(STEAM_UI_DISPLAY, "GAMESCOPE_FOCUSED_APP") == STEAM_CLIENT_ID:
+        return "menu"
+    for display in STEAM_UI_DISPLAYS:
+        if _overlay_on(display):
+            return "overlay"
+    return ""
+
+
+def steam_ui_active(display: str = STEAM_UI_DISPLAY) -> bool:
+    """True while Steam overlay / QAM / Home-Library should not reach the Switch."""
+    del display
+    global _STEAM_UI_CACHE
+    now = time.time()
+    ts, cached, _kind = _STEAM_UI_CACHE
+    if now - ts < STEAM_UI_POLL_S:
+        return cached
+    kind = steam_ui_kind()
+    active = kind in ("overlay", "qam", "menu")
+    _STEAM_UI_CACHE = (now, active, kind)
     return active
+
+
+def steam_ui_kind_cached() -> str:
+    return _STEAM_UI_CACHE[2]
 
 
 def idle_packet(nx: Nuxbt) -> dict:
@@ -516,33 +569,44 @@ def main() -> int:
                 disconnected_since = now
             down_for = now - disconnected_since
 
-            # A) Auto-recover: after grace, respawn (reconnect first; advertise if stuck)
-            if st == "crashed" or down_for >= DISCONNECT_GRACE_S:
-                if reconnect_attempt_since is None:
-                    if use_advertise:
-                        _log("link down — respawning advertise (Grip/Order)")
-                        idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
-                        pending_grip_lr = True
-                    else:
-                        _log(f"link down ({st}) — respawning MAC reconnect → {args.switch}")
-                        idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
-                        use_advertise = False
-                        pending_grip_lr = False
-                    reconnect_attempt_since = now
-                    disconnected_since = now
-                    grip_until = 0.0
-                    grip_logged_done = False
-                elif (now - reconnect_attempt_since) >= RECONNECT_GIVEUP_S and not use_advertise:
-                    _log(
-                        f"reconnect stuck {RECONNECT_GIVEUP_S:.0f}s — "
-                        "falling back to advertise (open Grip/Order)"
-                    )
+            # connecting/reconnecting = waiting for Switch. Never respawn on the
+            # short DISCONNECT_GRACE (that killed Grip advertise every ~2s).
+            waiting = st in ("connecting", "reconnecting")
+            if waiting and reconnect_attempt_since is None:
+                reconnect_attempt_since = now
+
+            do_respawn = False
+            to_advertise = use_advertise
+            if st == "crashed":
+                do_respawn = True
+            elif waiting:
+                if (now - (reconnect_attempt_since or now)) >= RECONNECT_GIVEUP_S:
+                    do_respawn = True
+                    if not use_advertise:
+                        _log(
+                            f"reconnect stuck {RECONNECT_GIVEUP_S:.0f}s — "
+                            "falling back to advertise (open Grip/Order)"
+                        )
+                        to_advertise = True
+            elif down_for >= DISCONNECT_GRACE_S:
+                # Dropped after having been up (or never left idle)
+                do_respawn = True
+
+            if do_respawn:
+                if to_advertise:
+                    _log(f"link {st} — respawning advertise (Grip/Order)")
                     idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
                     use_advertise = True
                     pending_grip_lr = True
-                    reconnect_attempt_since = now
-                    grip_until = 0.0
-                    grip_logged_done = False
+                else:
+                    _log(f"link down ({st}) — respawning MAC reconnect → {args.switch}")
+                    idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                    use_advertise = False
+                    pending_grip_lr = False
+                reconnect_attempt_since = now
+                disconnected_since = now
+                grip_until = 0.0
+                grip_logged_done = False
 
             time.sleep(min(0.5, period * 4))
             continue
@@ -595,10 +659,17 @@ def main() -> int:
         muted = steam_ui_active() and not forcing_grip
         no_source = source is None
         if muted != last_muted:
-            _log("steam UI mute — idle to Switch" if muted else "steam UI clear — bridging")
+            kind = steam_ui_kind_cached() or "?"
+            _log(
+                f"steam UI mute ({kind}) — idle to Switch"
+                if muted
+                else "steam UI clear — bridging"
+            )
             last_muted = muted
             if muted:
                 buttons.clear()
+                for k in list(abs_vals.keys()):
+                    abs_vals[k] = 0
 
         if muted:
             pkt = idle_packet(nx)

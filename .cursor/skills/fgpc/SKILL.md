@@ -50,8 +50,11 @@ post-update only.
 Phone **WebGUI** (`ensure-fgpc-web.sh`, user unit `fgpc-web.service`) is the
 same catalog on this Steam Machine. Tabs: Stream / Screen / Pad / Hide / More.
 Buttons only (no free-text commands). Binds `127.0.0.1` plus the tailnet IPv4
-on `FGPC_WEB_PORT` (default 8484). Extra name `fgpc.<MagicDNS suffix>` needs a
-Headscale extra A record — do **not** change `--hostname=steammachine`.
+on `FGPC_WEB_PORT` (default 8484). Extra name `fgpc.tailnet.fangoh.dev` →
+`100.64.0.8` is Headscale `/etc/headscale/extra_records.json` on the VPS
+(`dns.extra_records_path`, no restart). Do **not** change `--hostname=steammachine`.
+Browsers that upgrade to `https://` hit HTTP 400 (TLS ClientHello). Use
+`http://` or the WebView APK.
 
 ```bash
 ./scripts/ensure-fgpc-web.sh
@@ -66,7 +69,7 @@ Thin **Android APK** (`com.fangoh.fgpc`) is a WebView of that same HTTP URL. Tab
 ./scripts/install-fgpc-apk.sh
 ```
 
-Use `http://` (cleartext). Do not `adb kill-server`. Phone/Odin wireless ports change; set `FGPC_APK_ADB` in `.env` or `adb connect HOST:PORT`.
+Use `http://` (cleartext). Do not `adb kill-server`. Phone/Odin wireless ports change; set `FGPC_APK_ADB` in `.env` or `adb connect HOST:PORT`. Odin usually appears as mDNS `_adb-tls-connect._tcp`. The A54 needs Wireless debugging on (the LAN port changes).
 
 ## Do not
 

@@ -1,0 +1,14 @@
+---
+description: Current main is the source of truth — do not rewind leftover branches
+alwaysApply: true
+---
+
+# Playbook main
+
+Work from **current `main`**. Pad Hide, fgpc (CLI / Decky / WebGUI / APK), Playbook QAM, Game Mode 4K + GamePad XTest, Emu Pads Off persist / Dusklight hide, Syncthing folders, and Switch 2 NUXBT are already here.
+
+- Do **not** merge leftover `cursor/*-f15e` Game Mode / dual-screen / gamestream history. Those rewind later checkpoints.
+- `hide-controllers.py` is on `main`. Missing hide on an old branch means that branch is stale — do not recreate Pad Hide.
+- Phone UI is HTTP only: `http://fgpc.tailnet.fangoh.dev:8484/` (or `http://100.64.0.8:8484/`). `https://` is a 400. Headscale extras: VPS `/etc/headscale/extra_records.json`. Never change `TAILSCALE_HOSTNAME`.
+- Game Mode standard: `checkpoint-2026-09-18-gamepad-xtest`. Skill `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+- Thin APK `com.fangoh.fgpc` is a WebView of that URL. Do not put catalog buttons in Kotlin. Do not `adb kill-server`.

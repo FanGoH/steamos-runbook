@@ -5,6 +5,14 @@ gitignored `rules_of_the_land.md`, not here.
 
 This playbook runs on the **Steam Machine** (lab/Headscale name `steammachine`, alias `gpc`), not the handheld Steam Deck. `TAILSCALE_HOSTNAME` in `.env` must be `steammachine`. Manual bring-up is `./deck-tailscale up --login-server=… --operator=deck --hostname=steammachine --accept-routes` (no `--reset`, no `--ssh`). Decky **Tailscale Control** Advanced Settings must use that same host and flags (`scripts/ensure-tailscale-control.sh`); stock `up --reset` reverts this node to `steamdeck` and off Headscale.
 
+## Current `main` (do not rewind)
+
+`main` is the source of truth. Pad Hide (`scripts/hide-controllers.py`), fgpc CLI / Decky FGPC, the phone WebGUI (`fgpc-web.service` `:8484`), the WebView APK (`com.fangoh.fgpc`), Playbook QAM, Game Mode 4K + GamePad XTest, Emu Pads Off persist / Dusklight hide, Syncthing folders, and Switch 2 NUXBT docs all live here.
+
+Do **not** merge leftover `cursor/*-f15e` Game Mode / dual-screen / gamestream history, or stacked drafts that were folded into this tree. Those branches rewind later checkpoints. New work branches from **current `main`**.
+
+Game Mode `:48200` standard is `checkpoint-2026-09-18-gamepad-xtest`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Phone UI is **HTTP** (`http://fgpc.tailnet.fangoh.dev:8484/` or `http://100.64.0.8:8484/`). Browsers that force `https://` get HTTP 400 (TLS ClientHello). Headscale extra A records are `/etc/headscale/extra_records.json` on the VPS (`extra_records_path`, no restart). Do not change `--hostname=steammachine`.
+
 ## Architecture
 
 - Independent, idempotent task scripts under `scripts/`
@@ -106,7 +114,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 |------|---------|----------|
 | `AGENTS.md` | yes | This file — general agent/playbook behavior, including the proven Switch/Eden Game Mode recipe |
 | `README.md` | yes | Public setup/recovery docs (no personal infra) |
-| `.cursor/skills/` | yes | GameStream / Game Mode / bind / Pad Hide / fgpc / Cemu / Azahar / Decky reload recipes (edit these; `~/.cursor/skills/` on this box are copies) |
+| `.cursor/skills/` | yes | GameStream / Game Mode / bind / Pad Hide / fgpc (CLI, WebGUI, APK) / Cemu / Azahar / Decky reload / Switch 2 recipes (edit these; `~/.cursor/skills/` on this box are copies) |
 | `decky/EmuPads/README.md` | yes | Mux P1/P2, mute, Cemu-only GamePad/Pro, install |
 | `decky/PadHide/README.md` | yes | Kernel-hide extra pads; script is the JSON API |
 | `rules_of_the_land.md` | **no** (gitignored) | Personal hostname, hardware, LAN, Headscale URL, incident notes |

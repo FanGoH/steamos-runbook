@@ -62,6 +62,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)
 - Decky **Playbook** (`ensure-playbook-decky.sh`) so QAM can run this same `./post-update.sh`
 - Decky **FGPC** (`ensure-fgpc-decky.sh`) so QAM can run the `fgpc` catalog (Game Mode `:48200`, screen, pads, hide)
+- FGPC phone WebGUI (`ensure-fgpc-web.sh`, `fgpc-web.service` on `:8484`) and optional WebView APK (`build-fgpc-apk.sh`) — HTTP only, `http://fgpc.tailnet.fangoh.dev:8484/`
 
 Manual follow-ups (printed when needed):
 

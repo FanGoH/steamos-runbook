@@ -147,14 +147,10 @@ fi
 if [ -n "$pretty" ] && [ -n "$tailnet_ip" ]; then
   if ! getent hosts "$pretty" >/dev/null 2>&1; then
     record_manual "Add Headscale extra DNS for ${pretty}" <<EOF
-# On the Headscale server (lab), add an extra A record so phones can use
-# http://${pretty}:${PORT}/ without the port-only tailnet IP.
-# Headscale config (dns.extra_records):
-#   - name: "${pretty}"
-#     type: "A"
-#     value: "${tailnet_ip}"
-# Then reload Headscale. Do not change TAILSCALE_HOSTNAME ($node).
-# Until that record exists, use:
+# On the Headscale VPS, append to /etc/headscale/extra_records.json
+# (dns.extra_records_path — no Headscale restart). HTTP only, not https.
+#   {"name": "${pretty}", "type": "A", "value": "${tailnet_ip}"}
+# Do not change TAILSCALE_HOSTNAME ($node). Until that record exists, use:
 #   http://${tailnet_ip}:${PORT}/
 #   http://${node}.${suffix}:${PORT}/
 EOF

@@ -153,13 +153,18 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
     for code, name in FACE.items():
         pkt[name] = bool(buttons.get(code, 0))
 
-    pkt["L"] = bool(buttons.get(ecodes.BTN_TL, 0))
-    pkt["R"] = bool(buttons.get(ecodes.BTN_TR, 0))
+    l = bool(buttons.get(ecodes.BTN_TL, 0))
+    r = bool(buttons.get(ecodes.BTN_TR, 0))
+    start = bool(buttons.get(ecodes.BTN_START, 0))
+    # HOME = LB + RB + Start (x360 has no Home). Guide/Mode still works alone.
+    home_combo = l and r and start
+    pkt["L"] = l
+    pkt["R"] = r
     pkt["ZL"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TL2, ecodes.ABS_Z)
     pkt["ZR"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TR2, ecodes.ABS_RZ)
-    pkt["PLUS"] = bool(buttons.get(ecodes.BTN_START, 0))
+    pkt["PLUS"] = start and not home_combo
     pkt["MINUS"] = bool(buttons.get(ecodes.BTN_SELECT, 0))
-    pkt["HOME"] = bool(buttons.get(ecodes.BTN_MODE, 0))
+    pkt["HOME"] = home_combo or bool(buttons.get(ecodes.BTN_MODE, 0))
     # No Capture on x360 — leave False
 
     pkt["L_STICK"]["PRESSED"] = bool(buttons.get(ecodes.BTN_THUMBL, 0))

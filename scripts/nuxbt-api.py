@@ -81,26 +81,32 @@ def _bluez_switch() -> dict:
     mac = SWITCH_MAC.replace(":", "_")
     path = f"/org/bluez/hci1/dev_{mac}"
     script = f"""
+import json
 import dbus
 bus = dbus.SystemBus()
-out = {{"path": "{path}", "present": False}}
+out = {{"path": "{path}", "present": False, "connected": False, "paired": False}}
 try:
-    p = dbus.Interface(bus.get_object("org.bluez", "{path}"), "org.freedesktop.DBus.Properties")
-    out["present"] = True
-    out["address"] = str(p.Get("org.bluez.Device1", "Address"))
-    out["name"] = str(p.Get("org.bluez.Device1", "Name"))
-    out["connected"] = bool(p.Get("org.bluez.Device1", "Connected"))
-    out["paired"] = bool(p.Get("org.bluez.Device1", "Paired"))
+    om = dbus.Interface(bus.get_object("org.bluez", "/"), "org.freedesktop.DBus.ObjectManager")
+    objects = om.GetManagedObjects()
+    for obj_path, ifaces in objects.items():
+        if "org.bluez.Adapter1" in ifaces and str(obj_path).endswith("/hci1"):
+            a = ifaces["org.bluez.Adapter1"]
+            out["adapter_address"] = str(a.get("Address", ""))
+            out["adapter_powered"] = bool(a.get("Powered", False))
+            out["adapter_alias"] = str(a.get("Alias", ""))
+        if str(obj_path) != "{path}":
+            continue
+        if "org.bluez.Device1" not in ifaces:
+            continue
+        d = ifaces["org.bluez.Device1"]
+        out["present"] = True
+        out["address"] = str(d.get("Address", ""))
+        out["name"] = str(d.get("Name", d.get("Alias", "")))
+        out["connected"] = bool(d.get("Connected", False))
+        out["paired"] = bool(d.get("Paired", False))
 except Exception as e:
     out["error"] = str(e)
-try:
-    a = dbus.Interface(bus.get_object("org.bluez", "/org/bluez/hci1"), "org.freedesktop.DBus.Properties")
-    out["adapter_address"] = str(a.Get("org.bluez.Adapter1", "Address"))
-    out["adapter_powered"] = bool(a.Get("org.bluez.Adapter1", "Powered"))
-    out["adapter_alias"] = str(a.Get("org.bluez.Adapter1", "Alias"))
-except Exception as e:
-    out["adapter_error"] = str(e)
-print(__import__("json").dumps(out))
+print(json.dumps(out))
 """
     py = HOME / "code" / "nuxbt-host" / "bin" / "python3-nuxbt"
     if not py.is_file():
@@ -113,10 +119,13 @@ print(__import__("json").dumps(out))
             timeout=5,
         )
         if proc.returncode == 0 and proc.stdout.strip():
-            return json.loads(proc.stdout.strip())
+            return json.loads(proc.stdout.strip().splitlines()[-1])
     except Exception as e:
         return {"present": False, "error": str(e)}
-    return {"present": False, "error": (proc.stderr or proc.stdout or "bluez query failed")[:200]}
+    return {
+        "present": False,
+        "error": (proc.stderr or proc.stdout or "bluez query failed")[:200],
+    }
 
 
 def _sunshine_source() -> dict | None:

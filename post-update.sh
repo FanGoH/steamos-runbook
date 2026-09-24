@@ -105,6 +105,7 @@ run_step "ensure-second-screen-decky" "$ROOT/scripts/ensure-second-screen-decky.
 run_step "ensure-pad-hide-decky" "$ROOT/scripts/ensure-pad-hide-decky.sh" warn
 run_step "ensure-playbook-decky" "$ROOT/scripts/ensure-playbook-decky.sh" warn
 run_step "ensure-fgpc-decky" "$ROOT/scripts/ensure-fgpc-decky.sh" warn
+run_step "ensure-switch2-decky" "$ROOT/scripts/ensure-switch2-decky.sh" warn
 run_step "ensure-fgpc" "$ROOT/scripts/ensure-fgpc.sh" warn
 run_step "ensure-fgpc-web" "$ROOT/scripts/ensure-fgpc-web.sh" warn
 run_step "check-decky" "$ROOT/scripts/check-decky.sh" warn

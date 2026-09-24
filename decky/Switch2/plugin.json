@@ -1,0 +1,10 @@
+{
+  "name": "Switch 2",
+  "author": "FanGoH",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["switch", "nuxbt", "controller", "moonlight"],
+    "description": "NUXBT Pro Controller bridge for Switch 2 remote play — status, reconnect, Grip/Order advertise."
+  }
+}

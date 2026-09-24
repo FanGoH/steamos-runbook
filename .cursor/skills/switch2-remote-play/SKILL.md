@@ -181,7 +181,7 @@ Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT
 
 ### Capture card (this box) + upgrade notes (2026-09-24)
 
-**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0`, **1920×1080 MJPEG @ 60** (v4l2 max at 1080p; **no 120**). 20s USB `urbnum` sample was rock-steady **250 URB/s**. Chop on Moonlight with this path was **not** the card — Game Mode `:48200` was on **`encoder = software` (libx264)** with “Minimum FPS target ~30fps”.
+**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0`, **1920×1080 MJPEG @ 60** (v4l2 max at 1080p; **no 120**). 20s USB `urbnum` sample was rock-steady **250 URB/s**. Chop on Moonlight with this path was **not** the card — was **`encoder = software` (libx264)** on `:48200` after AMF missing and VAAPI shaders empty at compile-time `/usr/local/assets`. **Now:** `encoder = vaapi` + `minimum_fps_target = 60` (Mesa on RX 9060 XT; `amf` needs amfrt, not on SteamOS). Host `sunshine-ds-kms` is patched to read shaders from `/home/deck/sdsast` → `~/.local/share/sunshine-ds/assets` (`ensure-sunshine-ds-gamemode.sh`). Override with `SUNSHINE_DS_KMS_ENCODER` / `SUNSHINE_DS_KMS_MIN_FPS`.
 
 Switch 2 dock: **4K60** or **1080p/1440p @ 120** — **4K120 is irrelevant**; **1080p120** is the useful high-FPS target. Prefer USB3 **NV12/raw UVC**, not USB2 MJPEG.
 

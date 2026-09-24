@@ -85,9 +85,14 @@ output_name = HDMI-A-1
 # gamescope-virtual = headless gamescope PipeWire on video/1 (not the KWin helper).
 # HDMI-A-1 duplicates the TV. none keeps MaxVideoStreams 1. virtual is Plasma-only.
 dual_display_source = ${SUNSHINE_DS_KMS_DUAL_SOURCE:-gamescope-virtual}
-encoder = software
+# AMF needs amfrt (not on SteamOS). VAAPI = Mesa on RX 9060 XT.
+# Host binary is compile-time /usr/local/assets; ensure patches that to
+# /home/deck/sdsast (shaders). Empty/missing shaders force libx264.
+encoder = ${SUNSHINE_DS_KMS_ENCODER:-vaapi}
 hevc_mode = 1
 av1_mode = 1
+# Floor when encode falls behind. Default 0 = half of Moonlight FPS (60→30).
+minimum_fps_target = ${SUNSHINE_DS_KMS_MIN_FPS:-60}
 gamepad = x360
 # Hold Back/Select 500ms → HOME on the UHID x360. sunshine-ds then toggles
 # gamescope STEAM_OVERLAY (Steam ignores UHID Guide). Default is -1 (off).

@@ -279,9 +279,20 @@ def _wait_connected(timeout_s: float = 12.0) -> str:
         if st == "connected":
             return st
         if not bridge_running():
-            last = "stopped"
+            # Still starting, or died — distinguish briefly.
+            if last not in ("connecting", "reconnecting", "connected"):
+                last = "stopped"
+            elif time.time() + 1.0 >= deadline and not bridge_running():
+                last = "stopped"
         time.sleep(0.4)
     return last
+
+
+def _wait_for_mode(extra: list[str]) -> float:
+    """Grip needs a longer window — Switch must be on Change Grip/Order."""
+    if "--grip" in extra:
+        return float(os.environ.get("NUXBT_GRIP_WAIT_S", "45"))
+    return float(os.environ.get("NUXBT_RECONNECT_WAIT_S", "12"))
 
 
 def _launch_via_systemd(extra: list[str]) -> tuple[bool, str]:
@@ -379,7 +390,7 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
             )
             via = "popen"
             detail = f"pid {bg.pid}"
-            state = _wait_connected(12.0) if wait else "started"
+            state = _wait_connected(_wait_for_mode(extra)) if wait else "started"
             return _ok(
                 message=f"started {detail} (fallback); state={state}",
                 pid=bg.pid,
@@ -393,9 +404,16 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
         time.sleep(0.5)
         if bridge_running():
             break
-    state = _wait_connected(12.0) if wait else ("running" if bridge_running() else "unknown")
+    wait_s = _wait_for_mode(extra)
+    state = _wait_connected(wait_s) if wait else ("running" if bridge_running() else "unknown")
     mode = "grip/advertise" if "--grip" in extra else "reconnect"
     ok = state == "connected" or bridge_running()
+    tips = []
+    if "--grip" in extra and state != "connected" and bridge_running():
+        tips.append(
+            "Still advertising — on the Switch open Controllers → Change Grip/Order, "
+            "then: python3 scripts/nuxbt-api.py status"
+        )
     return {
         "ok": ok,
         "message": f"started {mode}; state={state}",
@@ -404,7 +422,9 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
         "state": state,
         "via": via,
         "launch": detail,
+        "wait_s": wait_s if wait else 0,
         "log_tail": _tail_out(25),
+        "tips": tips,
     }
 
 

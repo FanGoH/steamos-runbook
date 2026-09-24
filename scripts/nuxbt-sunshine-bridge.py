@@ -58,6 +58,9 @@ WANT_RECONNECT = os.path.join(_RUNTIME, "nuxbt-want-reconnect")
 EMU_MUTE_FILE = Path(_RUNTIME) / "emupads-mute"
 DISCONNECT_GRACE_S = float(os.environ.get("NUXBT_DISCONNECT_GRACE_S", "2.0"))
 RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
+# Grip/Order advertise must stay up while the user opens the Switch menu.
+# Respawning every ~25s wedged BlueZ (DBus NoReply) and killed the bridge.
+ADVERTISE_GIVEUP_S = float(os.environ.get("NUXBT_ADVERTISE_GIVEUP_S", "180.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
 
 # Steam virtual / EmuPads — never treat as the Moonlight source
@@ -598,7 +601,8 @@ def main() -> int:
             if st == "crashed":
                 do_respawn = True
             elif waiting:
-                if (now - (reconnect_attempt_since or now)) >= RECONNECT_GIVEUP_S:
+                giveup = ADVERTISE_GIVEUP_S if use_advertise else RECONNECT_GIVEUP_S
+                if (now - (reconnect_attempt_since or now)) >= giveup:
                     do_respawn = True
                     if not use_advertise:
                         _log(
@@ -606,19 +610,40 @@ def main() -> int:
                             "falling back to advertise (open Grip/Order)"
                         )
                         to_advertise = True
+                    else:
+                        _log(
+                            f"advertise still connecting after {ADVERTISE_GIVEUP_S:.0f}s — "
+                            "respawning Pro Controller (stay on Change Grip/Order)"
+                        )
             elif down_for >= DISCONNECT_GRACE_S:
                 # Dropped after having been up (or never left idle)
                 do_respawn = True
 
             if do_respawn:
+                if st == "crashed":
+                    # Manager/BlueZ often dies with the controller — exit cleanly so
+                    # systemd/API can hard-restart a fresh Nuxbt instead of nesting.
+                    _log("NUXBT crashed — exiting for hard restart (re-run grip)")
+                    stop = True
+                    break
                 if to_advertise:
                     _log(f"link {st} — respawning advertise (Grip/Order)")
-                    idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                    try:
+                        idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                    except Exception as e:
+                        _log(f"advertise respawn failed ({e}) — exiting for hard restart")
+                        stop = True
+                        break
                     use_advertise = True
                     pending_grip_lr = True
                 else:
                     _log(f"link down ({st}) — respawning MAC reconnect → {args.switch}")
-                    idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                    try:
+                        idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                    except Exception as e:
+                        _log(f"reconnect respawn failed ({e}) — exiting for hard restart")
+                        stop = True
+                        break
                     use_advertise = False
                     pending_grip_lr = False
                 reconnect_attempt_since = now

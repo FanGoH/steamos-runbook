@@ -55,10 +55,13 @@ EOF
 }
 
 if [ "$PLACE_ONLY" -eq 0 ]; then
-python3 - "$AZAHAR_INI" <<'PY'
+python3 - "$AZAHAR_INI" "${AZAHAR_SDMC:-/home/${STEAMOS_USER:-deck}/retrodeck/saves/n3ds/azahar/sdmc}" <<'PY'
 import re, sys
 from pathlib import Path
 path = Path(sys.argv[1])
+sdmc = sys.argv[2] if len(sys.argv) > 2 else "/home/deck/retrodeck/saves/n3ds/azahar/sdmc"
+if not sdmc.endswith("/"):
+    sdmc += "/"
 if not path.is_file():
     sys.stderr.write("Missing %s\n" % path)
     sys.exit(1)
@@ -79,6 +82,7 @@ def set_key(src, key, value):
     return src
 
 for key, val in [
+    ("sdmc_directory", sdmc),
     ("layout_option", "4"),
     ("secondary_display_layout", "2"),
     ("fullscreen", "false"),

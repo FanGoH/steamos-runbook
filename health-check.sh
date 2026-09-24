@@ -510,9 +510,9 @@ EOF
 fi
 ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
 if [ -f "$ST_CFG" ]; then
-  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" <<'PY'
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" "${SYNCTHING_PCSX2_FOLDER_ID:-pcsx2-saves}" <<'PY'
 import sys, xml.etree.ElementTree as ET, shlex
-cfg, eden_id, azahar_id = sys.argv[1:4]
+cfg, eden_id, azahar_id, dusk_id, cemu_id, pcsx2_id = sys.argv[1:7]
 root = ET.parse(cfg).getroot()
 folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
 gui_el = root.find("gui")
@@ -523,6 +523,9 @@ if gui_el is not None:
 print(f"st_gui_addr={shlex.quote(address)}")
 print(f"st_eden_path={shlex.quote(folders.get(eden_id, ''))}")
 print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
+print(f"st_dusk_path={shlex.quote(folders.get(dusk_id, ''))}")
+print(f"st_cemu_path={shlex.quote(folders.get(cemu_id, ''))}")
+print(f"st_pcsx2_path={shlex.quote(folders.get(pcsx2_id, ''))}")
 PY
 )"
   if [ "$st_gui_addr" = "$ST_GUI" ]; then
@@ -548,6 +551,33 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
   fi
+  if [[ "$st_dusk_path" == *"/TwilitRealm/Dusklight/"*"/Card A"* ]]; then
+    ok "dusklight-saves -> $st_dusk_path"
+  else
+    warn "dusklight-saves folder missing or not USA/Card A"
+    record_manual "Share Dusklight Card A over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_cemu_path" == *"/saves/wiiu/cemu/00050000"* ]]; then
+    ok "cemu-saves -> $st_cemu_path"
+  else
+    warn "cemu-saves folder missing or not RetroDECK 00050000"
+    record_manual "Share Cemu 00050000 over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_pcsx2_path" == *"/saves/ps2/pcsx2/memcards"* ]]; then
+    ok "pcsx2-saves -> $st_pcsx2_path"
+  else
+    warn "pcsx2-saves folder missing or not RetroDECK PCSX2 memcards"
+    record_manual "Share PCSX2 memcards over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
 else
   warn "Syncthing config.xml not found yet"
 fi
@@ -563,8 +593,56 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 EOF
 elif [ -d "$RD_SDMC/Nintendo 3DS" ]; then
   ok "RetroDECK Azahar sdmc is the Syncthing mesh (real directory)"
+  for default_sdmc in \
+    "/home/$STEAMOS_USER/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc" \
+    "/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
+  do
+    [ -e "$default_sdmc" ] || [ -L "$default_sdmc" ] || continue
+    if [ -L "$default_sdmc" ] && [ "$(readlink -f "$default_sdmc")" = "$(readlink -f "$RD_SDMC")" ]; then
+      ok "$(basename "$(dirname "$(dirname "$(dirname "$default_sdmc")")")") default sdmc -> mesh"
+    else
+      fail "$default_sdmc is not a symlink to the RetroDECK mesh"
+      record_manual "Point Azahar default sdmc at RetroDECK" <<EOF
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  done
+  want_sdmc="${RD_SDMC%/}/"
+  for cfg in \
+    "/home/$STEAMOS_USER/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" \
+    "/home/$STEAMOS_USER/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini"
+  do
+    [ -f "$cfg" ] || continue
+    got="$(awk -F= '/^sdmc_directory=/ {print $2; exit}' "$cfg")"
+    if [ "${got%/}/" = "$want_sdmc" ]; then
+      ok "$(basename "$(dirname "$(dirname "$cfg")")") sdmc_directory -> mesh"
+    else
+      fail "Azahar sdmc_directory is $got (want $want_sdmc)"
+      record_manual "Point every Azahar at RetroDECK sdmc" <<EOF
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  done
 else
   warn "RetroDECK Azahar sdmc missing — Game Mode will not share saves until ensure-syncthing.sh creates it"
+fi
+RD_CEMU="/home/$STEAMOS_USER/retrodeck/saves/wiiu/cemu"
+if [ -L "$RD_CEMU" ]; then
+  fail "RetroDECK Cemu saves is a symlink — Game Mode cannot use another Flatpak data dir"
+elif [ -d "$RD_CEMU/00050000" ]; then
+  ok "RetroDECK Cemu 00050000 is a real directory"
+else
+  warn "RetroDECK Cemu 00050000 missing"
+fi
+RD_PCSX2="/home/$STEAMOS_USER/retrodeck/saves/ps2/pcsx2/memcards"
+if [ -L "$RD_PCSX2" ]; then
+  fail "RetroDECK PCSX2 memcards is a symlink — Game Mode cannot use another tree"
+elif [ -f "$RD_PCSX2/Mcd001.ps2" ]; then
+  ok "RetroDECK PCSX2 Mcd001.ps2 is a real file"
+else
+  warn "RetroDECK PCSX2 Mcd001.ps2 missing"
 fi
 DECKY_ST_SETTINGS="${DECKY_SYNCTHING_SETTINGS:-/home/$STEAMOS_USER/homebrew/settings/decky-syncthing/decky-syncthing.json}"
 if [ -f "$DECKY_ST_SETTINGS" ]; then

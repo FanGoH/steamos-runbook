@@ -205,14 +205,21 @@ if not sdmc.endswith("/"):
 text = cfg_path.read_text(encoding="utf-8")
 out = []
 found = False
+found_default = False
 for line in text.splitlines(True):
-    if line.strip().startswith("sdmc_directory="):
+    stripped = line.strip()
+    if stripped.startswith("sdmc_directory="):
         out.append(f"sdmc_directory={sdmc}\n")
         found = True
+    elif stripped.startswith("sdmc_directory\\default="):
+        out.append("sdmc_directory\\default=false\n")
+        found_default = True
     else:
         out.append(line)
 if not found:
     out.append(f"sdmc_directory={sdmc}\n")
+if not found_default:
+    out.append("sdmc_directory\\default=false\n")
 new = "".join(out)
 if new != text:
     cfg_path.write_text(new, encoding="utf-8")
@@ -241,7 +248,7 @@ unify_azahar_onto_retrodeck() {
 
   if command -v flatpak >/dev/null 2>&1; then
     local azahar_fs="/home/${STEAMOS_USER}/retrodeck/saves/n3ds/azahar"
-    if flatpak override --user --filesystem="$azahar_fs" org.azahar_emu.Azahar; then
+    if flatpak override --user --filesystem="$azahar_fs:rw" org.azahar_emu.Azahar; then
       echo "Standalone Azahar may write $azahar_fs (Flatpak host:ro needs this)."
     else
       record_manual "Allow standalone Azahar to write RetroDECK sdmc" <<EOF
@@ -252,6 +259,43 @@ EOF
     fi
   fi
 
+
+  # Azahar rewrites sdmc_directory back to its default data dir on launch/quit.
+  # Point that default path at the RetroDECK mesh so HDMI (explicit sdmc) and
+  # dual-screen (reset-to-default) still share one tree. Never the reverse:
+  # RetroDECK sdmc must stay a real directory.
+  link_default_sdmc_to_mesh() {
+    local default_sdmc="$1"
+    local mesh="$RD_SDMC"
+    local parent bak target
+    parent="$(dirname "$default_sdmc")"
+    mkdir -p "$parent" "$mesh"
+    if [ -L "$default_sdmc" ]; then
+      target="$(readlink -f "$default_sdmc" || true)"
+      if [ "$target" = "$(readlink -f "$mesh")" ]; then
+        echo "Already linked $default_sdmc -> $mesh"
+        return 0
+      fi
+      rm -f "$default_sdmc"
+    elif [ -d "$default_sdmc" ]; then
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --update "$default_sdmc/" "$mesh/"
+      fi
+      bak="${default_sdmc}.pre-mesh"
+      if [ -e "$bak" ]; then
+        bak="${default_sdmc}.pre-mesh-$(date +%Y%m%d%H%M%S)"
+      fi
+      mv "$default_sdmc" "$bak"
+      echo "Moved leftover $default_sdmc -> $bak"
+    elif [ -e "$default_sdmc" ]; then
+      rm -f "$default_sdmc"
+    fi
+    ln -s "$mesh" "$default_sdmc"
+    echo "Linked $default_sdmc -> $mesh"
+  }
+
+  link_default_sdmc_to_mesh "/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/data/azahar-emu/sdmc"
+  link_default_sdmc_to_mesh "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/sdmc"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini" "$RD_SDMC"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/azahar-emu/qt-config.ini" "$RD_SDMC"
   pin_sdmc_directory "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/data/azahar-emu/config/azahar-emu/qt-config.ini" "$RD_SDMC"
@@ -259,9 +303,84 @@ EOF
 
 unify_azahar_onto_retrodeck
 
+DUSKLIGHT_PATH="${SYNCTHING_DUSKLIGHT_PATH:-/home/${STEAMOS_USER}/.local/share/TwilitRealm/Dusklight/USA/Card A}"
+mkdir -p "$DUSKLIGHT_PATH"
+echo "Dusklight saves: $DUSKLIGHT_PATH"
+
+RD_CEMU_MLC="/home/${STEAMOS_USER}/retrodeck/bios/cemu"
+RD_CEMU_SAVES="/home/${STEAMOS_USER}/retrodeck/saves/wiiu/cemu"
+OLD_STANDALONE_CEMU="/home/${STEAMOS_USER}/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save/00050000"
+CEMU_PATH="${SYNCTHING_CEMU_PATH:-${RD_CEMU_SAVES}/00050000}"
+
+pin_xml_text() {
+  local cfg="$1"
+  local tag="$2"
+  local val="$3"
+  [ -f "$cfg" ] || return 0
+  python3 - "$cfg" "$tag" "$val" <<'PY'
+from pathlib import Path
+import sys
+cfg_path, tag, val = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = cfg_path.read_text(encoding="utf-8")
+import re
+pat = re.compile(rf"<{re.escape(tag)}>[^<]*</{re.escape(tag)}>")
+repl = f"<{tag}>{val}</{tag}>"
+new, n = pat.subn(repl, text, count=1)
+if n == 0:
+    # insert after <content>
+    new = text.replace("<content>", f"<content>\n    {repl}", 1) if "<content>" in text else text + repl
+if new != text:
+    cfg_path.write_text(new, encoding="utf-8")
+    print(f"Set {cfg_path} {tag}={val}")
+else:
+    print(f"{cfg_path.name} {tag} already {val}")
+PY
+}
+
+unify_cemu_onto_retrodeck() {
+  if [ -L "$RD_CEMU_SAVES" ]; then
+    echo "ERROR: $RD_CEMU_SAVES is a symlink. Do not point RetroDECK Cemu saves at another Flatpak data dir." >&2
+    return 1
+  fi
+  mkdir -p "$CEMU_PATH"
+  if [ -d "$OLD_STANDALONE_CEMU" ] && [ "$OLD_STANDALONE_CEMU" != "$CEMU_PATH" ]; then
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --update "$OLD_STANDALONE_CEMU/" "$CEMU_PATH/"
+      echo "Merged leftover standalone Cemu 00050000 into $CEMU_PATH (update-only)."
+    fi
+  fi
+  if command -v flatpak >/dev/null 2>&1; then
+    if flatpak override --user --filesystem="$RD_CEMU_MLC" --filesystem="$RD_CEMU_SAVES" info.cemu.Cemu; then
+      echo "Standalone Cemu may write RetroDECK mlc/saves (Flatpak host:ro needs this)."
+    else
+      record_manual "Allow standalone Cemu to write RetroDECK mlc" <<EOF
+flatpak override --user --filesystem=$RD_CEMU_MLC --filesystem=$RD_CEMU_SAVES info.cemu.Cemu
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+    fi
+  fi
+  pin_xml_text "/home/${STEAMOS_USER}/.var/app/info.cemu.Cemu/config/Cemu/settings.xml" "mlc_path" "$RD_CEMU_MLC"
+  pin_xml_text "/home/${STEAMOS_USER}/.var/app/net.retrodeck.retrodeck/config/Cemu/settings.xml" "mlc_path" "$RD_CEMU_MLC"
+  echo "Cemu saves: $CEMU_PATH"
+}
+
+unify_cemu_onto_retrodeck
+
 export SYNCTHING_GUI="$GUI"
 export SYNCTHING_EDEN_PATH="${EDEN_PATH:-}"
 export SYNCTHING_AZAHAR_PATH="$AZAHAR_PATH"
+export SYNCTHING_DUSKLIGHT_PATH="$DUSKLIGHT_PATH"
+export SYNCTHING_CEMU_PATH="$CEMU_PATH"
+
+PCSX2_PATH="${SYNCTHING_PCSX2_PATH:-/home/${STEAMOS_USER}/retrodeck/saves/ps2/pcsx2/memcards}"
+if [ -L "$PCSX2_PATH" ]; then
+  echo "ERROR: $PCSX2_PATH is a symlink. Do not point RetroDECK PCSX2 memcards at another tree." >&2
+else
+  mkdir -p "$PCSX2_PATH"
+fi
+echo "PCSX2 memcards: $PCSX2_PATH"
+export SYNCTHING_PCSX2_PATH="$PCSX2_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

@@ -16,7 +16,7 @@ Locked rules (switch2-remote-play skill):
   - Prefer Sunshine libvirtualhid pad; skip Steam 28de:11ff and EmuPads
   - EmuPads should already be off for Switch RP
   - Face buttons map by *position* (Xbox south→Switch B, etc.)
-  - HOME = LB + D-Pad Down + Plus; Steam overlay/QAM/Home mute → idle packets
+  - HOME = Plus + L + D-Pad Down; Steam overlay/QAM/Home mute → idle packets
 """
 from __future__ import annotations
 
@@ -385,10 +385,11 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
     minus = btn_start  # physical Select/Back on this path
     hat_x = abs_vals.get(ecodes.ABS_HAT0X, 0)
     hat_y = abs_vals.get(ecodes.ABS_HAT0Y, 0)
-    dpad_down = hat_y > 0
-    # HOME = LB + D-Pad Down + Plus (physical Start). Guide/Mode still works alone.
+    dpad_down = hat_y > 0 or bool(buttons.get(ecodes.BTN_DPAD_DOWN, 0))
+    # HOME = Plus + L + D-Pad Down (physical Start/+). Guide/Mode still works alone.
+    # Suppress L/Plus/Down while the combo is active — Switch ignores Home if L stays held.
     home_combo = l and dpad_down and plus
-    pkt["L"] = l
+    pkt["L"] = l and not home_combo
     pkt["R"] = r
     pkt["ZL"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TL2, ecodes.ABS_Z)
     pkt["ZR"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TR2, ecodes.ABS_RZ)

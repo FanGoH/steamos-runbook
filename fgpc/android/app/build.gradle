@@ -1,0 +1,28 @@
+apply plugin: "com.android.application"
+
+def homeUrl = (System.getenv("FGPC_WEB_URL") ?: "http://fgpc.tailnet.fangoh.dev:8484/").replace("\"", "")
+def fallbackUrl = (System.getenv("FGPC_WEB_FALLBACK_URL") ?: "http://100.64.0.8:8484/").replace("\"", "")
+
+android {
+    namespace "com.fangoh.fgpc"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.fangoh.fgpc"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+        buildConfigField "String", "HOME_URL", "\"${homeUrl}\""
+        buildConfigField "String", "FALLBACK_URL", "\"${fallbackUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

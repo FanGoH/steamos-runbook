@@ -5,3 +5,8 @@ rules_of_the_land.md
 __pycache__/
 *.pyc
 decky/**/node_modules/
+fgpc/android/.gradle/
+fgpc/android/build/
+fgpc/android/app/build/
+fgpc/android/local.properties
+fgpc/android/.idea/

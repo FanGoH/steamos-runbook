@@ -59,6 +59,15 @@ python3 scripts/test_fgpc_web.py
 curl -s http://127.0.0.1:8484/healthz
 ```
 
+Thin **Android APK** (`com.fangoh.fgpc`) is a WebView of that same HTTP URL. Tabs stay on the host — do not put catalog buttons in Kotlin. Build + sideload:
+
+```bash
+./scripts/build-fgpc-apk.sh
+./scripts/install-fgpc-apk.sh
+```
+
+Use `http://` (cleartext). Do not `adb kill-server`. Phone/Odin wireless ports change; set `FGPC_APK_ADB` in `.env` or `adb connect HOST:PORT`.
+
 ## Do not
 
 - Put new hide/bind/stream code in `fgpc/` — extend the playbook script, then add a thin Typer command.

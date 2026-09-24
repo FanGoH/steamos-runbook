@@ -101,6 +101,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-after-gamescope.sh` | After Game Mode: chmod Pulse, Decky-restart Sunshine so KMS binds to gamescope |
 | `scripts/build-sunshine-ds.sh` | Build FanGoH Sunshine DS in Distrobox (does not replace Decky Sunshine) |
 | `scripts/build-moonlight-ds.sh` | Build Moonlight DS debug APK (`com.fangoh.moonlight.debug`) |
+| `scripts/build-fgpc-apk.sh` | Thin WebView APK for the FGPC phone UI (`com.fangoh.fgpc`) |
+| `scripts/install-fgpc-apk.sh` | Sideload `FGPC.apk` to connected ADB devices (do not `adb kill-server`) |
 | `scripts/test-sunshine-ds-desktop.sh` | Desktop dual-display smoke test for sunshine-ds (`:48100`) |
 | `scripts/ensure-kwin-screencast.sh` | Last-resort: reinitialize KWin if desktop screenshots are all black |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |

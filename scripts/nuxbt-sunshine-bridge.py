@@ -328,12 +328,32 @@ def main() -> int:
     ap.add_argument("--switch", default=SWITCH, help="Switch BT MAC for reconnect")
     ap.add_argument("--source", default=None, help="/dev/input/eventN override")
     ap.add_argument("--no-reconnect", action="store_true", help="advertise only (Grip/Order)")
+    ap.add_argument(
+        "--grip",
+        action="store_true",
+        help="Grip/Order pair: advertise (no reconnect), then hold L+R on NUXBT for a few seconds",
+    )
+    ap.add_argument(
+        "--grip-hold",
+        type=float,
+        default=float(os.environ.get("NUXBT_GRIP_HOLD_S", "5")),
+        help="Seconds to hold L+R after BT connect in --grip mode (default 5)",
+    )
     ap.add_argument("--hz", type=float, default=HZ)
     args = ap.parse_args()
 
     period = 1.0 / max(args.hz, 30.0)
+    # Grip/Order needs advertise + L/R on the emulated pad. Reconnect skips that UI.
+    if args.grip:
+        args.no_reconnect = True
 
     _log(f"NUXBT Sunshine bridge adapter={args.adapter} switch={args.switch}")
+    if args.grip:
+        _log(
+            "GRIP MODE: advertising Pro Controller — stay on Change Grip/Order. "
+            f"After BT connects, holding L+R for {args.grip_hold:.0f}s on NUXBT "
+            "(does not rely on Odin/Sunshine bumpers)."
+        )
     nx = Nuxbt(debug=False, log_file_path=LOG)
     adapters = nx.get_available_adapters()
     _log(f"adapters: {adapters}")
@@ -348,8 +368,15 @@ def main() -> int:
         colour_buttons=[random.randint(0, 255) for _ in range(3)],
         reconnect_address=reconnect,
     )
-    _log(f"controller {idx} created")
+    _log(f"controller {idx} created (reconnect={'off' if reconnect is None else reconnect})")
     wait_connected(nx, idx)
+
+    # After Grip/Order BT link-up, force L+R on the *emulated* pad so the Switch
+    # registers the slot even when Moonlight never delivers Odin bumpers.
+    grip_until = 0.0
+    if args.grip:
+        grip_until = time.time() + max(0.5, args.grip_hold)
+        _log(f"connected — holding L+R until {grip_until:.0f} (wall clock)")
 
     # NUXBT↔Switch is the sink. Sunshine/Odin is a hotplug source (mux-like).
     want_abs = (
@@ -382,8 +409,14 @@ def main() -> int:
     )
     last_active = False
     last_muted: bool | None = None
+    grip_logged_done = False
     while not stop:
         now = time.time()
+        forcing_grip = now < grip_until
+        if args.grip and not forcing_grip and not grip_logged_done and grip_until > 0:
+            _log("grip L+R hold done — continue bridging; press + on Switch to exit Grip/Order")
+            grip_logged_done = True
+
         # Rescan when missing, or every 2s in case Moonlight replaced the node.
         need_scan = (
             not _source_alive(source)
@@ -435,7 +468,7 @@ def main() -> int:
             time.sleep(0.5)
             continue
 
-        muted = steam_ui_active()
+        muted = steam_ui_active() and not forcing_grip
         no_source = source is None
         if muted != last_muted:
             _log("steam UI mute — idle to Switch" if muted else "steam UI clear — bridging")
@@ -443,21 +476,32 @@ def main() -> int:
             if muted:
                 buttons.clear()
 
-        if muted or no_source:
+        if muted:
+            pkt = idle_packet(nx)
+        elif forcing_grip:
+            # Direct NUXBT L+R — Grip/Order registration (ignore Sunshine gaps)
+            pkt = idle_packet(nx)
+            pkt["L"] = True
+            pkt["R"] = True
+        elif no_source:
             pkt = idle_packet(nx)
         else:
             pkt = build_packet(nx, buttons, abs_vals, absinfo)
         nx.set_controller_input(idx, pkt)
 
-        active = (not muted) and (not no_source) and (
-            any(
-                pkt[k] for k in (
-                    "A", "B", "X", "Y", "L", "R", "ZL", "ZR",
-                    "PLUS", "MINUS", "HOME", "CAPTURE",
-                    "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+        active = (not muted) and (
+            forcing_grip or (
+                (not no_source) and (
+                    any(
+                        pkt[k] for k in (
+                            "A", "B", "X", "Y", "L", "R", "ZL", "ZR",
+                            "PLUS", "MINUS", "HOME", "CAPTURE",
+                            "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+                        )
+                    ) or pkt["L_STICK"]["PRESSED"] or pkt["R_STICK"]["PRESSED"] or any(
+                        abs(pkt[s][a]) > 0 for s in ("L_STICK", "R_STICK") for a in ("X_VALUE", "Y_VALUE")
+                    )
                 )
-            ) or pkt["L_STICK"]["PRESSED"] or pkt["R_STICK"]["PRESSED"] or any(
-                abs(pkt[s][a]) > 0 for s in ("L_STICK", "R_STICK") for a in ("X_VALUE", "Y_VALUE")
             )
         )
         if active != last_active:

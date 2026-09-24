@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Launch Sunshine → NUXBT input bridge on the host (USB BT dongle /org/bluez/hci1).
 # Requires BlueZ override: sudo -n "$ROOT/scripts/hide-controllers-sysfs.sh" nuxbt-bluez enable
+#
+# Usage:
+#   ./scripts/nuxbt-bridge.sh              # reconnect to last Switch MAC
+#   ./scripts/nuxbt-bridge.sh --grip       # Change Grip/Order: advertise + hold L+R
+#   ./scripts/nuxbt-bridge.sh --no-reconnect
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

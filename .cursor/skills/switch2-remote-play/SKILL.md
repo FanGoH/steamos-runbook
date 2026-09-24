@@ -31,6 +31,8 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position, **HOME = LB + D-Pad Down + Plus** (Guide still works), 120 Hz. **Steam overlay / QAM / Home (769)** → idle. EmuPads off for the session. NUXBT is **Bluetooth HID only**.
 
+**Grip/Order (reliable):** stay on Controllers → Change Grip/Order, then `./scripts/nuxbt-bridge.sh --grip`. That **advertises** (no MAC reconnect) and after BT connects **holds L+R on NUXBT for 5s** — does not depend on Odin→Sunshine bumpers. Exit Grip/Order with + on the Switch. Day-to-day play uses plain `nuxbt-bridge.sh` (reconnect).
+
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).
 - Lab/USB stick: TP-Link `2357:0604` → **RTL8761BU**. Stock `nuxbt demo` creates a controller on **every** adapter — force a single adapter path.

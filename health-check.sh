@@ -572,6 +572,28 @@ EOF
   fi
 fi
 echo
+echo "[FGPC WebGUI]"
+FGPC_WEB_UNIT="${FGPC_WEB_SERVICE:-fgpc-web.service}"
+FGPC_WEB_PORT_N="${FGPC_WEB_PORT:-8484}"
+if systemctl --user is-enabled "$FGPC_WEB_UNIT" >/dev/null 2>&1; then
+  ok "$FGPC_WEB_UNIT enabled"
+else
+  warn "$FGPC_WEB_UNIT not enabled"
+  record_manual "Install FGPC phone WebGUI" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-fgpc-web.sh
+EOF
+fi
+if curl -sf --max-time 2 "http://127.0.0.1:${FGPC_WEB_PORT_N}/healthz" >/dev/null; then
+  ok "fgpc-web healthz http://127.0.0.1:${FGPC_WEB_PORT_N}/healthz"
+else
+  warn "fgpc-web not answering http://127.0.0.1:${FGPC_WEB_PORT_N}/healthz"
+  record_manual "Start FGPC phone WebGUI" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-fgpc-web.sh
+EOF
+fi
+echo
 echo "[Gear Lever]"
 if flatpak info --user "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1 \
   || flatpak info "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1; then

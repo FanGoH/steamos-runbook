@@ -58,6 +58,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - PS2 BIOS via Tender (`ensure-pcsx2-bios.sh`: Decky `download_all_firmware("ps2")` + pin USA 230 in `PCSX2.ini`)
 - Eden user slot + Tender `rom-launcher` wrap (`ensure-eden-component.sh`: host AppImage `-f -g` for Switch dumps over 6GiB, 4GB pin on Engage only, Switch library symlinks, 3DS dumps moved from `~/emulation/3ds/games` into `~/retrodeck/roms/n3ds` + Tender `launchable=1`)
 - Official Syncthing v2 save mesh (`ensure-syncthing.sh`: `~/.local/bin/syncthing` user unit + linger, GUI `127.0.0.1:8384`, folders `eden-saves` / `azahar-saves` on RetroDECK Azahar sdmc). Standalone Azahar `sdmc_directory` + Flatpak filesystem override so Game Mode writes land on the mesh. Do **not** symlink RetroDECK sdmc into another Flatpak. Do **not** use pacman syncthing, Syncthing GTK, or decky-syncthing as the daemon. Peer device IDs in `.env` `SYNCTHING_PEER_IDS` if `config.xml` is regenerated. Handheld Autostart is not this playbook. Skill `.cursor/skills/emu-save-mesh/SKILL.md`.
+- FGPC phone WebGUI (`ensure-fgpc-web.sh`): user unit `fgpc-web.service` on this Steam Machine. Same catalog as Decky FGPC via `scripts/fgpc-api.py` (stream / screen / pad / hide, plus emu status and saves ensure). Buttons only. Binds localhost + tailnet IPv4 (`FGPC_WEB_PORT`, default 8484). Extra MagicDNS name `FGPC_WEB_HOSTNAME` (default `fgpc`) needs a Headscale extra A record — do **not** change `TAILSCALE_HOSTNAME`. Does **not** run bootstrap, post-update, or mode switch. Never `--force` hide. Skill `.cursor/skills/fgpc/SKILL.md`.
 - Cursor Agent worker user service (`agent worker start` on `CURSOR_WORKER_DIR` plus `CURSOR_WORKER_EXTRA_DIRS`; login is manual). Separate data dir so it does not fight an on-demand session worker.
 - Switch 2 controllers (`ensure-switch2-controllers.sh`): user-space BLE → uinput bridge from `SWITCH2_CONTROLLERS_DIR` (default `~/code/switch2-controllers-linux`). Python 3.12 venv via uv (Steam OS 3.9 is 3.14). Steam Bluetooth.Enabled stays off; BlueZ adapter is powered. Game Mode hook is `gamescope-session.service`. Pairing is manual. Do **not** install the Bazzite Eden reorder hooks (playbook owns Eden/Cemu/RPCS3 binds).
 - Tailscale Control Decky plugin (`ensure-tailscale-control.sh`): drop stock `up --reset`, pin Advanced Settings host to `TAILSCALE_HOSTNAME` (`steammachine`), Headscale login server from `.env`, `--accept-routes`. Same flags as `tailscale_up_command`. Do **not** add `--ssh`. Plugin updates restore `--reset` — re-run the ensure script.
@@ -74,6 +75,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 - Emu Quick Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-emu-quick-decky.sh`)
 - Second Screen Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-second-screen-decky.sh`)
 - SunshineDS Decky plugin copy into `~/homebrew/plugins` when that dir is root-owned (`sudo` lines from `ensure-sunshine-ds-decky.sh`)
+- Headscale extra DNS for the FGPC phone UI (`fgpc.<MagicDNS suffix>` → this node's tailnet IPv4). The web process is on this Steam Machine; the A record lives on the Headscale server. Do **not** change `TAILSCALE_HOSTNAME`.
 - Game Mode `sunshine-ds-kms` setcap sudoers (`scripts/ensure-sunshine-ds-kms-setcap.sh`): `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` must sort **after** `wheel` or NOPASSWD is ignored. SteamOS updates wipe it. Do **not** `setcap` desktop `sunshine-ds`.
 
 **Light checks** (no reinstall nag):
@@ -94,7 +96,7 @@ Install Eden into RetroDECK’s **user** slot (`/var/data/retrodeck/external_com
 |------|---------|----------|
 | `AGENTS.md` | yes | This file — general agent/playbook behavior, including the proven Switch/Eden Game Mode recipe |
 | `README.md` | yes | Public setup/recovery docs (no personal infra) |
-| `.cursor/skills/` | yes | GameStream / Game Mode / bind / Cemu / Azahar recipes (edit these; `~/.cursor/skills/` on this box are copies) |
+| `.cursor/skills/` | yes | GameStream / Game Mode / bind / fgpc / Cemu / Azahar recipes (edit these; `~/.cursor/skills/` on this box are copies) |
 | `decky/EmuPads/README.md` | yes | Mux P1/P2, mute, Cemu-only GamePad/Pro, install |
 | `rules_of_the_land.md` | **no** (gitignored) | Personal hostname, hardware, LAN, Headscale URL, incident notes |
 | `.env` | **no** (gitignored) | Real `TAILSCALE_LOGIN_SERVER`, NIC, etc. |

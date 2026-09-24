@@ -279,3 +279,22 @@ class Plugin:
         if not data.get("messages") and data.get("message"):
             data["messages"] = [data["message"]]
         return data
+
+    async def restart(self, emu: str = "all", **kwargs: object) -> dict:
+        if kwargs:
+            emu = str(kwargs.get("emu", emu) or emu)
+        script = _bind_py()
+        if not os.path.isfile(script):
+            return {"ok": False, "message": f"Missing {script}"}
+        emu = (emu or "all").strip().lower()
+        if emu not in ("all", "cemu", "azahar", "eden"):
+            return {"ok": False, "message": f"Unknown emu {emu}"}
+        cmd = ["python3", script, "restart", "--emu", emu]
+        try:
+            proc = _run_as_deck(cmd, timeout=55)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "bind-gamepad restart timed out"}
+        data = _json_from(proc)
+        if not data.get("messages") and data.get("message"):
+            data["messages"] = [data["message"]]
+        return data

@@ -23,6 +23,7 @@ const getStatus = callable("get_status");
 const applyBinds = callable("apply");
 const setMuxMode = callable("set_mode");
 const setMuxEnabled = callable("set_enabled");
+const restartEmu = callable("restart");
 
 function asPads(raw) {
   if (Array.isArray(raw)) return raw;
@@ -221,6 +222,32 @@ function Content() {
     }
   };
 
+  const restart = async (emu) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await restartEmu(emu);
+      const body = (result?.messages || [result?.message || ""])
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 220);
+      toaster.toast({
+        title: result?.ok === false ? "Reset failed" : "Reset emulator",
+        body: body || "No running emulator to restart.",
+        duration: result?.ok === false ? 7000 : 5000,
+      });
+      await refresh({ syncMode: true });
+    } catch (err) {
+      toaster.toast({
+        title: "Reset failed",
+        body: String(err).slice(0, 220),
+        duration: 7000,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const emuBlock = (key, title, extra) => {
     const emu = status?.emus?.[key] || {};
     const players = emu.players || [];
@@ -278,6 +305,14 @@ function Content() {
             disabled: busy,
             onClick: () => apply(key, true),
             children: `Apply and restart ${title}`,
+          }),
+        }),
+        SP_JSX.jsx(DFL.PanelSectionRow, {
+          children: SP_JSX.jsx(DFL.ButtonItem, {
+            layout: "below",
+            disabled: busy,
+            onClick: () => restart(key),
+            children: `Reset ${title}`,
           }),
         }),
       ],
@@ -414,6 +449,14 @@ function Content() {
               disabled: busy,
               onClick: () => apply("all", true),
               children: "Apply and restart emulation",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx(DFL.ButtonItem, {
+              layout: "below",
+              disabled: busy,
+              onClick: () => restart("all"),
+              children: "Reset running emulators",
             }),
           }),
         ],

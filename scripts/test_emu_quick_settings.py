@@ -482,6 +482,23 @@ def test_live_session_tracks_filter_steps() -> None:
         assert "scaling_filter=1" in mod.eden_ini(home).read_text()
 
 
+def test_restart_dry_run_uses_steam_appid() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        proc = home / "proc"
+        _fake_proc(proc, "4242", "eden", ["eden.appimage", "-f", "-g", "rom"])
+        (proc / "4242" / "environ").write_bytes(b"SteamAppId=7788\0HOME=/tmp\0")
+        (proc / "4242" / "status").write_text("Name:\teden\nPPid:\t1\n", encoding="utf-8")
+        data = mod.do_restart("eden", proc_root=proc, dry_run=True)
+        assert data["ok"] is True, data
+        joined = " ".join(data["messages"])
+        assert "4242" in joined
+        assert "7788" in joined
+        empty = mod.do_restart("cemu", proc_root=proc, dry_run=True)
+        assert empty["ok"] is True
+        assert any("No running emulator" in m for m in empty["messages"])
+
+
 if __name__ == "__main__":
     tests = [
         test_ini_set_preserves_other_keys,
@@ -507,6 +524,7 @@ if __name__ == "__main__":
         test_status_marks_live_settings,
         test_live_only_does_not_write_until_save,
         test_live_session_tracks_filter_steps,
+        test_restart_dry_run_uses_steam_appid,
     ]
     for fn in tests:
         fn()

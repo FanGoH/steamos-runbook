@@ -10,6 +10,7 @@ apply live via hotkeys while Eden is running. Resolution has no hotkey.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -1734,6 +1735,43 @@ def do_reset(
     return {"ok": True, "messages": messages, "message": " ".join(messages)}
 
 
+def _load_bind():
+    """bind-gamepad.py owns SIGTERM + Steam relaunch. Do not match Sunshine."""
+    path = Path(__file__).with_name("bind-gamepad.py")
+    spec = importlib.util.spec_from_file_location("bind_gamepad_restart", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def do_restart(
+    emu: str,
+    *,
+    proc_root: Path | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """SIGTERM Cemu / Azahar / Eden, then steam://rungameid or re-exec.
+
+    Does not restart the mux. Does not match Sunshine / Steam / gamescope.
+    """
+    emu = (emu or "all").strip().lower()
+    if emu not in ("all", "eden", "azahar", "cemu"):
+        raise ValueError(f"Unknown emu {emu}")
+    bind = _load_bind()
+    targets = ("cemu", "azahar", "eden") if emu == "all" else (emu,)
+    messages, ok = bind.restart_emulators(
+        targets, proc_root=proc_root, dry_run=dry_run
+    )
+    return {
+        "ok": ok,
+        "emu": emu,
+        "messages": messages,
+        "message": " ".join(messages),
+    }
+
+
 def _print(data: dict, rc: int = 0) -> int:
     json.dump(data, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -1776,6 +1814,14 @@ def main(argv: list[str] | None = None) -> int:
     p_reset.add_argument("--emu", required=True, choices=("eden", "azahar", "cemu"))
     p_reset.add_argument("--scope", default="global", choices=("global", "game"))
     p_reset.add_argument("--title", default="")
+    p_restart = sub.add_parser("restart", parents=[shared])
+    p_restart.add_argument(
+        "--emu",
+        default="all",
+        choices=("all", "eden", "azahar", "cemu"),
+        help="Running emulator to SIGTERM then relaunch via Steam",
+    )
+    p_restart.add_argument("--dry-run", dest="dry_run", action="store_true")
     args = parser.parse_args(argv)
     home = home_dir(args.home)
     proc = Path(args.proc) if args.proc else None
@@ -1820,6 +1866,13 @@ def main(argv: list[str] | None = None) -> int:
             data.update(status_payload(home, proc, emu=args.emu, title=args.title))
             data["ok"] = True
             return _print(data)
+        if args.cmd == "restart":
+            data = do_restart(
+                getattr(args, "emu", "all") or "all",
+                proc_root=proc,
+                dry_run=bool(getattr(args, "dry_run", False)),
+            )
+            return _print(data, 0 if data.get("ok") else 1)
     except (ValueError, KeyError) as exc:
         return _print({"ok": False, "message": str(exc)}, 2)
     return _print({"ok": False, "message": "unknown command"}, 1)

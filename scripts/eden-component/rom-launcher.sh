@@ -112,6 +112,20 @@ if [ "$is_retrodeck" -eq 1 ] \
     if [ -x "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" ]; then
       "$PLAYBOOK/scripts/start-emu-steam-ui-inhibit.sh" >/dev/null 2>&1 || true
     fi
+    # -g presents after BootGame. Without this watcher HDMI stays on Steam
+    # Launching while the Eden window sits on :1.
+    if [ -x "$PLAYBOOK/scripts/eden-from-retrodeck.sh" ]; then
+      if command -v setsid >/dev/null 2>&1; then
+        setsid -f env STEAM_APP_ID="${SteamAppId:-${STEAM_APP_ID:-}}" \
+          "$PLAYBOOK/scripts/eden-from-retrodeck.sh" --watch-focus \
+          >/dev/null 2>&1 || true
+      else
+        nohup env STEAM_APP_ID="${SteamAppId:-${STEAM_APP_ID:-}}" \
+          "$PLAYBOOK/scripts/eden-from-retrodeck.sh" --watch-focus \
+          >/dev/null 2>&1 &
+        disown || true
+      fi
+    fi
     # RetroDECK does not copy the cart into RAM. Same inode, bind-mounted.
     # RSS is Eden: global 8GB guest DRAM + cart working set. Pin 4GB
     # (Engage's custom 4GB was ignored via use_global=true).

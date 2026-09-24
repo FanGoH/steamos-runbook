@@ -29,7 +29,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: `/tmp/nuxbt-usb-reconnect.py` or **`scripts/nuxbt-bridge.sh`** (Sunshine → NUXBT) on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85`. After killing a live pad, Switch may need Grip/Order once; with override on, reconnect without Grip is possible.
 
-**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. Reads Sunshine libvirtualhid pad (no `EVIOCGRAB`), maps face buttons by position, **HOME = LB+RB+Start** (Guide still works), feeds NUXBT at 120 Hz. **Steam overlay / QAM / Home (769)** → idle packets to Switch (same atoms as EmuPads mute). EmuPads off for the session. NUXBT is **Bluetooth HID only** — the USB stick is the host BT radio, not a USB link to the Switch.
+**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. Reads Sunshine libvirtualhid pad (no `EVIOCGRAB`), maps face buttons by position, **HOME = LB + D-Pad Down + Plus** (Guide still works), feeds NUXBT at 120 Hz. **Steam overlay / QAM / Home (769)** → idle packets to Switch (same atoms as EmuPads mute). EmuPads off for the session. NUXBT is **Bluetooth HID only** — the USB stick is the host BT radio, not a USB link to the Switch.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).

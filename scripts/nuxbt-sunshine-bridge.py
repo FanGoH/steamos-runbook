@@ -219,8 +219,11 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
     l = bool(buttons.get(ecodes.BTN_TL, 0))
     r = bool(buttons.get(ecodes.BTN_TR, 0))
     start = bool(buttons.get(ecodes.BTN_START, 0))
-    # HOME = LB + RB + Start (x360 has no Home). Guide/Mode still works alone.
-    home_combo = l and r and start
+    hat_x = abs_vals.get(ecodes.ABS_HAT0X, 0)
+    hat_y = abs_vals.get(ecodes.ABS_HAT0Y, 0)
+    dpad_down = hat_y > 0
+    # HOME = LB + D-Pad Down + Plus/Start (x360 has no Home). Guide/Mode still works alone.
+    home_combo = l and dpad_down and start
     pkt["L"] = l
     pkt["R"] = r
     pkt["ZL"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TL2, ecodes.ABS_Z)
@@ -243,12 +246,10 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
         abs_vals.get(ecodes.ABS_RY, 0), absinfo.get(ecodes.ABS_RY), invert=True
     )
 
-    hat_x = abs_vals.get(ecodes.ABS_HAT0X, 0)
-    hat_y = abs_vals.get(ecodes.ABS_HAT0Y, 0)
     pkt["DPAD_LEFT"] = hat_x < 0
     pkt["DPAD_RIGHT"] = hat_x > 0
     pkt["DPAD_UP"] = hat_y < 0
-    pkt["DPAD_DOWN"] = hat_y > 0
+    pkt["DPAD_DOWN"] = dpad_down and not home_combo
     return pkt
 
 

@@ -27,16 +27,16 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
 
-**USB dongle proven on lab.** Forced `/org/bluez/hci1` only (onboard `hci0` DOWN); Switch 2 Grip/Order → `Finished!` with ACL `RX=237` `TX=1364`.
+**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect keep-alive: `/tmp/nuxbt-usb-reconnect.py` on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85` — **connected** (ACL up) without Grip/Order when override is on.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
-- **NUXBT** works on **lab** on both onboard BCM43438 **and** the plugged USB dongle.
-- Lab USB stick: TP-Link `2357:0604` → **RTL8761BU** (`hci1` `50:3D:D1:EE:D3:2B`). Soft-blocked until `rfkill unblock bluetooth`. Stock `nuxbt demo` creates a controller on **every** adapter — a DOWN `hci0` still appears on D-Bus and crashes; force a single adapter path.
-- **NUXBT on De-FanGoH:** host path ready; **MT7922** never paired. **Next:** move this USB stick onto De-FanGoH and force that `hci*` the same way.
+- **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).
+- Lab/USB stick: TP-Link `2357:0604` → **RTL8761BU**. Stock `nuxbt demo` creates a controller on **every** adapter — force a single adapter path.
+- Without BlueZ `--noplugin=*`, Switch flaps `RequestAuthorization` / connect-reset; do not skip the override.
 
-### Why lab works and De-FanGoH does not (so far)
+### Why lab works and De-FanGoH onboard does not
 
-| | **lab (works)** | **De-FanGoH (no pair)** |
+| | **lab (works)** | **De-FanGoH MT7922 (no pair)** |
 |--|-----------------|-------------------------|
 | Radio | BCM43438 UART **and** USB RTL8761BU (`2357:0604`) | MediaTek **MT7922** combo (`0e8d:0616`) |
 | Proof | USB-forced demo 2026-09-24: `Finished!` ACL up | Software OK; radio stalls |

@@ -23,41 +23,26 @@ Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → 
 
 Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
-## Status (2026-09-21 → 2026-09-22)
+## Status (2026-09-24)
 
-**Paused — waiting for CSR dongle (arrives ~2026-09-23).** Do not keep retrying MT7922 handshake cycles until it is plugged in.
+**USB dongle proven on lab.** Forced `/org/bluez/hci1` only (onboard `hci0` DOWN); Switch 2 Grip/Order → `Finished!` with ACL `RX=237` `TX=1364`.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
-- **NUXBT** works on **lab** (Pi): demo finished; Switch 2 accepted emulated Pro Controller.
-- **NUXBT on De-FanGoH:** host path proven (override, setcap home `python3-nuxbt`, CoD sticky, Ctrl-C-safe verbose `nuxbt-run.sh`). **MT7922** never completed a stable Grip/Order pair (10×30s cycles: no ACL connect; rare partial HID then `ConnectionResetError`).
-- BlueZ override + **setcap on home copy** `~/code/nuxbt-host/bin/python3-nuxbt` (SteamOS `/usr` is immutable): `sudo scripts/nuxbt-bluez-override.sh enable`.
+- **NUXBT** works on **lab** on both onboard BCM43438 **and** the plugged USB dongle.
+- Lab USB stick: TP-Link `2357:0604` → **RTL8761BU** (`hci1` `50:3D:D1:EE:D3:2B`). Soft-blocked until `rfkill unblock bluetooth`. Stock `nuxbt demo` creates a controller on **every** adapter — a DOWN `hci0` still appears on D-Bus and crashes; force a single adapter path.
+- **NUXBT on De-FanGoH:** host path ready; **MT7922** never paired. **Next:** move this USB stick onto De-FanGoH and force that `hci*` the same way.
 
 ### Why lab works and De-FanGoH does not (so far)
 
 | | **lab (works)** | **De-FanGoH (no pair)** |
 |--|-----------------|-------------------------|
-| Radio | Cypress/Broadcom **BCM43438** UART (`hci_uart_bcm`) | MediaTek **MT7922** USB combo WiFi+BT (`btusb` `0e8d:0616`) |
-| HCI | BT 5.0, Bus UART | BT 5.3, Bus USB |
-| BlueZ | 5.66 (native) | 5.87 (host) |
-| Proof | After demo: `RX acl=216` `TX acl=1361`; Switch MAC `48:F1:EB:C3:F4:85` in `/var/lib/bluetooth/…/cache` | Software OK; radio stalls (`acl=0` or reset after partial HID) |
+| Radio | BCM43438 UART **and** USB RTL8761BU (`2357:0604`) | MediaTek **MT7922** combo (`0e8d:0616`) |
+| Proof | USB-forced demo 2026-09-24: `Finished!` ACL up | Software OK; radio stalls |
 | Runtime | Native `~/code/nuxbt/.venv` | Host `~/code/nuxbt-host` + capped `bin/python3-nuxbt` |
 
-**Not the primary failure mode:** Distrobox D-Bus / missing caps. Protocol is proven on Switch 2 via lab. Onboard MT7922 is the blocker.
+**Next on De-FanGoH:** plug the same USB adapter, unblock rfkill if needed, power off MT7922, create controller only on the USB path, Grip/Order demo.
 
-**Likely causes (ordered):**
-1. **Raw-HCI `set_class` needs file caps** — fixed via home python copy + setcap.
-2. **DiscoverableTimeout 180s** — patched → 0; `nuxbt-run.sh` re-asserts CoD sticky.
-3. **MT7922 vs BCM43438** — chipset/coexistence; Switch MAC appeared once then stalled. **CSR USB dongle next.**
-4. WiFi/BT coexistence on the same MT7922 die / range.
-
-### Resume when dongle arrives (De-FanGoH)
-
-1. Plug **TP-Link UB400** (or MX twin **UB4A**) — CSR `0a12:0001`. Confirm `lsusb | grep 0a12` and a new `hci1` (or whichever is not MT7922).
-2. Keep BlueZ override enabled if needed: `sudo scripts/nuxbt-bluez-override.sh enable`.
-3. Put Switch 2 in **Change Grip/Order**; run `scripts/nuxbt-run.sh demo` bound to the **CSR** adapter (not MT7922).
-4. Success = lab-like finish (`Finished!` / ACL climb / pad usable in a game). Then video/Sunshine bridge stays deferred.
-
-**Dongle:** TP-Link **UB400** (CSR 4.0, `0a12:0001`) — Amazon ASIN [B07V1SZCY6](https://www.amazon.com/dp/B07V1SZCY6). MX regional twin **UB4A**. Do **not** use UB500 (Realtek).
+**Dongle note:** Lab stick is Realtek RTL8761BU (UB500-class VID), not CSR `0a12:0001`. It worked on lab against Switch 2. Prefer CSR UB400/UB4A if buying another.
 
 ## Decisions (locked)
 

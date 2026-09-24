@@ -34,7 +34,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 **Stay connected / advertise:**
 - **A)** On Switch drop/crash the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).
 - **B)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or restart with `./scripts/nuxbt-bridge.sh --grip` on Change Grip/Order.
-- **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). Status / Reconnect / Grip / Start / Stop via `scripts/nuxbt-api.py`.
+- **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). Status / Reconnect / Grip / Start / Stop via `scripts/nuxbt-api.py` (hard restart under `systemd-run --user` so PluginLoader cannot kill the bridge).
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).

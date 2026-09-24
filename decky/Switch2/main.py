@@ -75,17 +75,22 @@ def _run(args: list[str], timeout: int = 45) -> subprocess.CompletedProcess:
     uid = _session_uid()
     runtime = f"/run/user/{uid}"
     home = _user_home()
+    path = os.environ.get("PATH") or "/usr/bin:/bin"
+    for p in ("/usr/bin", "/bin", "/usr/local/bin", f"{home}/.local/bin"):
+        if p not in path.split(":"):
+            path = f"{p}:{path}"
     prefix = [
         "env",
         f"HOME={home}",
         "USER=deck",
         f"XDG_RUNTIME_DIR={runtime}",
         f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus",
+        f"PATH={path}",
         "LD_PRELOAD=",
         f"STEAMOS_PLAYBOOK_DIR={_playbook()}",
     ]
     inner = [*prefix, "python3", _script(), *args]
-    # PluginLoader is root — always drop to deck (BlueZ + tmux live in the user session).
+    # PluginLoader is root — always drop to deck (BlueZ + systemd --user).
     if os.geteuid() == 0:
         cmd = ["runuser", "-u", "deck", "--", *inner]
     else:

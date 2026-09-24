@@ -146,7 +146,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.6, fontSize: "0.78em", lineHeight: 1.35 },
               children:
-                "Reconnect / Grip always hard-restart the bridge (same as SSH). Close overlay so inputs reach Switch.",
+                "Reconnect / Grip hard-restart the bridge under systemd --user (same as SSH). Close overlay so inputs reach Switch.",
             }),
           }),
         ],

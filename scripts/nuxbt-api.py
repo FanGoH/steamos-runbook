@@ -5,11 +5,15 @@ Commands:
   status
   start [--grip]
   stop
-  grip          # advertise + L+R (touch want-grip, or start --grip if down)
-  reconnect     # MAC reconnect request / start
+  grip          # advertise + L+R (hard restart via user systemd)
+  reconnect     # MAC reconnect (hard restart via user systemd)
 
 Does not touch EmuPads, Sunshine ports, or dual-stream. PluginLoader must
-run this as user deck (BlueZ + tmux live in the session).
+run this as user deck (BlueZ + systemd --user live in the session).
+
+Hard start uses ``systemd-run --user`` so Decky/PluginLoader (root cgroup)
+cannot kill the bridge when the QAM callable returns — that was why Grip in
+QAM left ``state=stopped`` while the same CLI command worked.
 """
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ WANT_GRIP = RUNTIME / "nuxbt-want-grip"
 WANT_RECONNECT = RUNTIME / "nuxbt-want-reconnect"
 TMUX_CONF = "/exec-daemon/tmux.portal.conf"
 SESSION = "nuxbt-bridge"
+UNIT = "nuxbt-bridge.service"
 SWITCH_MAC = os.environ.get("NUXBT_SWITCH_MAC", "48:F1:EB:C3:F4:85")
 ADAPTER = os.environ.get("NUXBT_ADAPTER", "/org/bluez/hci1")
 
@@ -53,12 +58,7 @@ def _tmux(*args: str) -> subprocess.CompletedProcess:
 
 
 def bridge_running() -> bool:
-    proc = subprocess.run(
-        ["pgrep", "-f", "scripts/nuxbt-sunshine-bridge.py"],
-        capture_output=True,
-        text=True,
-    )
-    return proc.returncode == 0
+    return bool(_bridge_pids())
 
 
 def _tail_out(n: int = 40) -> str:
@@ -75,6 +75,33 @@ def _parse_state(text: str) -> str:
         if line.startswith("state="):
             state = line.split("=", 1)[1].strip()
     return state
+
+
+def _user_bus_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(HOME)
+    env["USER"] = env.get("USER") or "deck"
+    env["XDG_RUNTIME_DIR"] = str(RUNTIME)
+    env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={RUNTIME}/bus"
+    env["STEAMOS_PLAYBOOK_DIR"] = str(ROOT)
+    env["NUXBT_ADAPTER"] = ADAPTER
+    env["NUXBT_SWITCH_MAC"] = SWITCH_MAC
+    env["PATH"] = env.get("PATH") or "/usr/bin:/bin"
+    # Ensure common bins even if PluginLoader handed us a root-ish PATH.
+    for p in ("/usr/bin", "/bin", "/usr/local/bin", str(HOME / ".local" / "bin")):
+        if p not in env["PATH"].split(":"):
+            env["PATH"] = f"{p}:{env['PATH']}"
+    return env
+
+
+def _systemctl_user(*args: str, timeout: float = 15) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["systemctl", "--user", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=_user_bus_env(),
+    )
 
 
 def _bluez_switch() -> dict:
@@ -222,6 +249,9 @@ def _bridge_pids() -> list[int]:
 
 
 def _stop_bridge() -> None:
+    # Prefer leaving PluginLoader's cgroup: stop the user unit first.
+    _systemctl_user("stop", UNIT)
+    _systemctl_user("reset-failed", UNIT)
     _tmux("kill-session", "-t", SESSION)
     pids = _bridge_pids()
     for pid in pids:
@@ -254,17 +284,45 @@ def _wait_connected(timeout_s: float = 12.0) -> str:
     return last
 
 
-def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
-    if not BRIDGE_SH.is_file():
-        return _err(f"missing {BRIDGE_SH}")
-    _stop_bridge()
-    try:
-        OUT.write_text("", encoding="utf-8")
-    except OSError:
-        pass
-    # Prefer portal tmux so agents can inspect; fall back to plain tmux / no-tmux
+def _launch_via_systemd(extra: list[str]) -> tuple[bool, str]:
+    """Start bridge under systemd --user (survives Decky/PluginLoader)."""
+    args = " ".join(extra)
+    inner = (
+        f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {args} 2>&1 | tee {OUT}; "
+        f"echo EXIT:$? >> {OUT}"
+    )
+    cmd = [
+        "systemd-run",
+        "--user",
+        "--collect",
+        f"--unit={SESSION}",
+        f"--working-directory={ROOT}",
+        "--property=Type=simple",
+        "--property=KillMode=process",
+        f"--setenv=HOME={HOME}",
+        "--setenv=USER=deck",
+        f"--setenv=XDG_RUNTIME_DIR={RUNTIME}",
+        f"--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path={RUNTIME}/bus",
+        f"--setenv=STEAMOS_PLAYBOOK_DIR={ROOT}",
+        f"--setenv=NUXBT_ADAPTER={ADAPTER}",
+        f"--setenv=NUXBT_SWITCH_MAC={SWITCH_MAC}",
+        "/bin/bash",
+        "-lc",
+        inner,
+    ]
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=20, env=_user_bus_env()
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300]
+        return False, err or "systemd-run failed"
+    return True, "systemd"
+
+
+def _launch_via_tmux(extra: list[str]) -> tuple[bool, str]:
     conf = ["-f", TMUX_CONF] if Path(TMUX_CONF).is_file() else []
     _tmux("kill-session", "-t", SESSION)
+    args = " ".join(extra)
     cmd = [
         "tmux",
         *conf,
@@ -277,28 +335,60 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
         "--",
         "bash",
         "-lc",
-        f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {' '.join(extra)} 2>&1 | tee {OUT}; echo EXIT:$?; exec bash -l",
+        f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {args} 2>&1 | tee {OUT}; echo EXIT:$?; exec bash -l",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        # plain bash background fallback (no portal tmux)
-        log = open(OUT, "w", encoding="utf-8")
-        bg = subprocess.Popen(
-            ["bash", "-lc", f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {' '.join(extra)}"],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            cwd=str(ROOT),
-            start_new_session=True,
-        )
-        state = _wait_connected(12.0) if wait else "started"
-        return _ok(
-            message=f"started pid {bg.pid} (no tmux); state={state}",
-            pid=bg.pid,
-            mode="grip" if "--grip" in extra else "reconnect",
-            state=state,
-            via="hard",
-            log_tail=_tail_out(25),
-        )
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=15, env=_user_bus_env()
+    )
+    if proc.returncode == 0:
+        return True, "tmux"
+    return False, (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300]
+
+
+def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
+    if not BRIDGE_SH.is_file():
+        return _err(f"missing {BRIDGE_SH}")
+    _stop_bridge()
+    try:
+        OUT.write_text("", encoding="utf-8")
+    except OSError:
+        pass
+
+    via = "hard"
+    ok_launch, detail = _launch_via_systemd(extra)
+    if not ok_launch:
+        ok_tmux, tmux_detail = _launch_via_tmux(extra)
+        if ok_tmux:
+            via = "tmux"
+            detail = tmux_detail
+        else:
+            # Last resort: bare Popen outside PluginLoader wait (new session).
+            try:
+                log = open(OUT, "w", encoding="utf-8")
+            except OSError as e:
+                return _err(
+                    f"start failed (systemd: {detail}; tmux: {tmux_detail}; out: {e})"
+                )
+            bg = subprocess.Popen(
+                ["bash", "-lc", f"PYTHONUNBUFFERED=1 {BRIDGE_SH} {' '.join(extra)}"],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                cwd=str(ROOT),
+                start_new_session=True,
+                env=_user_bus_env(),
+            )
+            via = "popen"
+            detail = f"pid {bg.pid}"
+            state = _wait_connected(12.0) if wait else "started"
+            return _ok(
+                message=f"started {detail} (fallback); state={state}",
+                pid=bg.pid,
+                mode="grip" if "--grip" in extra else "reconnect",
+                state=state,
+                via=via,
+                log_tail=_tail_out(25),
+            )
+
     for _ in range(20):
         time.sleep(0.5)
         if bridge_running():
@@ -312,7 +402,8 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
         "running": bridge_running(),
         "mode": "grip" if "--grip" in extra else "reconnect",
         "state": state,
-        "via": "hard",
+        "via": via,
+        "launch": detail,
         "log_tail": _tail_out(25),
     }
 

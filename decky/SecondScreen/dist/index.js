@@ -31,19 +31,108 @@ function asWindows(raw) {
   return [];
 }
 
+function asClients(status) {
+  const list = status?.clients || status?.dual_screen_live?.clients;
+  return Array.isArray(list) ? list : [];
+}
+
+function clientsSignature(clients) {
+  return clients
+    .map(
+      (client) =>
+        `${client?.device || client?.name || ""}|${client?.watch || ""}|${client?.config || ""}`
+    )
+    .sort()
+    .join(";");
+}
+
+function clientNames(clients) {
+  const names = clients
+    .map((client) => client?.name || client?.device || "")
+    .filter(Boolean);
+  return names.length ? names.join(" · ") : "";
+}
+
+function modeToast(status, clients) {
+  const live = status?.dual_screen_live || {};
+  const names = clientNames(clients) || "Moonlight";
+  const reason = live.reason || "";
+  if (!clients.length) {
+    return {
+      title: "HDMI only",
+      body: reason ? `No Moonlight clients — ${reason}` : "No Moonlight clients",
+    };
+  }
+  if (live.wanted) {
+    return {
+      title: "Dual-screen",
+      body: reason ? `${names} · ${reason}` : names,
+    };
+  }
+  return {
+    title: "HDMI only",
+    body: reason ? `${names} · ${reason}` : `${names} · top screen only`,
+  };
+}
+
 function windowLabel(win) {
   const name = win?.name || "(unnamed)";
   const size = `${win?.width || "?"}×${win?.height || "?"}`;
   return `${name} · ${win?.display || "?"} · ${size}`;
 }
 
+function clientField(client, key) {
+  const name = client?.name || client?.device || "Moonlight";
+  const detail = client?.config
+    ? client.device && client.device !== name
+      ? `${client.config} · ${client.device}`
+      : client.config
+    : client?.device || "connected";
+  return SP_JSX.jsx(
+    DFL.PanelSectionRow,
+    {
+      children: SP_JSX.jsx(DFL.Field, {
+        label: name,
+        children: detail,
+      }),
+    },
+    key
+  );
+}
+
+function PluginTitle() {
+  const [names, setNames] = SP_REACT.useState("");
+  SP_REACT.useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const next = await getStatus();
+        if (!cancelled) setNames(clientNames(asClients(next)));
+      } catch (_err) {
+        if (!cancelled) setNames("");
+      }
+    };
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+  return SP_JSX.jsx("div", {
+    className: DFL.staticClasses.Title,
+    children: names ? `Second Screen · ${names}` : "Second Screen",
+  });
+}
+
 function Content() {
   const [status, setStatus] = SP_REACT.useState(null);
   const [dualScreen, setDualScreenMode] = SP_REACT.useState("auto");
-  const [secondScreenOn, setSecondScreenOn] = SP_REACT.useState(true);
+  const [virtualOutput, setVirtualOutputMode] = SP_REACT.useState("on");
   const [screensaverOn, setScreensaverOn] = SP_REACT.useState(true);
   const [busy, setBusy] = SP_REACT.useState(false);
   const [error, setError] = SP_REACT.useState("");
+  const lastModeSig = SP_REACT.useRef(null);
 
   const refresh = SP_REACT.useCallback(async () => {
     try {
@@ -56,11 +145,24 @@ function Content() {
       }
       const vo = next?.virtual_output;
       if (vo === "on" || vo === "off") {
-        setSecondScreenOn(vo !== "off");
+        setVirtualOutputMode(vo);
       }
       const ss = next?.screensaver;
       if (ss === "on" || ss === "off") {
         setScreensaverOn(ss !== "off");
+      }
+      const nextClients = asClients(next);
+      const sig = `${next?.dual_screen_live?.wanted ? "1" : "0"}|${clientsSignature(nextClients)}`;
+      if (lastModeSig.current === null) {
+        lastModeSig.current = sig;
+      } else if (lastModeSig.current !== sig) {
+        lastModeSig.current = sig;
+        const toast = modeToast(next, nextClients);
+        toaster.toast({
+          title: toast.title,
+          body: toast.body.slice(0, 220),
+          duration: 4000,
+        });
       }
     } catch (err) {
       setError(String(err));
@@ -73,22 +175,23 @@ function Content() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  const persistSecondScreen = async (on) => {
-    setSecondScreenOn(Boolean(on));
+  const persistVirtualOutput = async (nextMode) => {
+    setVirtualOutputMode(nextMode);
     try {
-      const result = await setVirtualOutput(on ? "on" : "off");
+      const result = await setVirtualOutput(nextMode);
       if (result?.ok === false) {
         toaster.toast({
           title: "Second Screen",
-          body: result.message || "toggle failed",
+          body: result.message || "virtual display toggle failed",
           duration: 5000,
         });
       } else {
         toaster.toast({
-          title: on ? "Second screen on" : "Second screen off",
-          body: on
-            ? "Headless :2 rendering is back."
-            : "Stopped :2 / GamePad rendering. HDMI is unchanged.",
+          title: nextMode === "off" ? "Second display paused" : "Second display on",
+          body:
+            nextMode === "off"
+              ? "Headless :2 is stopped. HDMI resolution is unchanged."
+              : "Moonlight bottom / GamePad virtual is back.",
           duration: 4000,
         });
       }
@@ -179,23 +282,76 @@ function Content() {
   };
 
   const windows = asWindows(status?.windows);
+  const clients = asClients(status);
 
   return SP_JSX.jsxs(SP_JSX.Fragment, {
     children: [
       SP_JSX.jsxs(DFL.PanelSection, {
-        title: "Second screen",
+        title: clients.length
+          ? `Moonlight clients (${clients.length})`
+          : "Moonlight clients",
+        children: [
+          ...(clients.length
+            ? clients.map((client, idx) =>
+                clientField(
+                  client,
+                  `${client?.device || client?.name || "client"}-${idx}`
+                )
+              )
+            : [
+                SP_JSX.jsx(
+                  DFL.PanelSectionRow,
+                  {
+                    children: SP_JSX.jsx(DFL.Field, {
+                      label: "None",
+                      children: "No Moonlight clients on :48200.",
+                    }),
+                  },
+                  "no-clients"
+                ),
+              ]),
+        ],
+      }),
+      SP_JSX.jsxs(DFL.PanelSection, {
+        title: "Virtual second display",
         children: [
           SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsx(DFL.ToggleField, {
-              label: "Render second screen",
-              description: secondScreenOn
-                ? status?.virtual_output_live
-                  ? "On: headless :2 is live (Moonlight bottom / GamePad)."
-                  : "On: will start :2 when Game Mode virtual comes up."
-                : "Off: :2 rendering is stopped. HDMI / TV stay put.",
-              checked: secondScreenOn,
-              disabled: busy,
-              onChange: (on) => persistSecondScreen(on),
+            children: SP_JSX.jsx(DFL.Field, {
+              label: status?.virtual_output_live
+                ? "Live on :2"
+                : virtualOutput === "off"
+                  ? "Paused"
+                  : "Not running",
+              children:
+                virtualOutput === "off"
+                  ? "Headless gamescope is off. HDMI / TV stay at Steam's output size. Turn On before Odin/Thor GamePad."
+                  : "1080p :2 for Odin/Thor GamePad. HDMI can stay 4K. Does not change TV resolution.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.7, fontSize: "0.82em" },
+              children:
+                "4K TV + 1080p GamePad can coexist. Both streams encode at 60 (min of HDMI and :2). Pause = TV only.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsxs("div", {
+              style: { display: "flex", gap: 8, flexWrap: "wrap" },
+              children: [
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  disabled: busy,
+                  onClick: () => persistVirtualOutput("on"),
+                  children: virtualOutput === "on" ? "On ✓" : "On",
+                }),
+                SP_JSX.jsx(DFL.ButtonItem, {
+                  layout: "below",
+                  disabled: busy,
+                  onClick: () => persistVirtualOutput("off"),
+                  children: virtualOutput === "off" ? "Pause ✓" : "Pause",
+                }),
+              ],
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -207,7 +363,7 @@ function Content() {
                   : "On: idle clock when nothing is mirrored on :2."
                 : "Off: no idle clock. :2 stays up (black until you show a window).",
               checked: screensaverOn,
-              disabled: busy || !secondScreenOn,
+              disabled: busy || virtualOutput === "off",
               onChange: (on) => persistScreensaver(on),
             }),
           }),
@@ -217,12 +373,19 @@ function Content() {
         title: "Emulator dual-screen",
         children: [
           SP_JSX.jsx(DFL.PanelSectionRow, {
-            children: SP_JSX.jsx("div", {
-              style: { opacity: 0.75, fontSize: "0.88em" },
+            children: SP_JSX.jsx(DFL.Field, {
+              label: status?.dual_screen_live?.wanted ? "Dual-screen" : "HDMI only",
               children:
                 status?.dual_screen_live?.reason ||
                 error ||
-                "Auto: Cemu/Azahar GamePad layout only when Moonlight is watching the bottom.",
+                "Auto: Cemu/Azahar GamePad layout only when a client is watching the bottom.",
+            }),
+          }),
+          SP_JSX.jsx(DFL.PanelSectionRow, {
+            children: SP_JSX.jsx("div", {
+              style: { opacity: 0.7, fontSize: "0.82em" },
+              children:
+                "Tender Cemu/Azahar Play reads this Auto signal at launch (rom-launcher). Steam LaunchOptions stay the RetroDECK line.",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -271,7 +434,7 @@ function Content() {
           SP_JSX.jsx(DFL.PanelSectionRow, {
             children: SP_JSX.jsx(DFL.ButtonItem, {
               layout: "below",
-              disabled: busy || !secondScreenOn || !screensaverOn,
+              disabled: busy || virtualOutput === "off" || !screensaverOn,
               onClick: () => run("Idle clock", () => idleClock()),
               children: "Moonlight Screensaver",
             }),
@@ -294,7 +457,7 @@ function Content() {
                         }),
                         SP_JSX.jsx(DFL.ButtonItem, {
                           layout: "below",
-                          disabled: busy || !secondScreenOn,
+                          disabled: busy || virtualOutput === "off",
                           onClick: () =>
                             run("Second screen", () =>
                               showWindow(win.display, win.id)
@@ -330,10 +493,7 @@ function Content() {
 
 var index = definePlugin(() => ({
   name: "Second Screen",
-  titleView: SP_JSX.jsx("div", {
-    className: DFL.staticClasses.Title,
-    children: "Second Screen",
-  }),
+  titleView: SP_JSX.jsx(PluginTitle, {}),
   content: SP_JSX.jsx(Content, {}),
   icon: SP_JSX.jsx("span", { children: "2" }),
 }));

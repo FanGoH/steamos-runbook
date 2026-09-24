@@ -6,8 +6,8 @@ Showing a :0/:1 window on the bottom stream is the same Cemu/Azahar path:
 keep the source mapped, ``ffplay`` ``x11grab`` onto :2 at 1920×1080, then
 ``GAMESCOPECTRL_BASELAYER_WINDOW``. A window already on :2 is maximized
 in place. Dual-screen Auto/On/Off is ``bind-gamepad.py set-dual-screen``.
-QAM **Second screen** Off writes ``~/.config/sunshine-ds-gamemode/virtual-output``
-and runs ``sunshine-ds-gamemode-virtual.sh --stop`` (HDMI stays put).
+Virtual second display On/Pause is ``~/.config/sunshine-ds-gamemode/virtual-output``
+plus ``sunshine-ds-gamemode-virtual.sh --start`` / ``--stop`` (HDMI stays put).
 QAM **Screensaver** Off writes ``~/.config/sunshine-ds-gamemode/screensaver``
 and kills the idle clock on ``:2`` without stopping headless gamescope.
 
@@ -135,6 +135,150 @@ def screensaver_live(path: Path | None = None) -> bool:
     except (OSError, ValueError):
         return False
     return Path(f"/proc/{pid}").is_dir()
+
+
+def touch_sidecar_path() -> Path:
+    """Moonlight bottom taps inject here when GamePad View / Azahar Secondary is gone."""
+    env = os.environ.get("SECOND_SCREEN_TOUCH_FILE")
+    if env:
+        return Path(env)
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid() or 1000}"
+    if Path(runtime).name == "0":
+        runtime = "/run/user/1000"
+    return Path(runtime) / "second-screen-touch"
+
+
+def write_touch_sidecar(display: str, wid: str) -> None:
+    pad = pad_display()
+    if display.rstrip(".0") == pad.rstrip(".0") or display.rstrip(".0") == "2":
+        clear_touch_sidecar()
+        return
+    xid = wid.lower()
+    if xid.isdigit():
+        xid = hex(int(xid))
+    if not xid.startswith("0x"):
+        xid = "0x" + xid
+    path = touch_sidecar_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"display={display}\nxid={xid}\n", encoding="utf-8")
+
+
+def clear_touch_sidecar() -> None:
+    try:
+        touch_sidecar_path().unlink()
+    except OSError:
+        pass
+
+
+def session_root_size(display: str = ":0") -> tuple[int, int]:
+    try:
+        proc = _run(["xdpyinfo"], timeout=2, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0, 0
+    for line in (proc.stdout or "").splitlines():
+        if "dimensions:" in line:
+            token = line.split()[1] if len(line.split()) > 1 else ""
+            if "x" in token:
+                w_s, h_s = token.split("x", 1)
+                try:
+                    return int(w_s), int(h_s)
+                except ValueError:
+                    return 0, 0
+    return 0, 0
+
+
+def steam_ui_blocks_scanout_from_props(overlay: bool, blur_mode: int) -> bool:
+    """Overlay / QAM need compose. Do not clip CEF or clear COMPOSITE_FORCE."""
+    return bool(overlay) or blur_mode != 0
+
+
+def steam_overlay_on(display: str = ":0") -> bool:
+    try:
+        proc = _run(["xwininfo", "-root", "-tree"], timeout=3, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    for win in parse_xwininfo_tree(proc.stdout or "", display):
+        name = (win.get("name") or "").lower()
+        cls = (win.get("class") or "").lower()
+        if "steam" not in name and "steam" not in cls:
+            continue
+        try:
+            prop = _run(["xprop", "-id", win["id"], "STEAM_OVERLAY"], timeout=2, display=display)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = prop.stdout or ""
+        if "= 1" in text or "=1" in text:
+            return True
+    return False
+
+
+def steam_qam_blur(display: str = ":0") -> int:
+    try:
+        proc = _run(["xprop", "-root", "GAMESCOPE_BLUR_MODE"], timeout=2, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    text = proc.stdout or ""
+    if "=" not in text:
+        return 0
+    first = text.split("=", 1)[1].split(",")[0].strip()
+    try:
+        return int(first)
+    except ValueError:
+        return 0
+
+
+def fix_4k_scanout(display: str = ":0") -> list[str]:
+    """Let native 4K HDMI scan out. Steam CEF often maps 3840×2161.
+
+    That 1px overflow plus GAMESCOPE_COMPOSITE_FORCE flickers on a 2160
+    panel. Do not touch :1 (games stay 1080p) or :2. Do not run this while
+    Steam overlay / QAM is up — those surfaces need compose, and clipping
+    the 2161 CEF breaks the overlay.
+    """
+    messages: list[str] = []
+    width, height = session_root_size(display)
+    if width < 2560 or height < 1440:
+        return messages
+    if steam_ui_blocks_scanout_from_props(steam_overlay_on(display), steam_qam_blur(display)):
+        messages.append("Skipped 4K scanout clip (Steam overlay or QAM is up)")
+        return messages
+    try:
+        _run(
+            [
+                "xprop",
+                "-root",
+                "-f",
+                "GAMESCOPE_COMPOSITE_FORCE",
+                "32c",
+                "-set",
+                "GAMESCOPE_COMPOSITE_FORCE",
+                "0",
+            ],
+            timeout=2,
+            display=display,
+        )
+        messages.append("Cleared GAMESCOPE_COMPOSITE_FORCE for 4K scanout")
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        proc = _run(["xwininfo", "-root", "-tree"], timeout=3, display=display)
+    except (OSError, subprocess.TimeoutExpired):
+        return messages
+    for win in parse_xwininfo_tree(proc.stdout or "", display):
+        if int(win["width"]) != width or int(win["height"]) != height + 1:
+            continue
+        try:
+            _run(
+                ["xdotool", "windowsize", win["id"], str(width), str(height)],
+                timeout=2,
+                display=display,
+            )
+            messages.append(
+                f"Clipped {win['id']} {win['width']}×{win['height']} to {width}×{height}"
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return messages
 
 
 def sidecar_path() -> Path:
@@ -396,6 +540,7 @@ def kill_pad_x11grab(pad: str) -> None:
         MIRROR_PIDFILE.unlink()
     except OSError:
         pass
+    clear_touch_sidecar()
 
 
 def stop_paint_process() -> None:
@@ -571,6 +716,7 @@ def start_mirror(display: str, wid: str, pad: str) -> int:
         start_new_session=True,
     )
     MIRROR_PIDFILE.write_text(f"{proc.pid}\n", encoding="utf-8")
+    write_touch_sidecar(display, wid)
     return proc.pid
 
 
@@ -602,16 +748,19 @@ def status_payload() -> dict:
     pad = pad_display()
     live = bind_json(["second-screen-streaming"])
     windows = list_windows(pad)
+    clients = live.get("clients") if isinstance(live.get("clients"), list) else []
+    sidecar = sidecar_path()
     return {
         "ok": True,
         "pad_display": pad,
-        "sidecar": sidecar_path().is_file(),
+        "sidecar": sidecar.is_file(),
         "virtual_output": virtual_output_pref(),
-        "virtual_output_live": sidecar_path().is_file(),
+        "virtual_output_live": sidecar.is_file(),
         "screensaver": screensaver_pref(),
         "screensaver_live": screensaver_live(),
         "dual_screen": live.get("mode") or "auto",
         "dual_screen_live": live,
+        "clients": clients,
         "mirror": current_mirror(pad),
         "windows": windows,
     }
@@ -664,9 +813,15 @@ def cmd_set_virtual_output(args: argparse.Namespace) -> int:
     payload = status_payload()
     err = (proc.stderr or "").strip()
     if mode == "off":
-        payload["messages"] = ["Second screen rendering stopped. HDMI is unchanged."]
+        extra = fix_4k_scanout(":0")
+        payload["messages"] = ["Paused the virtual second display. HDMI is unchanged."]
+        payload["messages"].extend(extra)
     else:
-        payload["messages"] = ["Second screen rendering on (:2 1080p). HDMI is unchanged."]
+        extra = fix_4k_scanout(":0")
+        payload["messages"] = [
+            "Virtual second display on (:2 1080p / Odin GamePad). HDMI stays 4K."
+        ]
+        payload["messages"].extend(extra)
     if proc.returncode not in (0, None) and err:
         payload["ok"] = False
         payload["message"] = err[:400]
@@ -692,7 +847,7 @@ def cmd_set_screensaver(args: argparse.Namespace) -> int:
     if virtual_output_pref() == "off":
         payload = status_payload()
         payload["ok"] = False
-        payload["message"] = "Second screen is off. Turn Render second screen on first."
+        payload["message"] = "Second screen is paused. Turn Virtual second display On first."
         json.dump(payload, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 1
@@ -888,8 +1043,34 @@ def self_test() -> int:
         "sunshine-ds-kms-virtual",
         "GamePad View",
     ]
+    tall = parse_xwininfo_tree(
+        '     0x1800016 (has no name): ()  3840x2161+0+0  +0+0\n',
+        ":0",
+    )
+    assert tall and tall[0]["width"] == 3840 and tall[0]["height"] == 2161
     assert pad_display("serial=92\npw_node=89\nx11=:2\n") == ":2"
     assert session_displays(":2") == [":0", ":1", ":2"]
+    with tempfile.TemporaryDirectory() as td:
+        pref = Path(td) / "virtual-output"
+        assert virtual_output_pref(pref) == "on"
+        write_virtual_output_pref("off", pref)
+        assert virtual_output_pref(pref) == "off"
+        write_virtual_output_pref("on", pref)
+        assert virtual_output_pref(pref) == "on"
+    with tempfile.TemporaryDirectory() as td:
+        os.environ["SECOND_SCREEN_TOUCH_FILE"] = str(Path(td) / "second-screen-touch")
+        os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"] = str(Path(td) / "virtual")
+        Path(os.environ["SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE"]).write_text(
+            "x11=:2\n", encoding="utf-8"
+        )
+        write_touch_sidecar(":0", "0x60000a")
+        text = touch_sidecar_path().read_text(encoding="utf-8")
+        assert "display=:0" in text
+        assert "xid=0x60000a" in text
+        write_touch_sidecar(":2", "0x400015")
+        assert not touch_sidecar_path().is_file()
+        os.environ.pop("SECOND_SCREEN_TOUCH_FILE", None)
+        os.environ.pop("SUNSHINE_DS_GAMESCOPE_VIRTUAL_FILE", None)
     assert wid_decimal("0x2200035") == str(int("0x2200035", 16))
     assert wid_decimal("35717173") == "35717173"
     visible = [w for w in parsed if window_visible(w)]
@@ -898,18 +1079,15 @@ def self_test() -> int:
     assert "GamePad View" in names
     assert "mangoapp overlay window" not in names
     with tempfile.TemporaryDirectory() as td:
-        pref = Path(td) / "virtual-output"
-        assert virtual_output_pref(pref) == "on"
-        write_virtual_output_pref("off", pref)
-        assert virtual_output_pref(pref) == "off"
-        write_virtual_output_pref("on", pref)
-        assert virtual_output_pref(pref) == "on"
         saver = Path(td) / "screensaver"
         assert screensaver_pref(saver) == "on"
         write_screensaver_pref("off", saver)
         assert screensaver_pref(saver) == "off"
         write_screensaver_pref("on", saver)
         assert screensaver_pref(saver) == "on"
+    assert steam_ui_blocks_scanout_from_props(True, 0) is True
+    assert steam_ui_blocks_scanout_from_props(False, 1) is True
+    assert steam_ui_blocks_scanout_from_props(False, 0) is False
     print("second-screen-windows self-test ok")
     return 0
 
@@ -933,6 +1111,13 @@ def main() -> int:
     p_show.add_argument("--id", dest="window_id", required=True)
     p_show.set_defaults(func=cmd_show)
     sub.add_parser("idle").set_defaults(func=cmd_idle)
+    sub.add_parser("fix-4k-scanout").set_defaults(
+        func=lambda _a: (
+            json.dump({"ok": True, "messages": fix_4k_scanout(":0")}, sys.stdout, indent=2)
+            or sys.stdout.write("\n")
+            or 0
+        )
+    )
     sub.add_parser("self-test").set_defaults(func=lambda _a: self_test())
     args = parser.parse_args()
     return int(args.func(args))

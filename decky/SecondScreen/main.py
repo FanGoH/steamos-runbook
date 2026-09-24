@@ -167,7 +167,7 @@ class Plugin:
         if mode in ("true", "1", "yes"):
             mode = "on"
         if mode not in ("on", "off"):
-            return {"ok": False, "message": f"Unknown second-screen mode {mode}"}
+            return {"ok": False, "message": f"Unknown virtual-output mode {mode}"}
         try:
             proc = _run_as_deck(
                 ["python3", script, "set-virtual-output", "--mode", mode],

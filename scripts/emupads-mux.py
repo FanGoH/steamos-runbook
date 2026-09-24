@@ -125,6 +125,22 @@ def is_steam_virtual(dev) -> bool:
     return pair == STEAM_VIRTUAL
 
 
+def is_sunshine_source(dev) -> bool:
+    low = (dev.name or "").lower()
+    return "sunshine" in low or "libvirtualhid" in low
+
+
+def is_local_usb_pad(dev) -> bool:
+    """Physical Xbox / xpad on the host — not a Sunshine Moonlight pad."""
+    if is_sunshine_source(dev) or is_steam_virtual(dev):
+        return False
+    pair = vid_pid(dev)
+    if pair is not None and pair[0] == 0x045E:
+        return True
+    name = (dev.name or "").lower()
+    return "x-box" in name or "xbox" in name
+
+
 def sink_capabilities() -> dict:
     return {
         ecodes.EV_KEY: list(_BTN),
@@ -239,6 +255,10 @@ def selected_sources(cfg: dict, devices: list[InputDevice]) -> list[InputDevice]
     non_steam = [dev for dev in eligible if not is_steam_virtual(dev)]
     if non_steam:
         eligible = non_steam
+    # Moonlight + a desk USB Xbox both feeding P1 made NMH3 / Eden fight
+    # itself (last-activity steal). Keep Sunshine; drop the local pad.
+    if any(is_sunshine_source(dev) for dev in eligible):
+        eligible = [dev for dev in eligible if not is_local_usb_pad(dev)]
     if not specs:
         return eligible
     out: list[InputDevice] = []
@@ -750,9 +770,10 @@ def self_test() -> int:
         Fake("Sunshine (libvirtualhid) AYN_Thor", "/dev/input/event10"),
         Fake("EmuPads P1", "/dev/input/event20", 0x1209, 0xE301),
         Fake("Sunshine (libvirtualhid) Mouse", "/dev/input/event11", 0x1209, 0x0003),
-        Fake("Odin2_Portal", "/dev/input/event12"),
+        Fake("Odin2_Portal", "/dev/input/event12", 0x37D7, 0x0001),
         Fake("ASRock LED Controller", "/dev/input/event13", 0x26CE, 0x01A2),
         Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF),
+        Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E),
     ]
     # selected_sources expects InputDevice; duck-type name/path
     got = selected_sources(cfg, devices)  # type: ignore[arg-type]
@@ -763,6 +784,10 @@ def self_test() -> int:
     assert "Sunshine (libvirtualhid) AYN_Thor" in names
     assert "Odin2_Portal" in names
     assert "Microsoft X-Box 360 pad 0" not in names
+    assert "Microsoft X-Box 360 pad" not in names
+    usb_only = [Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E)]
+    usb_got = selected_sources(cfg, usb_only)  # type: ignore[arg-type]
+    assert [d.name for d in usb_got] == ["Microsoft X-Box 360 pad"]
     steam_only = [Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF)]
     steam_got = selected_sources(cfg, steam_only)  # type: ignore[arg-type]
     assert [d.name for d in steam_got] == ["Microsoft X-Box 360 pad 0"]

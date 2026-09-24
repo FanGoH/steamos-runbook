@@ -25,6 +25,8 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 ## Status (2026-09-24)
 
+**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
+
 **USB dongle proven on lab.** Forced `/org/bluez/hci1` only (onboard `hci0` DOWN); Switch 2 Grip/Order → `Finished!` with ACL `RX=237` `TX=1364`.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).

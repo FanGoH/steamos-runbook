@@ -179,6 +179,21 @@ HDCP: if the capture is black, check Switch HDMI/HDCP settings before blaming Su
 
 Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT), not the OBS UI.
 
+### Capture card (this box) + upgrade notes (2026-09-24)
+
+**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0`, **1920×1080 MJPEG @ 60** (v4l2 max at 1080p; **no 120**). 20s USB `urbnum` sample was rock-steady **250 URB/s**. Chop on Moonlight with this path was **not** the card — Game Mode `:48200` was on **`encoder = software` (libx264)** with “Minimum FPS target ~30fps”.
+
+Switch 2 dock: **4K60** or **1080p/1440p @ 120** — **4K120 is irrelevant**; **1080p120** is the useful high-FPS target. Prefer USB3 **NV12/raw UVC**, not USB2 MJPEG.
+
+| Goal | Buy |
+|------|-----|
+| Best SteamOS / Linux UVC balance (optional community 1080p120) | **Elgato HD60 X** |
+| Cheapest true 1080p120 UVC | **ezcap321** (HDMI 1.4 / grey-market risk) |
+| Linux “just works,” 60 fps OK | **Magewell USB Capture HDMI 4K Plus** (not a 120 pick) |
+| Avoid for SteamOS automation | **AVerMedia GC553** (no Linux); **Elgato 4K60 Pro PCIe** unless you’ll maintain `sc0710` DKMS |
+
+Research brief: [Research 120fps capture cards](bc-cf51c2fe-929f-5790-b733-1e4b4153a2f0).
+
 ### Sunshine ports
 
 - **Prefer:** Decky Sunshine `:47989`, then Game Mode sunshine-ds-kms `:48200`.

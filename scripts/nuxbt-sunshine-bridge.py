@@ -54,6 +54,7 @@ STEAM_CLIENT_ID = "769"
 _RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 WANT_GRIP = os.path.join(_RUNTIME, "nuxbt-want-grip")
 WANT_RECONNECT = os.path.join(_RUNTIME, "nuxbt-want-reconnect")
+WANT_TAP = os.path.join(_RUNTIME, "nuxbt-want-tap")  # pulse Switch A (~120ms) for latency tests
 # Shared with inhibit-emu-input-on-steam-ui.py / EmuPads mux — prefer this when present.
 EMU_MUTE_FILE = Path(_RUNTIME) / "emupads-mute"
 DISCONNECT_GRACE_S = float(os.environ.get("NUXBT_DISCONNECT_GRACE_S", "2.0"))
@@ -506,6 +507,7 @@ def main() -> int:
 
     grip_until = 0.0
     pending_grip_lr = bool(args.grip)
+    tap_until = 0.0
     if pending_grip_lr and nx.state.get(idx, {}).get("state") == "connected":
         grip_until = time.time() + max(0.5, args.grip_hold)
         pending_grip_lr = False
@@ -552,7 +554,12 @@ def main() -> int:
         # B) Explicit advertise / reconnect requests (no full process restart needed)
         if _consume_flag(WANT_GRIP):
             _log("nuxbt-want-grip → advertise + L+R hold")
-            idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+            try:
+                idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+            except Exception as e:
+                _log(f"want-grip respawn failed ({e}) — exiting for hard restart")
+                stop = True
+                break
             use_advertise = True
             pending_grip_lr = True
             reconnect_attempt_since = now
@@ -561,12 +568,21 @@ def main() -> int:
             grip_logged_done = False
         elif _consume_flag(WANT_RECONNECT):
             _log(f"nuxbt-want-reconnect → MAC {args.switch}")
-            idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+            try:
+                idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+            except Exception as e:
+                _log(f"want-reconnect respawn failed ({e}) — exiting for hard restart")
+                stop = True
+                break
             use_advertise = False
             pending_grip_lr = False
             reconnect_attempt_since = now
             disconnected_since = None
             grip_until = 0.0
+        elif _consume_flag(WANT_TAP):
+            # Latency / Test Input Devices: pulse Switch A without touching Moonlight.
+            tap_until = now + 0.12
+            _log("nuxbt-want-tap → pulse A 120ms")
 
         st = nx.state.get(idx, {}).get("state")
         if st != last_st:
@@ -727,6 +743,8 @@ def main() -> int:
             pkt = idle_packet(nx)
         else:
             pkt = build_packet(nx, buttons, abs_vals, absinfo)
+        if (not forcing_grip) and now < tap_until:
+            pkt["A"] = True
         try:
             nx.set_controller_input(idx, pkt)
         except ValueError:

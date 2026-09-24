@@ -59,12 +59,14 @@ SKIP_VID_PID = {
     (0x1209, 0xE302),  # EmuPads P2
 }
 
-# Xbox/Sunshine face → Switch face by physical position
+# Xbox/Sunshine face → Switch face by *physical position* (not Xbox labels).
+# Diamond: south/east/west/north → Switch B/A/Y/X. If X/Y feel swapped on a
+# client, the west/north names here are the ones to flip (A/B stay).
 FACE = {
-    ecodes.BTN_SOUTH: "B",  # A / south
-    ecodes.BTN_EAST: "A",   # B / east
-    ecodes.BTN_WEST: "Y",   # X / west
-    ecodes.BTN_NORTH: "X",  # Y / north
+    ecodes.BTN_SOUTH: "B",  # bottom
+    ecodes.BTN_EAST: "A",   # right
+    ecodes.BTN_WEST: "X",   # left  (was Y — felt swapped vs Switch)
+    ecodes.BTN_NORTH: "Y",  # top   (was X — felt swapped vs Switch)
 }
 
 _STEAM_UI_CACHE = (0.0, False)
@@ -276,18 +278,23 @@ def build_packet(nx: Nuxbt, buttons: dict[int, int], abs_vals: dict[int, int], a
 
     l = bool(buttons.get(ecodes.BTN_TL, 0))
     r = bool(buttons.get(ecodes.BTN_TR, 0))
-    start = bool(buttons.get(ecodes.BTN_START, 0))
+    # Sunshine/Odin: BTN_START/SELECT arrive inverted vs Xbox labels — map by
+    # physical intent: Start → Plus (+), Select/Back → Minus (−).
+    btn_start = bool(buttons.get(ecodes.BTN_START, 0))
+    btn_select = bool(buttons.get(ecodes.BTN_SELECT, 0))
+    plus = btn_select  # physical Start on this path
+    minus = btn_start  # physical Select/Back on this path
     hat_x = abs_vals.get(ecodes.ABS_HAT0X, 0)
     hat_y = abs_vals.get(ecodes.ABS_HAT0Y, 0)
     dpad_down = hat_y > 0
-    # HOME = LB + D-Pad Down + Plus/Start (x360 has no Home). Guide/Mode still works alone.
-    home_combo = l and dpad_down and start
+    # HOME = LB + D-Pad Down + Plus (physical Start). Guide/Mode still works alone.
+    home_combo = l and dpad_down and plus
     pkt["L"] = l
     pkt["R"] = r
     pkt["ZL"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TL2, ecodes.ABS_Z)
     pkt["ZR"] = _trigger_pressed(buttons, abs_vals, ecodes.BTN_TR2, ecodes.ABS_RZ)
-    pkt["PLUS"] = start and not home_combo
-    pkt["MINUS"] = bool(buttons.get(ecodes.BTN_SELECT, 0))
+    pkt["PLUS"] = plus and not home_combo
+    pkt["MINUS"] = minus
     pkt["HOME"] = home_combo or bool(buttons.get(ecodes.BTN_MODE, 0))
     # No Capture on x360 — leave False
 

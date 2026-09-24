@@ -29,7 +29,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: `/tmp/nuxbt-usb-reconnect.py` or **`scripts/nuxbt-bridge.sh`** (Sunshine → NUXBT) on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85`. After killing a live pad, Switch may need Grip/Order once; with override on, reconnect without Grip is possible.
 
-**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position, **HOME = LB + D-Pad Down + Plus** (Guide still works), 120 Hz. **Steam overlay / QAM / Home (769)** → idle. EmuPads off for the session. NUXBT is **Bluetooth HID only**.
+**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position, **HOME = LB + D-Pad Down + Plus** (Guide still works), 120 Hz. **Steam overlay / QAM / Home (769)** → idle to Switch (drain pad, discard presses; also honors `$XDG_RUNTIME_DIR/emupads-mute` via `start-emu-steam-ui-inhibit.sh`). EmuPads off for the session. NUXBT is **Bluetooth HID only**.
 
 **Stay connected / advertise:**
 - **A)** On Switch drop/crash the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).

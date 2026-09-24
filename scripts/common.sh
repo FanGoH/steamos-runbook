@@ -101,6 +101,10 @@ load_env() {
   # Or: SKIP_ENSURE_SWITCH2_CONTROLLERS=1
   # OpenRGB is required and cannot be skipped.
   PLAYBOOK_SKIP="${PLAYBOOK_SKIP-switch2-controllers}"
+  FGPC_WEB_PORT="${FGPC_WEB_PORT:-8484}"
+  FGPC_WEB_HOSTNAME="${FGPC_WEB_HOSTNAME:-fgpc}"
+  FGPC_WEB_SERVICE="${FGPC_WEB_SERVICE:-fgpc-web.service}"
+  TAILSCALE_DNS_SUFFIX="${TAILSCALE_DNS_SUFFIX:-}"
 }
 
 setup_user_dbus() {

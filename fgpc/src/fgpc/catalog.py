@@ -30,10 +30,14 @@ EXAMPLES = [
     ("fgpc decky install playbook", "QAM Run post-update plugin"),
     ("fgpc decky install fgpc", "QAM catalog (stream / screen / pad / hide)"),
     ("fgpc complete install", "Bash/Zsh autocomplete"),
+    ("http://fgpc.<magicdns>:8484", "Phone WebGUI on this Steam Machine"),
 ]
 
 # Groups Decky FGPC exposes. host / mode / complete stay SSH-only.
 QAM_GROUPS = ("stream", "screen", "pad", "hide")
+
+# Phone WebGUI. Same refuse list as QAM, plus emu status and saves ensure.
+WEB_GROUPS = ("stream", "screen", "pad", "hide", "emu", "saves")
 
 TIPS = [
     "Moonlight dual-stream in Game Mode is :48200 (white tile), not Decky :47989.",

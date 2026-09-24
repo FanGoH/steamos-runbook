@@ -117,6 +117,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-emu-pads-decky.sh` | Install Decky **Emu Pads** (shared P1 / multi routing). `~/homebrew/plugins` may need sudo |
 | `scripts/second-screen-windows.py` | List gamescope windows; show one on `:2`; Auto dual-screen. Called by Decky **Second Screen** |
 | `scripts/ensure-second-screen-decky.sh` | Install Decky **Second Screen** (dual-screen toggle + window list). `~/homebrew/plugins` may need sudo |
+| `scripts/ensure-fgpc-web.sh` | Phone WebGUI for the fgpc catalog on this Steam Machine (`fgpc-web.service`, tailnet port 8484). Extra MagicDNS name needs a Headscale A record |
 | `decky/SecondScreen/` | Second Screen plugin source |
 | `scripts/hide-controllers.py` | Hide USB/BT pads from Steam/games (`authorized=0` / HID unbind). JSON API for Decky **Pad Hide**, SSH, later web |
 | `scripts/hide-controllers-sysfs.sh` | Privileged sysfs helper (sudoers `zzz-hide-controllers`). Never unplugs hubs |

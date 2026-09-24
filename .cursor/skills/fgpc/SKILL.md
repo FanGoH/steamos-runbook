@@ -2,9 +2,9 @@
 name: fgpc
 description: >-
   FanGoH Gaming PC CLI (fgpc) — pretty Typer/Rich wrapper around playbook
-  scripts. Use when the user mentions fgpc, the playbook CLI, SSH command
-  palette, autocomplete for scripts, or wants one command for pads, hide,
-  stream, second screen, or post-update.
+  scripts, plus the phone WebGUI on the tailnet. Use when the user mentions
+  fgpc, the playbook CLI, SSH command palette, phone remote, WebGUI, or wants
+  one command for pads, hide, stream, second screen, or post-update.
 ---
 
 # fgpc
@@ -47,13 +47,26 @@ second screen, pad mode/apply, hide toggles, tips. JSON:
 post-update, or mode switch (SSH `fgpc` only). Playbook QAM stays
 post-update only.
 
+Phone **WebGUI** (`ensure-fgpc-web.sh`, user unit `fgpc-web.service`) is the
+same catalog on this Steam Machine. Tabs: Stream / Screen / Pad / Hide / More.
+Buttons only (no free-text commands). Binds `127.0.0.1` plus the tailnet IPv4
+on `FGPC_WEB_PORT` (default 8484). Extra name `fgpc.<MagicDNS suffix>` needs a
+Headscale extra A record — do **not** change `--hostname=steammachine`.
+
+```bash
+./scripts/ensure-fgpc-web.sh
+python3 scripts/test_fgpc_web.py
+curl -s http://127.0.0.1:8484/healthz
+```
+
 ## Do not
 
 - Put new hide/bind/stream code in `fgpc/` — extend the playbook script, then add a thin Typer command.
 - `pgrep -f` / `pkill -f` sunshine.
 - `sudo systemctl --user`.
 - `--start` kms while `:2` is already up (`fgpc stream gamemode start-kms`).
-- Pass `--force` on hide from Decky / `fgpc-api.py`; `fgpc hide off --force` is SSH-only.
+- Pass `--force` on hide from Decky / `fgpc-api.py` / the WebGUI; `fgpc hide off --force` is SSH-only.
 - Merge FGPC into the Playbook plugin (Playbook is post-update only).
+- Change `TAILSCALE_HOSTNAME` to publish the phone UI.
 
 Skill for hide details: `.cursor/skills/pad-hide/SKILL.md`. Reload QAM: `.cursor/skills/decky-plugins/SKILL.md`.

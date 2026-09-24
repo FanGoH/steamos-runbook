@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fgpc import __version__
-from fgpc.catalog import EXAMPLES, GROUPS, QAM_GROUPS, TIPS, TOPIC_HELP
+from fgpc.catalog import EXAMPLES, GROUPS, QAM_GROUPS, TIPS, TOPIC_HELP, WEB_GROUPS
 from fgpc.invoke import Result, run
 from fgpc.playbook import playbook_root
 
@@ -112,6 +112,7 @@ def dump(*, live: bool = True) -> dict[str, Any]:
         "tips": list(TIPS),
         "help": dict(TOPIC_HELP),
         "qam": list(QAM_GROUPS),
+        "web": list(WEB_GROUPS),
     }
     if live:
         try:
@@ -317,6 +318,8 @@ def self_test() -> dict[str, Any]:
         return {"ok": False, "message": "catalog tips/help incomplete"}
     if list(data["qam"]) != list(QAM_GROUPS):
         return {"ok": False, "message": "qam groups drifted from catalog"}
+    if list(data.get("web") or []) != list(WEB_GROUPS):
+        return {"ok": False, "message": "web groups drifted from catalog"}
     refused = run_action("host", "bootstrap")
     if refused.get("ok") is not False:
         return {"ok": False, "message": "host bootstrap must be refused"}

@@ -193,7 +193,20 @@ case "$cmd" in
     [[ -e "$path" ]] || die "missing $path"
     fuser -v "$path" 2>&1 || true
     ;;
+  nuxbt-bluez)
+    # Host BlueZ --compat --noplugin=* for NUXBT. Action is enable|disable|status only.
+    action="${2:-status}"
+    [[ "$action" == "enable" || "$action" == "disable" || "$action" == "status" ]] \
+      || die "nuxbt-bluez action must be enable|disable|status"
+    root="${STEAMOS_PLAYBOOK_DIR:-}"
+    if [[ -z "$root" ]]; then
+      root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    fi
+    override="$root/scripts/nuxbt-bluez-override.sh"
+    [[ -x "$override" || -f "$override" ]] || die "missing $override"
+    exec bash "$override" "$action"
+    ;;
   *)
-    die "usage: usb-authorized|usb-port-disable|usb-remove|usb-pci-reset|usb-pci-rebind|usb-driver-*|hid-*|fuser-dev"
+    die "usage: usb-authorized|usb-port-disable|usb-remove|usb-pci-reset|usb-pci-rebind|usb-driver-*|hid-*|fuser-dev|nuxbt-bluez"
     ;;
 esac

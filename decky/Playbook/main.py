@@ -258,3 +258,54 @@ class Plugin:
         if data.get("ok") is False:
             _clear_sudo()
         return data
+
+    async def enable_nuxbt_bluez(self) -> dict:
+        """Enable host BlueZ --compat --noplugin=* for NUXBT via NOPASSWD sysfs helper."""
+        helper = os.path.join(_playbook(), "scripts", "hide-controllers-sysfs.sh")
+        if not os.path.isfile(helper):
+            return {"ok": False, "message": f"missing {helper}"}
+        cmd = [helper, "nuxbt-bluez", "enable"]
+        if os.getuid() != 0:
+            cmd = ["sudo", "-n", *cmd]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env={
+                    **os.environ,
+                    "STEAMOS_PLAYBOOK_DIR": _playbook(),
+                },
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "nuxbt-bluez enable timed out"}
+        out = ((proc.stdout or "") + (proc.stderr or ""))[-2000:]
+        return {
+            "ok": proc.returncode == 0,
+            "rc": proc.returncode,
+            "message": out.strip() or f"exit {proc.returncode}",
+        }
+
+    async def nuxbt_bluez_status(self) -> dict:
+        helper = os.path.join(_playbook(), "scripts", "hide-controllers-sysfs.sh")
+        if not os.path.isfile(helper):
+            return {"ok": False, "message": f"missing {helper}"}
+        cmd = [helper, "nuxbt-bluez", "status"]
+        if os.getuid() != 0:
+            cmd = ["sudo", "-n", *cmd]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env={
+                    **os.environ,
+                    "STEAMOS_PLAYBOOK_DIR": _playbook(),
+                },
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "nuxbt-bluez status timed out"}
+        out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+        return {"ok": proc.returncode == 0, "rc": proc.returncode, "message": out}

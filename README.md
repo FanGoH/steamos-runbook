@@ -49,7 +49,7 @@ Do **not** `sudo ./post-update.sh` (no user bus → every `systemctl --user` fai
 
 `post-update.sh` re-enables the Game Mode kms unit (`--install-service`), the mux, Eden/Tender wrap, Decky Sunshine, and prints `sudo` lines when `~/homebrew/plugins` is root-owned or `/etc/sudoers.d/zzz-sunshine-ds-kms-setcap` was wiped. Then `./health-check.sh` (already run at the end). Follow any printed manual actions (Emu Pads copy, `decky-romm-sync/bin/rom-launcher` restore, setcap sudoers). It also downloads the official **Tender** zip when behind (`ensure-tender.sh`) and then re-wraps `rom-launcher` (`ensure-eden-component.sh` — Tender releases overwrite that file).
 
-Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`. **THE Game Mode `:48200` standard is `checkpoint-2026-09-18-gamepad-xtest`.** Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 `post-update.sh` also restores, when needed:
 
@@ -140,8 +140,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `decky/EmuQuick/` | Emu Quick plugin source (live docked/handheld + restart-only resolution) |
 | `scripts/pad_profile.py` | GameStream pad profiles (`x360` default, `ds5`/`ds4`/`switch` for later gyro) |
 | `scripts/ensure-cemu-dual-screen.sh` | Desktop GameStream Cemu: bind pad, write live HDMI/virtual geometry, KWin-place GamePad View |
-| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (`checkpoint-2026-09-14-gamemode-fill-exit`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2` (`ffplay` `scale=1920:1080`); or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map. Exit `--quit`s immediately; leftover x11grab then `--paint` outside Steam |
-| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar (`checkpoint-2026-09-14-gamemode-fill-exit`): standalone Flatpak, SteamLaunch, `ffplay` `x11grab` `scale=1920:1080` Secondary Window onto `:2`. Tender 3DS Play while streaming **runs** this (do not `exec`; wait for `azahar` then `--quit`/`--paint` outside Steam). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
+| `scripts/ensure-cemu-gamemode-dual-screen.sh` | Game Mode `:48200` Cemu dual-screen (**THE standard** `checkpoint-2026-09-18-gamepad-xtest`; fill subset `checkpoint-2026-09-14-gamemode-fill-exit`): Tender tiles while streaming `--attach` GamePad from session `:1` onto `:2` (`ffplay` `scale=1920:1080`); or Steam `RunGame` + `logs/cemu-gamemode-ds.want` (`CEMU_GAMEMODE_DS=1`, no `-f`), bind `--match Thor`, 15-button x360 map. Exit `--quit`s immediately; leftover x11grab then `--paint` outside Steam |
+| `scripts/ensure-azahar-gamemode-dual-screen.sh` | Game Mode `:48200` Azahar (**THE standard** `checkpoint-2026-09-18-gamepad-xtest`; fill subset `checkpoint-2026-09-14-gamemode-fill-exit`): standalone Flatpak, SteamLaunch, `ffplay` `x11grab` `scale=1920:1080` Secondary Window onto `:2`. Tender 3DS Play while streaming **runs** this (do not `exec`; wait for `azahar` then `--quit`/`--paint` outside Steam). `--attach` / leftover x11grab `--paint`. Manual pad `--match Odin`. |
 | `scripts/ensure-azahar-dual-screen.sh` | Desktop GameStream Azahar: bind pad, Separate Windows, KWin-place 3DS top/bottom |
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
@@ -152,14 +152,15 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-ds-on-desktop.sh` | Called by that plugin: start desktop dual-stream DS and switch to Plasma |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
 | `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/ensure-mangohud-presets.sh` | Steam QAM performance overlay preset 2: horizontal bar stretched to HDMI (`horizontal_stretch=1`). Headless `:2` gamescope uses a separate mangoapp ftok cwd so 1080p frames do not 1/4-flash the HUD. Other presets stay stock. |
 | `scripts/ensure-sunshine-ds-kms-setcap.sh` | Detect passwordless `setcap` for `sunshine-ds-kms` / `.new`. Drop-in must be `zzz-sunshine-ds-kms-setcap` (after `wheel`). Prints sudo lines after a SteamOS update. |
-| `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
+| `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; `--recover` / `--watch` restore empty `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
-| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` dual-stream checkpoint (`checkpoint-2026-09-14-gamemode-fill-exit`) |
+| `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` **THE standard** `checkpoint-2026-09-18-gamepad-xtest` (HUD subset `checkpoint-2026-09-17-hdmi-hud`; fill+Exit `checkpoint-2026-09-14-gamemode-fill-exit`) |
 | `AGENTS.md` | Conventions for coding agents |
 | `rules_of_the_land.md` | Personal notes (gitignored) |
 

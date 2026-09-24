@@ -7,7 +7,7 @@ Install: `scripts/ensure-emupads-mux.sh` then `scripts/ensure-emu-pads-decky.sh`
 ## Routing
 
 - Config: `~/.config/emupads/mux.json`
-- **Emu Pads** QAM toggle Off unplugs P1/P2 (`enabled: false`) — the mux process stays up, the uinput nodes disappear. On recreates them (restart Cemu/Azahar/Eden). Mode / dual-screen / Apply writes must keep `enabled`.
+- **Emu Pads** QAM (top): **EmuPads P1 / P2** toggle. Off unplugs P1/P2 (`enabled: false`) — the mux process stays up, the uinput nodes disappear. On recreates them (restart Cemu/Azahar/Eden). Mode / dual-screen / Apply writes must keep `enabled`. Reload Decky after a plugin edit.
 - Mute + grab: `$XDG_RUNTIME_DIR/emupads-mute`, Steam Home/Library/overlay/QAM (`FOCUSED_APP=769`), **or any non-emulator** (Dusklight, other Steam titles). Sinks stay hidden unless Cemu / Azahar / Eden is running, so Thor is not copied onto a second pad the native game also reads. Steam still sees the real Sunshine pad.
 - **Shared P1** (default): last pad that sent a press or stick is the only one copied (no analog mix).
 - **Multi**: first selected → P1, second → P2.

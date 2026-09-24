@@ -375,6 +375,17 @@ systemctl --user is-enabled $kms_unit
 # sudo is only setcap after copy/patchelf, not for starting the unit
 EOF
 fi
+kms_recover="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
+if systemctl --user is-enabled "$kms_recover" >/dev/null 2>&1; then
+  ok "$kms_recover enabled (repaints empty :2)"
+else
+  warn "$kms_recover not enabled"
+  record_manual "Enable Game Mode :2 recover watcher" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine-ds-gamemode.sh --install-service
+systemctl --user is-enabled $kms_recover
+EOF
+fi
 if systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
   if [ "$kms_state" = "FREE" ] || [ "$kms_state" = "BUSY" ]; then
     ok "sunshine-ds-kms ${kms_state} (${kms_url})"
@@ -395,6 +406,16 @@ EOF
   fi
 else
   ok "Plasma: $kms_unit stays down (desktop DS is :48100)"
+fi
+mango_presets="/home/$STEAMOS_USER/.config/MangoHud/presets.conf"
+if [ -f "$mango_presets" ] && grep -q 'horizontal_stretch=1' "$mango_presets"; then
+  ok "MangoHud preset 2 stretches to HDMI width"
+else
+  warn "MangoHud preset 2 HDMI stretch missing"
+  record_manual "Install mangoapp preset 2 (horizontal_stretch to HDMI)" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-mangohud-presets.sh
+EOF
 fi
 echo
 

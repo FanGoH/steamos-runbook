@@ -9,6 +9,7 @@
 # not 769: Steam blurs the game (`GAMESCOPE_BLUR_MODE`) and leaves
 # FOCUSED_APP on Azahar. Do not raise Primary over that panel.
 # sunshine-ds injects taps onto Secondary Window (not Cemu GamePad View).
+# Game Mode standard: checkpoint-2026-09-18-gamepad-xtest (XTest + linear Stretch).
 # Hold-Select overlay lives in sunshine-ds, not steam-guide-from-select.py.
 # Kill leftover Tk screensaver on :2 (sunshine-ds-kms-virtual) before
 # ffplay or Moonlight video/1 stays the idle clock. --mirror-only remirrors
@@ -315,22 +316,25 @@ focused_app() {
 }
 
 set_gamescope_focus() {
-  local id="$1" app="$2"
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  local id="$1" app="$2" d
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  done
+  gamescope_set_focus_display_middle 1
 }
 
 present_primary() {
   local sw sh
   find_primary_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
+  gamescope_restore_nested_hdmi_mode
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowmove "$PRIMARY_WID" 0 0 2>/dev/null || true
   x11_resize_if_needed "$TV_DISPLAY" "$PRIMARY_WID" "$sw" "$sh"
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$PRIMARY_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$PRIMARY_WID" windowactivate "$PRIMARY_WID" windowraise "$PRIMARY_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$PRIMARY_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
   set_gamescope_focus "$PRIMARY_WID" "$APPID"
 }
@@ -372,6 +376,7 @@ watch_azahar_focus_loop() {
   done
   echo "Azahar exited — stopping bottom mirror so :2 can screensaver again."
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   timeout 4 bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
@@ -392,8 +397,12 @@ start_focus_watch() {
 place_secondary_for_capture() {
   local wid="$1"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
+  x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
+  # Overlay-tag + opacity 0 on the frame and GL children so the 1080p
+  # Secondary is not HDMI scanout. X11-raise so inject still hits it.
+  x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
+  x11_raise_xid "$TV_DISPLAY" "$wid"
   present_primary || true
 }
 
@@ -447,6 +456,7 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_focus_watch
   stop_azahar
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   timeout 2 bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
   # Do not paint while azahar is still up. The clock used to start inside
   # Steam's reaper (setsid is not enough) and Steam sat on Exiting.

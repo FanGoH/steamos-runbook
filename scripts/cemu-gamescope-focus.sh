@@ -12,6 +12,10 @@
 # A second start is a no-op unless --force.
 set -uo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/common.sh
+source "$ROOT/scripts/common.sh"
+
 APPID="${CEMU_STEAM_APPID:-${SteamAppId:-2374129079}}"
 SECONDS_HOLD="${CEMU_FOCUS_SECONDS:-30}"
 PIDFILE="${CEMU_FOCUS_PIDFILE:-/home/deck/steamos-playbook/logs/cemu-gamescope-focus.pid}"
@@ -66,10 +70,7 @@ cemu_window_is_stub() {
 }
 
 set_focus_display() {
-  local middle="$1" atom
-  for atom in GAMESCOPE_FOCUS_DISPLAY GAMESCOPE_KEYBOARD_FOCUS_DISPLAY GAMESCOPE_MOUSE_FOCUS_DISPLAY; do
-    DISPLAY=:0 xprop -root -f "$atom" 32c -set "$atom" "12346, $middle, 66" 2>/dev/null || true
-  done
+  gamescope_set_focus_display_middle "$1"
 }
 
 set_focused_app() {

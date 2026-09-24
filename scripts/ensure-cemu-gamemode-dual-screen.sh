@@ -13,7 +13,8 @@
 # stays on video/0 while GamePad View still mirrors. GamePad stays mapped
 # on-screen under the TV; ffplay x11grab -window_id copies that drawable
 # onto :2. Off-screen ximagesrc is MIT-SHM BadMatch. Hold-Select overlay
-# and GamePad touch live in sunshine-ds (HOME rising edge / XSendEvent).
+# and GamePad touch live in sunshine-ds (HOME rising edge / XTest;
+# checkpoint-2026-09-18-gamepad-xtest). Do not unletterbox Stretch panel refs.
 # --place-only re-puts GamePad under the TV and ffplay on :2 (refocus).
 # --attach waits for an already-launching Tender/Steam Cemu (no RunGame).
 # --quit stops Cemu + reaper + mirror. Do not SIGSTOP on Steam Exit
@@ -204,7 +205,7 @@ bind_cemu_pads() {
 
 write_rd_geometry() {
   local sw sh
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
   python3 - "$RD_SETTINGS" "$sw" "$sh" <<'PY'
 import sys, xml.etree.ElementTree as ET
 from pathlib import Path
@@ -232,11 +233,10 @@ for tag, val in (("fullscreen", "false"), ("open_pad", "true")):
         node = ET.SubElement(root, tag)
     node.text = val
 set_xy(root, "window_position", 0, 0)
-# TV follows HDMI native (4K TV → 3840x2160) so the top fills. GamePad
-# / :2 stay 1920x1080; Moonlight stretches that onto Thor's bottom.
+# TV matches HDMI / nested :1. GamePad stays 1920x1080 at 0,0 and is
+# hidden from steamcompmgr (external overlay + opacity 0), not by
+# shrinking :1 (that 1/4-flashes the Steam menu on a 4K TV).
 set_xy(root, "window_size", tv_w, tv_h)
-# Off-screen pad (1920,0) cannot be x11grab'd (MIT-SHM BadMatch). Keep it
-# mapped on-screen under the TV; window_id grab still sees GamePad pixels.
 set_xy(root, "pad_position", 0, 0)
 set_xy(root, "pad_size", 1920, 1080)
 tree.write(path, encoding="UTF-8", xml_declaration=True)
@@ -351,13 +351,51 @@ wait_pad_wid() {
 place_pad_for_capture() {
   local wid="$1"
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$wid" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowsize "$wid" 1920 1080 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$wid" 0 0 2>/dev/null || true
-  # Do not activate GamePad — that puts it on HDMI. Keep it under the TV for
-  # x11grab; ffplay on :2 is the bottom Moonlight panel.
+  x11_resize_if_needed "$TV_DISPLAY" "$wid" 1920 1080
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$wid"
+  # Do not activate GamePad — that puts it on HDMI. ffplay on :2 is the
+  # bottom Moonlight panel.
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove ABOVE "$wid" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xdotool windowstate --remove FULLSCREEN "$wid" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowlower "$wid" 2>/dev/null || true
+  hide_gamepad_from_hdmi "$wid"
+}
+
+# Overlay-tag + opacity 0 on the frame and GL children so steamcompmgr
+# does not scan the 1080p pad out on 4K HDMI. Then X11-raise so wx
+# QueryPointer still hits the child (do not windowactivate).
+hide_gamepad_from_hdmi() {
+  local wid="${1:-}"
+  [ -n "$wid" ] || return 0
+  x11_hide_xid_from_hdmi "$TV_DISPLAY" "$wid"
+  x11_raise_xid "$TV_DISPLAY" "$wid"
+}
+
+# GamePad damage otherwise steals HDMI focus (1080p quarter on 4K TV).
+# Keep overlay-hide + TV BASELAYER. Re-park if Cemu snapped the pad.
+cover_gamepad_under_tv() {
+  local pad_dec tv_dec cur
+  find_pad_wid || return 0
+  find_tv_wid || return 0
+  x11_park_xid_off_hdmi "$TV_DISPLAY" "$PAD_WID"
+  hide_gamepad_from_hdmi "$PAD_WID"
+  pad_dec="$(printf '%d' "$PAD_WID" 2>/dev/null || printf '%s' "$PAD_WID")"
+  tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
+  cur="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$cur" != "$tv_dec" ]; then
+    set_gamescope_focus "$TV_WID" "$APPID"
+  else
+    # kms restart / Steam can flip FOCUS_DISPLAY back to middle 0 while
+    # Cemu stays focused. GamePad XTest then looks dead.
+    gamescope_set_focus_display_middle 1
+  fi
+}
+
+idle_clock_mapped() {
+  local wid
+  command -v xdotool >/dev/null 2>&1 || return 1
+  wid="$(DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' 2>/dev/null | head -1 || true)"
+  [ -n "${wid:-}" ] || return 1
+  DISPLAY="$PAD_DISPLAY" xwininfo -id "$wid" 2>/dev/null | grep -q 'Map State: IsViewable'
 }
 
 find_tv_wid() {
@@ -426,27 +464,34 @@ focused_app() {
 }
 
 set_gamescope_focus() {
-  local id="$1" app="$2"
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  local id="$1" app="$2" d
+  # steamcompmgr reads :0 root. Cemu windows live on :1.
+  for d in :0 "$TV_DISPLAY"; do
+    [ -n "$d" ] || continue
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$id" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$app" 2>/dev/null || true
+    DISPLAY="$d" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$id" 2>/dev/null || true
+  done
+  gamescope_set_focus_display_middle 1
 }
 
 present_cemu_tv() {
-  local sw sh
+  local sw sh bl tv_dec
   find_tv_wid || return 1
-  read -r sw sh <<<"$(gamescope_hdmi_tv_size)"
+  read -r sw sh <<<"$(gamescope_nested_app_size)"
+  gamescope_restore_nested_hdmi_mode
   DISPLAY="$TV_DISPLAY" xdotool windowmap "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowmove "$TV_WID" 0 0 2>/dev/null || true
-  # HDMI native (4K) on top, GamePad stays 1080p. Only resize when the
-  # TV window does not already match — that loop was the flicker.
+  x11_move_if_needed "$TV_DISPLAY" "$TV_WID" 0 0
   x11_resize_if_needed "$TV_DISPLAY" "$TV_WID" "$sw" "$sh"
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add FULLSCREEN "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowstate --add ABOVE "$TV_WID" 2>/dev/null || true
-  DISPLAY="$TV_DISPLAY" xdotool windowfocus "$TV_WID" windowactivate "$TV_WID" windowraise "$TV_WID" 2>/dev/null || true
   DISPLAY="$TV_DISPLAY" xprop -id "$TV_WID" -f STEAM_GAME 32c -set STEAM_GAME "$APPID" 2>/dev/null || true
-  set_gamescope_focus "$TV_WID" "$APPID"
+  tv_dec="$(printf '%d' "$TV_WID" 2>/dev/null || printf '%s' "$TV_WID")"
+  bl="$(DISPLAY=:0 xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$bl" != "$tv_dec" ]; then
+    set_gamescope_focus "$TV_WID" "$APPID"
+  else
+    gamescope_set_focus_display_middle 1
+  fi
 }
 
 find_ffplay_wid() {
@@ -454,7 +499,7 @@ find_ffplay_wid() {
 }
 
 present_virtual_gamepad() {
-  local ff
+  local ff want cur
   ff="$(find_ffplay_wid || true)"
   if [ -z "${ff:-}" ]; then
     return 1
@@ -462,13 +507,14 @@ present_virtual_gamepad() {
   stop_paint
   DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' windowkill 2>/dev/null || true
   DISPLAY="$PAD_DISPLAY" xdotool windowmap "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowsize "$ff" 1920 1080 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowmove "$ff" 0 0 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add FULLSCREEN "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowstate --add ABOVE "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xdotool windowfocus "$ff" windowactivate "$ff" windowraise "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$ff" 2>/dev/null || true
-  DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$ff" 2>/dev/null || true
+  x11_resize_if_needed "$PAD_DISPLAY" "$ff" 1920 1080
+  x11_move_if_needed "$PAD_DISPLAY" "$ff" 0 0
+  want="$(printf '%d' "$ff" 2>/dev/null || printf '%s' "$ff")"
+  cur="$(DISPLAY="$PAD_DISPLAY" xprop -root GAMESCOPECTRL_BASELAYER_WINDOW 2>/dev/null | awk -F'= ' '{print $2}' | tr -d ' ')"
+  if [ "$cur" != "$want" ]; then
+    DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPE_FOCUSED_WINDOW 32c -set GAMESCOPE_FOCUSED_WINDOW "$want" 2>/dev/null || true
+    DISPLAY="$PAD_DISPLAY" xprop -root -f GAMESCOPECTRL_BASELAYER_WINDOW 32c -set GAMESCOPECTRL_BASELAYER_WINDOW "$want" 2>/dev/null || true
+  fi
 }
 
 present_dual_layout() {
@@ -487,26 +533,20 @@ present_dual_layout() {
 }
 
 needs_virtual_gamepad() {
-  local focus name ff vfocus
-  focus="$(DISPLAY="$TV_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
-  if [ -n "${focus:-}" ]; then
-    name="$(DISPLAY="$TV_DISPLAY" xdotool getwindowname "$focus" 2>/dev/null || true)"
-    case "$name" in
-      GamePad*) return 0 ;;
-    esac
-  fi
-  if DISPLAY="$PAD_DISPLAY" xdotool search --name 'sunshine-ds-kms-virtual' >/dev/null 2>&1; then
+  local ff cur
+  # Only missing ffplay, a mapped idle clock, or SDL's 640x480 default after
+  # a kms restart. :2 getwindowfocus != ffplay was true every tick
+  # (steamcompmgr) and present_dual_layout FULLSCREEN'd the 4K TV against
+  # the 1080p GamePad — HDMI 1/4 flicker.
+  if idle_clock_mapped; then
     return 0
   fi
   ff="$(find_ffplay_wid || true)"
   if [ -z "${ff:-}" ]; then
     return 0
   fi
-  vfocus="$(DISPLAY="$PAD_DISPLAY" xdotool getwindowfocus 2>/dev/null || true)"
-  if [ -n "${vfocus:-}" ] && [ "$vfocus" != "$ff" ]; then
-    return 0
-  fi
-  return 1
+  cur="$(x11_window_wh "$PAD_DISPLAY" "$ff")"
+  [ "${cur%% *}" != "1920" ] || [ "${cur##* }" != "1080" ]
 }
 
 watch_cemu_focus_loop() {
@@ -546,15 +586,21 @@ watch_cemu_focus_loop() {
     else
       steam_ticks=0
       overlay=0
+      cover_gamepad_under_tv || true
       if needs_virtual_gamepad; then
-        echo "Cemu focused — placing GamePad on $PAD_DISPLAY"
-        present_dual_layout || true
+        echo "Cemu focused — GamePad mirror missing on $PAD_DISPLAY"
+        if find_pad_wid && [ -z "$(find_ffplay_wid || true)" ]; then
+          start_mirror "$PAD_WID" || true
+        else
+          present_virtual_gamepad || true
+        fi
       fi
     fi
     sleep 0.4
   done
   echo "Cemu exited — stopping GamePad mirror so :2 can screensaver again."
   stop_mirror
+  gamescope_restore_nested_hdmi_mode
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
 }
 
@@ -619,6 +665,7 @@ if [ "$DO_QUIT" -eq 1 ]; then
   stop_cemu
   stop_mirror
   rm -f "$DS_WANT" "$SDLMAP"
+  gamescope_restore_nested_hdmi_mode
   bash "$VIRTUAL_HELPER" --paint >/dev/null 2>&1 || true
   bash "$ROOT/scripts/restore-steam-gamescope-focus.sh" 2>/dev/null || true
   echo "Quit Cemu (SteamLaunch reaper + windows). Steam Exit can finish."

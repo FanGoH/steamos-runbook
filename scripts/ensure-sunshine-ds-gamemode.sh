@@ -55,6 +55,7 @@ KMS_LOG="${SUNSHINE_DS_KMS_LOG:-$ROOT/logs/sunshine-ds-gamemode.log}"
 WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
 KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
 KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
+KMS_RECOVER_SERVICE="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
 UNIT_DIR="/home/${STEAMOS_USER:-deck}/.config/systemd/user"
 RUNNER="$ROOT/scripts/run-sunshine-ds-gamemode.sh"
 VIRTUAL_SCRIPT="$ROOT/scripts/sunshine-ds-gamemode-virtual.sh"
@@ -167,6 +168,7 @@ print_status() {
   echo "desktop conf: $DEV_CONF"
   echo "unit: $KMS_SERVICE $(systemctl --user is-enabled "$KMS_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_SERVICE" 2>/dev/null || echo inactive)"
   echo "virtual unit: $KMS_VIRTUAL_SERVICE $(systemctl --user is-enabled "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo inactive)"
+  echo "recover unit: $KMS_RECOVER_SERVICE $(systemctl --user is-enabled "$KMS_RECOVER_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_RECOVER_SERVICE" 2>/dev/null || echo inactive)"
   if [ -x "${KMS_BIN}.new" ]; then
     echo "staged: ${KMS_BIN}.new ($(getcap "${KMS_BIN}.new" 2>/dev/null || echo 'no cap_sys_admin — sudo setcap then mv over sunshine-ds-kms'))"
   fi
@@ -395,7 +397,13 @@ start_kms_unit_only() {
   write_kms_conf
   systemctl --user reset-failed "$KMS_SERVICE" 2>/dev/null || true
   echo "Starting $KMS_SERVICE only (virtual unit / headless :2 stay)."
-  systemctl --user start "$KMS_SERVICE"
+  if systemctl --user is-active "$KMS_SERVICE" >/dev/null 2>&1; then
+    # Already streaming: start is a no-op and video/1 keeps the old PW serial
+    # (Thor bottom then duplicates HDMI). Restart to re-read the sidecar.
+    systemctl --user restart "$KMS_SERVICE"
+  else
+    systemctl --user start "$KMS_SERVICE"
+  fi
 }
 
 write_kms_conf() {
@@ -410,7 +418,7 @@ install_gamemode_units() {
   mkdir -p "$UNIT_DIR" "$ROOT/logs"
   chmod +x "$RUNNER" "$VIRTUAL_SCRIPT" 2>/dev/null || true
 
-  local virtual_unit kms_unit changed=0
+  local virtual_unit kms_unit recover_unit changed=0
   virtual_unit="$(cat <<EOS
 [Unit]
 Description=SteamOS playbook Game Mode headless gamescope (sunshine-ds-kms video/1)
@@ -428,6 +436,31 @@ Environment=HOME=/home/${STEAMOS_USER:-deck}
 Environment=XDG_RUNTIME_DIR=/run/user/%U
 ExecStart=$VIRTUAL_SCRIPT --start
 ExecStop=$VIRTUAL_SCRIPT --stop
+StandardOutput=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
+StandardError=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
+
+[Install]
+WantedBy=gamescope-session.target
+Also=$KMS_RECOVER_SERVICE
+EOS
+)"
+
+  recover_unit="$(cat <<EOS
+[Unit]
+Description=SteamOS playbook recover Game Mode :2 idle clock
+After=gamescope-session.service pipewire.service $KMS_VIRTUAL_SERVICE
+PartOf=gamescope-session.service
+StartLimitIntervalSec=600
+StartLimitBurst=8
+
+[Service]
+Type=simple
+Nice=15
+Restart=on-failure
+RestartSec=5
+Environment=HOME=/home/${STEAMOS_USER:-deck}
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$VIRTUAL_SCRIPT --watch
 StandardOutput=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
 StandardError=append:$ROOT/logs/sunshine-ds-gamemode-virtual.log
 
@@ -466,11 +499,16 @@ StandardError=append:$KMS_LOG
 [Install]
 WantedBy=gamescope-session.target
 Also=$KMS_VIRTUAL_SERVICE
+Also=$KMS_RECOVER_SERVICE
 EOS
 )"
 
   if [ ! -f "$UNIT_DIR/$KMS_VIRTUAL_SERVICE" ] || [ "$(cat "$UNIT_DIR/$KMS_VIRTUAL_SERVICE")" != "$virtual_unit" ]; then
     printf '%s\n' "$virtual_unit" >"$UNIT_DIR/$KMS_VIRTUAL_SERVICE"
+    changed=1
+  fi
+  if [ ! -f "$UNIT_DIR/$KMS_RECOVER_SERVICE" ] || [ "$(cat "$UNIT_DIR/$KMS_RECOVER_SERVICE")" != "$recover_unit" ]; then
+    printf '%s\n' "$recover_unit" >"$UNIT_DIR/$KMS_RECOVER_SERVICE"
     changed=1
   fi
   if [ ! -f "$UNIT_DIR/$KMS_SERVICE" ] || [ "$(cat "$UNIT_DIR/$KMS_SERVICE")" != "$kms_unit" ]; then
@@ -479,17 +517,24 @@ EOS
   fi
   if [ "$changed" -eq 1 ]; then
     systemctl --user daemon-reload
-    echo "Updated $KMS_SERVICE / $KMS_VIRTUAL_SERVICE."
+    echo "Updated $KMS_SERVICE / $KMS_VIRTUAL_SERVICE / $KMS_RECOVER_SERVICE."
   fi
   if ! systemctl --user is-enabled "$KMS_VIRTUAL_SERVICE" >/dev/null 2>&1; then
     systemctl --user enable "$KMS_VIRTUAL_SERVICE"
     echo "Enabled $KMS_VIRTUAL_SERVICE for gamescope-session.target."
+  fi
+  if ! systemctl --user is-enabled "$KMS_RECOVER_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$KMS_RECOVER_SERVICE"
+    echo "Enabled $KMS_RECOVER_SERVICE for gamescope-session.target."
   fi
   if ! systemctl --user is-enabled "$KMS_SERVICE" >/dev/null 2>&1; then
     systemctl --user enable "$KMS_SERVICE"
     echo "Enabled $KMS_SERVICE for gamescope-session.target (starts as deck; sudo is only setcap)."
   else
     echo "$KMS_SERVICE already enabled."
+  fi
+  if gamescope_up && ! systemctl --user is-active "$KMS_RECOVER_SERVICE" >/dev/null 2>&1; then
+    systemctl --user start "$KMS_RECOVER_SERVICE" || true
   fi
   return 0
 }
@@ -516,6 +561,9 @@ stop_kms_process() {
 }
 
 stop_kms() {
+  if systemctl --user cat "$KMS_RECOVER_SERVICE" >/dev/null 2>&1; then
+    systemctl --user stop "$KMS_RECOVER_SERVICE" 2>/dev/null || true
+  fi
   if systemctl --user cat "$KMS_SERVICE" >/dev/null 2>&1; then
     echo "Stopping $KMS_SERVICE (unit stays enabled for next Game Mode boot)."
     systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true

@@ -25,7 +25,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 ## Status (2026-09-24)
 
-**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`, ffplay fullscreen MS2109). **Default 1280×720@60** — MS2109 USB2 only delivers ~30fps at 1080p MJPEG; 720p is real 60. Override `SWITCH2_CAPTURE_WIDTH/HEIGHT`. If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109`.
+**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`). **mpv** AppImage (`ensure-switch2-mpv.sh` → `~/.local/bin/mpv-switch2`, `vo=x11` under gamescope; ffplay fallback). **Default 1280×720@60** — MS2109 USB2 only delivers ~30fps at 1080p MJPEG; 720p is real 60. Override `SWITCH2_CAPTURE_WIDTH/HEIGHT`. **Audio:** Pulse `module-loopback` from MS2109 → HDMI leaf sink (same path Sunshine `audio_sink` captures) — not `sink-sunshine-stereo`. `SWITCH2_CAPTURE_AUDIO=0` disables. If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109` / viewer PCI-rebind.
 
 **USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: `/tmp/nuxbt-usb-reconnect.py` or **`scripts/nuxbt-bridge.sh`** (Sunshine → NUXBT) on `/org/bluez/hci1` → Switch `48:F1:EB:C3:F4:85`. After killing a live pad, Switch may need Grip/Order once; with override on, reconnect without Grip is possible.
 
@@ -173,12 +173,11 @@ Switch 2 HDMI → capture card → /dev/videoN → fullscreen viewer → Sunshin
 
 | Option | Role |
 |--------|------|
-| **mpv** | Best first try: `mpv av://v4l2:/dev/videoN --profile=low-latency --untimed --no-cache --fullscreen` (tune format via `v4l2-ctl`). |
-| **ffplay** | Minimal: `-fflags nobuffer -flags low_delay -framedrop`. |
+| **mpv** | Default viewer (`switch2-capture-viewer.sh`): host AppImage via `ensure-switch2-mpv.sh`, `--profile=low-latency --untimed --vo=x11` (Flatpak cannot open MS2109 V4L2 ACLs). |
+| **ffplay** | Fallback if mpv VOs fail: `-fflags nobuffer -flags low_delay -framedrop`. |
+| **Audio** | Pulse `module-loopback` MS2109 → HDMI leaf (Sunshine captures HDMI.monitor). Do not use `sink-sunshine-stereo`. |
 | **Consolation** | Dedicated UVC viewer; optional if mpv fails UX-wise. |
 | **OBS** | Fallback if gamescope/Flatpak/audio needs a compositor path — not the default. |
-
-Audio: capture-card ALSA/Pulse for the Switch session only — do **not** rewrite the proven Cemu dual-stream HDMI / VSS capture recipes. Defer polish.
 
 HDCP: if the capture is black, check Switch HDMI/HDCP settings before blaming Sunshine.
 

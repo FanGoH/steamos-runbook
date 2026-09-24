@@ -8,6 +8,7 @@ source "$ROOT/scripts/common.sh"
 load_env "$ROOT"
 
 VIEWER="$ROOT/scripts/switch2-capture-viewer.sh"
+MPV_ENSURE="$ROOT/scripts/ensure-switch2-mpv.sh"
 APPS_DIR="/home/${STEAMOS_USER}/.local/share/applications"
 DESKTOP_DIR="/home/${STEAMOS_USER}/Desktop"
 APP_ID="steamos-switch2-capture"
@@ -15,14 +16,16 @@ APPS_FILE="$APPS_DIR/${APP_ID}.desktop"
 DESKTOP_FILE="$DESKTOP_DIR/Nintendo Switch 2.desktop"
 NAME="Nintendo Switch 2"
 
-chmod +x "$VIEWER"
+chmod +x "$VIEWER" "$MPV_ENSURE"
+# Host mpv AppImage (Flatpak cannot open MS2109 V4L2 ACLs).
+"$MPV_ENSURE" || record_manual "Download mpv AppImage: $MPV_ENSURE"
 mkdir -p "$APPS_DIR" "$DESKTOP_DIR"
 
 cat >"$APPS_FILE" <<EOF
 [Desktop Entry]
 Type=Application
 Name=$NAME
-Comment=Fullscreen HDMI capture (MacroSilicon MS2109)
+Comment=Fullscreen HDMI capture + audio (MacroSilicon MS2109 via mpv)
 Exec=$VIEWER
 TryExec=$VIEWER
 Path=$ROOT
@@ -30,7 +33,7 @@ Icon=input-gaming
 Terminal=false
 StartupNotify=false
 Categories=Game;
-Keywords=switch;capture;hdmi;moonlight;nuxbt;
+Keywords=switch;capture;hdmi;moonlight;nuxbt;mpv;
 EOF
 chmod +x "$APPS_FILE"
 cp -f "$APPS_FILE" "$DESKTOP_FILE"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure Switch capture latency (Test Input Devices).
 
-Default: sample /dev/video0 directly (MS2109). Briefly stops ffplay if it
+Default: sample /dev/video0 directly (MS2109). Briefly stops mpv/ffplay if it
 holds the device, then restarts scripts/switch2-capture-viewer.sh.
 
 Usage (pad linked, Switch on Test Input Devices):
@@ -157,27 +157,59 @@ def wait_pad_press(path: str, timeout_s: float = 30.0) -> float | None:
     return None
 
 
-def stop_ffplay() -> list[int]:
-    pids = []
-    try:
-        out = subprocess.check_output(["pgrep", "-x", "ffplay"], text=True)
-    except subprocess.CalledProcessError:
-        return []
-    for line in out.split():
+def stop_viewer() -> list[int]:
+    """Stop Switch capture viewers (mpv AppImage / ffplay) holding V4L2."""
+    pids: list[int] = []
+    seen: set[int] = set()
+    candidates: list[int] = []
+    for name in ("ffplay", "mpv"):
         try:
-            pid = int(line)
+            out = subprocess.check_output(["pgrep", "-x", name], text=True)
+        except subprocess.CalledProcessError:
+            out = ""
+        for line in out.split():
+            try:
+                candidates.append(int(line))
+            except ValueError:
+                pass
+    # AppImage argv0 is often the long binary name — scan cmdline without pgrep -f.
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            pid = int(proc.name)
         except ValueError:
             continue
+        try:
+            cmdline = (proc / "cmdline").read_bytes().decode("utf-8", "replace")
+        except OSError:
+            continue
+        if any(
+            token in cmdline
+            for token in (
+                "mpv-Media-Player",
+                "mpv-switch2",
+                "av://v4l2",
+                "switch2-capture-viewer",
+            )
+        ):
+            candidates.append(pid)
+    for pid in candidates:
+        if pid in seen:
+            continue
+        seen.add(pid)
         try:
             cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
         except OSError:
             continue
-        if "v4l2" in cmdline or "/dev/video" in cmdline:
-            pids.append(pid)
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                pass
+        if not any(
+            t in cmdline
+            for t in ("v4l2", "/dev/video", "av://v4l2", "mpv-switch2", "mpv-Media-Player")
+        ):
+            continue
+        pids.append(pid)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
     deadline = time.time() + 3
     while time.time() < deadline and any(Path(f"/proc/{p}").exists() for p in pids):
         time.sleep(0.05)
@@ -189,6 +221,10 @@ def stop_ffplay() -> list[int]:
                 pass
     time.sleep(0.25)
     return pids
+
+
+# Back-compat alias for older call sites / docs.
+stop_ffplay = stop_viewer
 
 
 def start_viewer() -> None:
@@ -325,16 +361,19 @@ def main() -> int:
     ap.add_argument("--desktop", action="store_true", help="sample DISPLAY=:1 (often black on gamescope)")
     ap.add_argument("--display", default=os.environ.get("SWITCH2_LATENCY_DISPLAY", ":1"))
     ap.add_argument("--thresh", type=float, default=None, help="override detect threshold (tile MAD)")
-    ap.add_argument("--keep-ffplay", action="store_true", help="do not reclaim /dev/video0")
+    ap.add_argument("--keep-ffplay", action="store_true", help="do not reclaim capture device")
+    ap.add_argument("--keep-viewer", action="store_true", help="alias for --keep-ffplay")
     args = ap.parse_args()
     mode = "desktop" if args.desktop else "v4l2"
+    if args.keep_viewer:
+        args.keep_ffplay = True
 
     stopped: list[int] = []
     cap_dev = ""
     if mode == "v4l2" and not args.keep_ffplay:
-        stopped = stop_ffplay()
+        stopped = stop_viewer()
         if stopped:
-            print(f"Stopped ffplay {stopped} to open capture device (viewer restarts after).")
+            print(f"Stopped viewer {stopped} to open capture device (viewer restarts after).")
         try:
             cap_dev = wait_capture_dev(5.0)
         except RuntimeError as e:
@@ -353,7 +392,7 @@ def main() -> int:
 
     print(f"Sampling {mode} ({WIDTH}x{HEIGHT} gray @ {FPS}fps)")
     print("Pipeline: NUXBT/pad → Switch UI → HDMI → MS2109" + (
-        " → ffplay → :1" if mode == "desktop" else " (capture card node)"
+        " → viewer → :1" if mode == "desktop" else " (capture card node)"
     ))
     print("Stay on Controllers → Test Input Devices.")
 
@@ -456,8 +495,8 @@ def main() -> int:
         )
         if mode == "v4l2":
             print("Includes: BT/NUXBT + Switch UI + HDMI + MS2109 USB MJPEG dequeue.")
-            print("Not included: ffplay, gamescope, Sunshine encode, Wi-Fi, Moonlight decode.")
-            print("Rough add: ffplay ~16–33ms + encode/net/client ~16–50ms.")
+            print("Not included: mpv/ffplay, gamescope, Sunshine encode, Wi-Fi, Moonlight decode.")
+            print("Rough add: viewer ~16–33ms + encode/net/client ~16–50ms.")
         return 0
     finally:
         if stream is not None:

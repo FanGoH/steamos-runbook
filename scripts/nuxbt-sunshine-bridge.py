@@ -99,19 +99,38 @@ def find_sunshine_pad(prefer: str | None = None) -> InputDevice:
     )
 
 
+def _abs_codes(dev: InputDevice) -> set[int]:
+    """EV_ABS codes for a device (evdev may return raw codes or (code, AbsInfo))."""
+    raw = dev.capabilities().get(ecodes.EV_ABS, [])
+    out: set[int] = set()
+    for item in raw:
+        if isinstance(item, tuple):
+            out.add(int(item[0]))
+        else:
+            out.add(int(item))
+    return out
+
+
 def _axis_norm(value: int, info: Any, invert: bool = False) -> int:
     """Map abs axis to NUXBT stick -100..100 with deadzone."""
-    if info is None:
-        return 0
-    minimum = int(info.min)
-    maximum = int(info.max)
+    # Prefer hardware min/max; fall back to signed int16 (Sunshine/x360).
+    if info is not None:
+        minimum = int(info.min)
+        maximum = int(info.max)
+    else:
+        minimum, maximum = -32768, 32767
     if maximum == minimum:
         return 0
-    mid = (maximum + minimum) / 2.0
-    half = (maximum - minimum) / 2.0
-    if half <= 0:
-        return 0
-    ratio = (value - mid) / half
+    # Symmetric signed axes: treat 0 as center (not (min+max)/2 == -0.5).
+    if minimum < 0 < maximum and abs(minimum + maximum) <= 1:
+        half = float(max(abs(minimum), abs(maximum)))
+        ratio = value / half
+    else:
+        mid = (maximum + minimum) / 2.0
+        half = (maximum - minimum) / 2.0
+        if half <= 0:
+            return 0
+        ratio = (value - mid) / half
     if invert:
         ratio = -ratio
     if abs(ratio) < STICK_DEADZONE:
@@ -228,10 +247,20 @@ def main() -> int:
     assert source is not None
 
     # Snapshot absinfo once; re-open if the node disappears
-    absinfo = {code: source.absinfo(code) for code in (
+    want_abs = (
         ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY,
         ecodes.ABS_Z, ecodes.ABS_RZ, ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y,
-    ) if code in source.capabilities().get(ecodes.EV_ABS, [])}
+    )
+    present = _abs_codes(source)
+    absinfo = {}
+    for code in want_abs:
+        if code not in present:
+            continue
+        try:
+            absinfo[code] = source.absinfo(code)
+        except OSError:
+            continue
+    _log(f"abs axes: {sorted(absinfo.keys())}")
 
     buttons: dict[int, int] = {}
     abs_vals: dict[int, int] = {
@@ -272,7 +301,15 @@ def main() -> int:
             time.sleep(0.5)
             try:
                 source = find_sunshine_pad(args.source)
-                absinfo = {code: source.absinfo(code) for code in absinfo}
+                present = _abs_codes(source)
+                absinfo = {}
+                for code in want_abs:
+                    if code not in present:
+                        continue
+                    try:
+                        absinfo[code] = source.absinfo(code)
+                    except OSError:
+                        continue
             except SystemExit as err:
                 _log(str(err))
                 time.sleep(1.0)

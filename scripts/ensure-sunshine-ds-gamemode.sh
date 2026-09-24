@@ -47,6 +47,11 @@ DS_BIN="${SUNSHINE_DS_BIN:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds}"
 KMS_BIN="${SUNSHINE_DS_KMS_BIN:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds-kms}"
 KMS_LIB_DIR="${SUNSHINE_DS_KMS_LIB_DIR:-/home/${STEAMOS_USER:-deck}/.local/lib/sunshine-ds-kms}"
 KMS_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-gamemode}"
+# Compile-time SUNSHINE_ASSETS_DIR is /usr/local/assets (17 chars). Root is
+# readonly, so patch the ELF to this same-length home path (symlink → share).
+KMS_ASSETS_LINK="${SUNSHINE_DS_KMS_ASSETS_LINK:-/home/${STEAMOS_USER:-deck}/sdsast}"
+KMS_ASSETS_DIR="${SUNSHINE_DS_KMS_ASSETS_DIR:-/home/${STEAMOS_USER:-deck}/.local/share/sunshine-ds/assets}"
+KMS_ASSETS_SRC="${SUNSHINE_DS_KMS_ASSETS_SRC:-/home/${STEAMOS_USER:-deck}/code/sunshine-ds/src_assets/linux/assets}"
 KMS_CONF="$KMS_DIR/sunshine/sunshine.conf"
 DEV_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
 KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
@@ -245,6 +250,70 @@ ensure_kms_rpath() {
   return 0
 }
 
+# Host kms is built with SUNSHINE_ASSETS_DIR=/usr/local/assets. SteamOS root
+# is readonly and user BindPaths cannot create that mount point. Sync shaders
+# into ~/.local/share/sunshine-ds/assets and point a 17-char home symlink at
+# it, then rewrite the ELF string (mmap; preserves cap_sys_admin xattr).
+ensure_kms_assets() {
+  local src="$KMS_ASSETS_SRC" dest="$KMS_ASSETS_DIR" link="$KMS_ASSETS_LINK"
+  mkdir -p "$dest/shaders/opengl"
+  if [ -d "$src/shaders/opengl" ]; then
+    cp -a "$src/shaders/opengl/." "$dest/shaders/opengl/"
+  fi
+  if [ -d "$src/shaders/vulkan" ]; then
+    mkdir -p "$dest/shaders/vulkan"
+    cp -a "$src/shaders/vulkan/." "$dest/shaders/vulkan/"
+  fi
+  if [ -d "$src" ]; then
+    local f
+    for f in apps.json box.png desktop.png desktop-alt.png steam.png web; do
+      if [ -e "$src/$f" ] && [ ! -e "$dest/$f" ]; then
+        cp -a "$src/$f" "$dest/"
+      fi
+    done
+  fi
+  if [ ! -f "$dest/shaders/opengl/ConvertUV.frag" ]; then
+    echo "Missing VAAPI shaders under $dest/shaders/opengl (need ConvertUV.frag)."
+    return 1
+  fi
+  ln -sfn "$dest" "$link"
+  if [ "$(readlink -f "$link/shaders/opengl/ConvertUV.frag" 2>/dev/null)" = "" ]; then
+    echo "Assets link $link -> $dest is broken."
+    return 1
+  fi
+  return 0
+}
+
+patch_kms_assets_path() {
+  local bin="${1:-$KMS_BIN}"
+  python3 - "$bin" <<'PY'
+import mmap
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+old = b"/usr/local/assets"
+new = b"/home/deck/sdsast"
+if len(old) != len(new):
+    raise SystemExit(f"assets path length mismatch {len(old)} != {len(new)}")
+data = path.read_bytes()
+if data.count(new) and not data.count(old):
+    print(f"Assets path already /home/deck/sdsast in {path}")
+    raise SystemExit(0)
+if not data.count(old):
+    print(f"WARNING: neither /usr/local/assets nor /home/deck/sdsast in {path}", file=sys.stderr)
+    raise SystemExit(1)
+# In-place mmap keeps security.capability; binary must not be running (ETXTBSY).
+with path.open("r+b") as f:
+    mm = mmap.mmap(f.fileno(), 0)
+    count = mm[:].count(old)
+    mm[:] = mm[:].replace(old, new)
+    mm.flush()
+    mm.close()
+print(f"Patched {count} /usr/local/assets -> /home/deck/sdsast in {path}")
+PY
+}
+
 kms_has_sys_admin() {
   getcap "$KMS_BIN" 2>/dev/null | grep -q 'cap_sys_admin'
 }
@@ -287,6 +356,8 @@ ensure_kms_binary() {
   fi
   ensure_kms_libs || return 1
   ensure_kms_rpath || return 1
+  ensure_kms_assets || return 1
+  patch_kms_assets_path "$KMS_BIN" || return 1
   return 0
 }
 
@@ -331,6 +402,8 @@ replace_kms_from_build() {
   else
     install -m 0755 "$new" "$KMS_BIN"
   fi
+  ensure_kms_assets || return 1
+  patch_kms_assets_path "$KMS_BIN" || return 1
   if ! kms_has_sys_admin; then
     echo "Host $KMS_BIN has no cap_sys_admin."
     ask_kms_setcap
@@ -371,6 +444,8 @@ EOF
   fi
   mv -f "$new" "$KMS_BIN"
   chmod 0755 "$KMS_BIN"
+  ensure_kms_assets || return 1
+  patch_kms_assets_path "$KMS_BIN" || return 1
   if ! kms_has_sys_admin; then
     echo "mv lost cap_sys_admin on $KMS_BIN."
     ask_kms_setcap
@@ -394,6 +469,8 @@ start_kms_unit_only() {
     ask_kms_setcap
     return 2
   fi
+  ensure_kms_assets || return 1
+  patch_kms_assets_path "$KMS_BIN" || return 1
   write_kms_conf
   systemctl --user reset-failed "$KMS_SERVICE" 2>/dev/null || true
   echo "Starting $KMS_SERVICE only (virtual unit / headless :2 stay)."

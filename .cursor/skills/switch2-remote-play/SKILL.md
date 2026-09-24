@@ -23,41 +23,39 @@ Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → 
 
 Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
-## Status (2026-09-21 → 2026-09-22)
+## Status (2026-09-24)
 
-**Paused — waiting for CSR dongle (arrives ~2026-09-23).** Do not keep retrying MT7922 handshake cycles until it is plugged in.
+**Working end-to-end (gates A–G largely green):** remote Odin/Thor Moonlight pad → Sunshine → NUXBT → Switch 2; HDMI capture tile fullscreen under Game Mode; Moonlight sees the session; capture audio reaches the stream via HDMI leaf loopback.
+
+**Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`). **mpv** AppImage (`ensure-switch2-mpv.sh` → `~/.local/bin/mpv-switch2`, `vo=x11` under gamescope; ffplay fallback). **Default 1280×720@60** — MS2109 USB2 only delivers ~30fps at 1080p MJPEG; 720p is real 60. Override `SWITCH2_CAPTURE_WIDTH/HEIGHT`. **Audio:** Pulse `module-loopback` from MS2109 → HDMI leaf sink (same path Sunshine `audio_sink` captures) — not `sink-sunshine-stereo`. `SWITCH2_CAPTURE_AUDIO=0` disables. If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109` / viewer PCI-rebind (`hide-controllers-sysfs.sh usb-pci-rebind`).
+
+**Latency (pad → V4L2, Test Input Devices, 2026-09-24):** `scripts/measure-switch2-capture-latency.py` — median ~**141 ms** (n=6; mean ~340 ms with outliers; min ~29 ms max ~833 ms). Includes BT/NUXBT + Switch UI + HDMI + MS2109 MJPEG dequeue. **Not** included: mpv/ffplay, gamescope, Sunshine encode, Wi‑Fi, Moonlight decode (~+30–80 ms rough). Native Switch press→pixels is already a large share; software will not halve this number alone.
+
+**USB dongle on De-FanGoH:** RTL8761BU `hci1` `50:3D:D1:EE:D3:2B`; MT7922 `hci0` stays **DOWN**. BlueZ override (`--compat --noplugin=*`) via `sudo -n …/hide-controllers-sysfs.sh nuxbt-bluez enable` (NOPASSWD). Reconnect: **`scripts/nuxbt-api.py reconnect|grip`** (hard via `systemd-run --user`) or `scripts/nuxbt-bridge.sh --grip` on Change Grip/Order. After killing a live pad / BlueZ wedge (`DBus NoReply`), re-run `nuxbt-bluez enable` then **Grip** while Switch is on Controllers → Change Grip/Order. Kill leftover bridge PIDs by argv (`…/nuxbt-sunshine-bridge.py` as its own arg) — never `pgrep -f` / never match agent shells that embed the script path in `bash -c`.
+
+**Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position (**west→X north→Y**), Plus/Minus inverted vs naive SDL, **HOME = LB + D-Pad Down + Plus** (Guide still works), 120 Hz. **Steam overlay / QAM / Home (769)** → idle to Switch (drain pad, discard presses; also honors `$XDG_RUNTIME_DIR/emupads-mute` via `start-emu-steam-ui-inhibit.sh`). EmuPads off for the session. NUXBT is **Bluetooth HID only**.
+
+**Stay connected / advertise:**
+- **A)** On Switch drop/crash the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).
+- **B)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or restart with `./scripts/nuxbt-bridge.sh --grip` / `nuxbt-api.py grip` on Change Grip/Order.
+- **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). Status / Reconnect / Grip / Start / Stop via `scripts/nuxbt-api.py` (hard restart under `systemd-run --user` so PluginLoader cannot kill the bridge). Soft flag-only (`--soft`) is weaker — prefer hard.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
-- **NUXBT** works on **lab** (Pi): demo finished; Switch 2 accepted emulated Pro Controller.
-- **NUXBT on De-FanGoH:** host path proven (override, setcap home `python3-nuxbt`, CoD sticky, Ctrl-C-safe verbose `nuxbt-run.sh`). **MT7922** never completed a stable Grip/Order pair (10×30s cycles: no ACL connect; rare partial HID then `ConnectionResetError`).
-- BlueZ override + **setcap on home copy** `~/code/nuxbt-host/bin/python3-nuxbt` (SteamOS `/usr` is immutable): `sudo scripts/nuxbt-bluez-override.sh enable`.
+- **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).
+- Lab/USB stick: TP-Link `2357:0604` → **RTL8761BU**. Stock `nuxbt demo` creates a controller on **every** adapter — force a single adapter path.
+- Without BlueZ `--noplugin=*`, Switch flaps `RequestAuthorization` / connect-reset; do not skip the override.
 
-### Why lab works and De-FanGoH does not (so far)
+### Why lab works and De-FanGoH onboard does not
 
-| | **lab (works)** | **De-FanGoH (no pair)** |
+| | **lab (works)** | **De-FanGoH MT7922 (no pair)** |
 |--|-----------------|-------------------------|
-| Radio | Cypress/Broadcom **BCM43438** UART (`hci_uart_bcm`) | MediaTek **MT7922** USB combo WiFi+BT (`btusb` `0e8d:0616`) |
-| HCI | BT 5.0, Bus UART | BT 5.3, Bus USB |
-| BlueZ | 5.66 (native) | 5.87 (host) |
-| Proof | After demo: `RX acl=216` `TX acl=1361`; Switch MAC `48:F1:EB:C3:F4:85` in `/var/lib/bluetooth/…/cache` | Software OK; radio stalls (`acl=0` or reset after partial HID) |
+| Radio | BCM43438 UART **and** USB RTL8761BU (`2357:0604`) | MediaTek **MT7922** combo (`0e8d:0616`) |
+| Proof | USB-forced demo 2026-09-24: `Finished!` ACL up | Software OK; radio stalls |
 | Runtime | Native `~/code/nuxbt/.venv` | Host `~/code/nuxbt-host` + capped `bin/python3-nuxbt` |
 
-**Not the primary failure mode:** Distrobox D-Bus / missing caps. Protocol is proven on Switch 2 via lab. Onboard MT7922 is the blocker.
+**Next on De-FanGoH:** plug the same USB adapter, unblock rfkill if needed, power off MT7922, create controller only on the USB path, Grip/Order demo.
 
-**Likely causes (ordered):**
-1. **Raw-HCI `set_class` needs file caps** — fixed via home python copy + setcap.
-2. **DiscoverableTimeout 180s** — patched → 0; `nuxbt-run.sh` re-asserts CoD sticky.
-3. **MT7922 vs BCM43438** — chipset/coexistence; Switch MAC appeared once then stalled. **CSR USB dongle next.**
-4. WiFi/BT coexistence on the same MT7922 die / range.
-
-### Resume when dongle arrives (De-FanGoH)
-
-1. Plug **TP-Link UB400** (or MX twin **UB4A**) — CSR `0a12:0001`. Confirm `lsusb | grep 0a12` and a new `hci1` (or whichever is not MT7922).
-2. Keep BlueZ override enabled if needed: `sudo scripts/nuxbt-bluez-override.sh enable`.
-3. Put Switch 2 in **Change Grip/Order**; run `scripts/nuxbt-run.sh demo` bound to the **CSR** adapter (not MT7922).
-4. Success = lab-like finish (`Finished!` / ACL climb / pad usable in a game). Then video/Sunshine bridge stays deferred.
-
-**Dongle:** TP-Link **UB400** (CSR 4.0, `0a12:0001`) — Amazon ASIN [B07V1SZCY6](https://www.amazon.com/dp/B07V1SZCY6). MX regional twin **UB4A**. Do **not** use UB500 (Realtek).
+**Dongle note:** Lab stick is Realtek RTL8761BU (UB500-class VID), not CSR `0a12:0001`. It worked on lab against Switch 2. Prefer CSR UB400/UB4A if buying another.
 
 ## Decisions (locked)
 
@@ -163,6 +161,7 @@ Whatever is **most seamless** after reboot and SteamOS updates:
 - EmuPads: **off** for the Switch RP session.
 - Do **not** exclusive-grab the Sunshine pad — Steam needs it for overlay / QAM nav.
 - Map 1:1 sticks, d-pad, ABXY, L/R/ZL/ZR, +/−, Home, stick clicks. No fancy remaps unless required.
+- **Implemented:** `scripts/nuxbt-bridge.sh` / `scripts/nuxbt-sunshine-bridge.py` (prefer `Sunshine (libvirtualhid)*`, skip `28de:11ff` / EmuPads; face buttons by position; 120 Hz `set_controller_input`).
 
 ---
 
@@ -178,16 +177,30 @@ Switch 2 HDMI → capture card → /dev/videoN → fullscreen viewer → Sunshin
 
 | Option | Role |
 |--------|------|
-| **mpv** | Best first try: `mpv av://v4l2:/dev/videoN --profile=low-latency --untimed --no-cache --fullscreen` (tune format via `v4l2-ctl`). |
-| **ffplay** | Minimal: `-fflags nobuffer -flags low_delay -framedrop`. |
+| **mpv** | Default viewer (`switch2-capture-viewer.sh`): host AppImage via `ensure-switch2-mpv.sh`, `--profile=low-latency --untimed --vo=x11` (Flatpak cannot open MS2109 V4L2 ACLs). |
+| **ffplay** | Fallback if mpv VOs fail: `-fflags nobuffer -flags low_delay -framedrop`. |
+| **Audio** | Pulse `module-loopback` MS2109 → HDMI leaf (Sunshine captures HDMI.monitor). Do not use `sink-sunshine-stereo`. |
 | **Consolation** | Dedicated UVC viewer; optional if mpv fails UX-wise. |
 | **OBS** | Fallback if gamescope/Flatpak/audio needs a compositor path — not the default. |
-
-Audio: capture-card ALSA/Pulse for the Switch session only — do **not** rewrite the proven Cemu dual-stream HDMI / VSS capture recipes. Defer polish.
 
 HDCP: if the capture is black, check Switch HDMI/HDCP settings before blaming Sunshine.
 
 Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT), not the OBS UI.
+
+### Capture card (this box) + upgrade notes (2026-09-24)
+
+**Now:** MacroSilicon **MS2109** (`534d:2109`) → `/dev/video0` on USB **2.0**. Advertises 1080p60 MJPEG but **measured ~30fps** at 1920×1080; **720p60 is real ~60fps** (viewer default). Chop at 1080p is the card bandwidth, not Moonlight. Encoder path separately fixed: `encoder = vaapi` + `minimum_fps_target = 60` (Mesa on RX 9060 XT). Host `sunshine-ds-kms` reads shaders from `/home/deck/sdsast` → `~/.local/share/sunshine-ds/assets`.
+
+Switch 2 dock: **4K60** or **1080p/1440p @ 120** — **4K120 is irrelevant**; **1080p120** is the useful high-FPS target. Prefer USB3 **NV12/raw UVC**, not USB2 MJPEG.
+
+| Goal | Buy |
+|------|-----|
+| Best SteamOS / Linux UVC balance (optional community 1080p120) | **Elgato HD60 X** |
+| Cheapest true 1080p120 UVC | **ezcap321** (HDMI 1.4 / grey-market risk) |
+| Linux “just works,” 60 fps OK | **Magewell USB Capture HDMI 4K Plus** (not a 120 pick) |
+| Avoid for SteamOS automation | **AVerMedia GC553** (no Linux); **Elgato 4K60 Pro PCIe** unless you’ll maintain `sc0710` DKMS |
+
+Research brief: [Research 120fps capture cards](bc-cf51c2fe-929f-5790-b733-1e4b4153a2f0).
 
 ### Sunshine ports
 
@@ -211,7 +224,42 @@ Steam tile long-term: **Nintendo Switch 2** launches viewer (+ later bridge/NXBT
 | G | Moonlight sees that fullscreen session |
 | H | Start/stop automation for the Steam/Moonlight entry |
 
-**Ship controller MVP at E.** Video starts at F.
+**Ship controller MVP at E.** Video starts at F. As of 2026-09-24 on De-FanGoH: A–G proven in session; H is the Steam tile + Decky Switch 2 QAM (polish remaining below).
+
+---
+
+## Potential improvements (do not block daily use)
+
+Ordered by expected impact. Keep additive — do not rewrite dual-stream / EmuPads / Tailscale to chase these.
+
+### Latency / video quality
+
+| Idea | Notes |
+|------|--------|
+| **Better capture card** | MS2109 USB2 MJPEG is the main host-side video tax. **Elgato HD60 X** (~45–65 ms capture, Linux UVC) or **Magewell USB Capture HDMI Gen 2 / 4K Plus**; cheap **MS2130 / UGREEN “4K30”** USB3 helps 1080p60 more than lag. UGREEN alone will not halve the ~141 ms pad→V4L2 median. |
+| **Dock at 1080p60** | Avoid 4K-in → card downscale; small win, free to try. |
+| **Host `mpv` (pacman)** | AppImage is stuck on `vo=x11` (no GLX/GBM/`libsensors` under gamescope). System mpv may use `vo=gpu` and shave a little viewer delay. Needs `steamos-readonly` + sudo — `record_manual` if desired. |
+| **Sunshine / Moonlight knobs** | Tight bitrate, Performance / lowest delay on Thor, client VSync off. Encode/net is outside the V4L2 probe. |
+| **mpv audio in-process** | Today audio is Pulse loopback (reliable for Sunshine HDMI capture). Optional: mpv `--audio-file=av://pulse:…` to one process — only if loopback drifts. |
+
+### Reliability / UX
+
+| Idea | Notes |
+|------|--------|
+| **Bridge process hygiene** | `systemd-run` `KillMode=process` can leave orphan `nuxbt-sunshine-bridge.py` children after stop/restart. Harden `_stop_bridge` / unit `KillMode=control-group` (test Decky QAM still cannot SIGTERM the live bridge). |
+| **BlueZ wedge recovery** | `org.freedesktop.DBus.Error.NoReply` → `nuxbt-bluez enable` (restarts bluetoothd with override) then **Grip**. Could auto-detect NoReply in `nuxbt-api.py grip` and re-enable once. |
+| **WirePlumber V4L2 hold** | Camera monitor leaves `STREAMON` EBUSY with no userspace opener. Viewer already `pw-cli destroy`s nodes; optional WirePlumber rule to not auto-open MS2109. |
+| **Grip still sometimes required** | MAC reconnect often enough with override; document “open Grip/Order, then QAM Grip” as the reliable path after a wedge. |
+| **Decky UX** | Status copy when advertising vs connected; avoid soft reconnect as default; one-tap “clean restart” that waits for single bridge PID. |
+| **Steam tile one-shot** | Launch viewer + ensure BlueZ override + start bridge (or attach if already up) from one desktop entry — without touching other Game Mode services. |
+
+### Out of scope / defer
+
+- Switch wake / dock always-on
+- Switch 1 + KVM
+- Dual-panel GameStream for Switch capture
+- Sub-100 ms pad→Thor remote (not realistic through BT + Switch UI + USB2 capture + encode + Wi‑Fi)
+- Enabling skipped `ensure-switch2-controllers` (wrong direction)
 
 ---
 

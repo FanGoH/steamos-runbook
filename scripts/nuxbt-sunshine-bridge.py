@@ -64,7 +64,11 @@ ADVERTISE_GIVEUP_S = float(os.environ.get("NUXBT_ADVERTISE_GIVEUP_S", "180.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
 # After Switch leaves Grip/Order the ACL dies (often as NUXBT "crashed").
 # Rejoin in-process via MAC reconnect instead of exiting the bridge.
-CRASH_RECONNECT_MAX = int(os.environ.get("NUXBT_CRASH_RECONNECT_MAX", "8"))
+CRASH_RECONNECT_MAX = int(os.environ.get("NUXBT_CRASH_RECONNECT_MAX", "6"))
+# Only clear the crash counter after the link has stayed up this long — otherwise
+# connect→crash flaps reset the counter every time and never back off.
+STABLE_LINK_S = float(os.environ.get("NUXBT_STABLE_LINK_S", "20.0"))
+CRASH_BACKOFF_BASE_S = float(os.environ.get("NUXBT_CRASH_BACKOFF_S", "2.0"))
 # Stable body/button colours (do not randomize — same look as the paired pad).
 # Override with NUXBT_COLOUR_BODY / NUXBT_COLOUR_BUTTONS as "R,G,B".
 _DEFAULT_BODY = (0x32, 0x32, 0x32)
@@ -592,6 +596,8 @@ def main() -> int:
     ever_connected = False
     post_grip_paired = False  # True after L+R hold — leave Grip → MAC reconnect
     crash_reconnects = 0
+    connected_since: float | None = None
+    crash_paused = False  # too many flaps — wait for want-grip / want-reconnect
 
     stop = False
 
@@ -626,6 +632,9 @@ def main() -> int:
             use_advertise = True
             pending_grip_lr = True
             post_grip_paired = False
+            crash_paused = False
+            crash_reconnects = 0
+            connected_since = None
             reconnect_attempt_since = now
             disconnected_since = None
             grip_until = 0.0
@@ -646,6 +655,9 @@ def main() -> int:
                 break
             use_advertise = False
             pending_grip_lr = False
+            crash_paused = False
+            crash_reconnects = 0
+            connected_since = None
             reconnect_attempt_since = now
             disconnected_since = None
             grip_until = 0.0
@@ -680,10 +692,22 @@ def main() -> int:
             last_st = st
 
         if st == "connected":
-            if disconnected_since is not None or reconnect_attempt_since is not None:
+            if connected_since is None:
+                connected_since = now
                 _log("Switch link up")
             ever_connected = True
-            crash_reconnects = 0
+            # Only clear flap counter after a truly stable link — brief connects
+            # were resetting attempt 1/8 forever and thrashing the Switch.
+            if (
+                crash_reconnects
+                and connected_since is not None
+                and (now - connected_since) >= STABLE_LINK_S
+            ):
+                _log(
+                    f"link stable {STABLE_LINK_S:.0f}s — clearing crash counter "
+                    f"(was {crash_reconnects})"
+                )
+                crash_reconnects = 0
             disconnected_since = None
             reconnect_attempt_since = None
             if pending_grip_lr and grip_until <= 0:
@@ -692,6 +716,11 @@ def main() -> int:
                 grip_logged_done = False
                 _log(f"connected — holding L+R until {grip_until:.0f}")
         else:
+            if connected_since is not None:
+                up_for = now - connected_since
+                connected_since = None
+                if up_for < STABLE_LINK_S and st == "crashed":
+                    _log(f"link dropped after only {up_for:.1f}s ({st})")
             if disconnected_since is None:
                 disconnected_since = now
             down_for = now - disconnected_since
@@ -707,6 +736,10 @@ def main() -> int:
             # so leaving Change Grip/Order rejoins without another Grip menu.
             prefer_mac = post_grip_paired or (ever_connected and not use_advertise)
             to_advertise = bool(use_advertise) and not prefer_mac
+            if crash_paused:
+                # Wait for explicit want-grip / want-reconnect (handled above).
+                time.sleep(min(0.5, period * 4))
+                continue
             if st == "crashed":
                 do_respawn = True
                 # Leaving Grip/Order often surfaces as "crashed" — rejoin by MAC.
@@ -736,16 +769,23 @@ def main() -> int:
                     crash_reconnects += 1
                     if crash_reconnects > CRASH_RECONNECT_MAX:
                         _log(
-                            f"NUXBT crashed {crash_reconnects} times — "
-                            "exiting for hard restart (nuxbt-api reconnect|grip)"
+                            f"NUXBT crashed {crash_reconnects} times without a stable "
+                            f"{STABLE_LINK_S:.0f}s link — pausing auto-reconnect. "
+                            f"touch {WANT_GRIP} or {WANT_RECONNECT} (or QAM Grip/Reconnect)"
                         )
-                        stop = True
-                        break
+                        crash_paused = True
+                        time.sleep(min(0.5, period * 4))
+                        continue
+                    backoff = min(
+                        CRASH_BACKOFF_BASE_S * (2 ** (crash_reconnects - 1)),
+                        20.0,
+                    )
                     mode = "advertise" if to_advertise else f"MAC reconnect→{args.switch}"
                     _log(
-                        f"NUXBT crashed — in-process {mode} "
+                        f"NUXBT crashed — wait {backoff:.0f}s then {mode} "
                         f"(attempt {crash_reconnects}/{CRASH_RECONNECT_MAX})"
                     )
+                    time.sleep(backoff)
                 if to_advertise:
                     _log(f"link {st} — respawning advertise (Grip/Order)")
                     try:

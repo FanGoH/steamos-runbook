@@ -62,6 +62,9 @@ RECONNECT_GIVEUP_S = float(os.environ.get("NUXBT_RECONNECT_GIVEUP_S", "25.0"))
 # Respawning every ~25s wedged BlueZ (DBus NoReply) and killed the bridge.
 ADVERTISE_GIVEUP_S = float(os.environ.get("NUXBT_ADVERTISE_GIVEUP_S", "180.0"))
 GRIP_HOLD_DEFAULT = float(os.environ.get("NUXBT_GRIP_HOLD_S", "5"))
+# After Switch leaves Grip/Order the ACL dies (often as NUXBT "crashed").
+# Rejoin in-process via MAC reconnect instead of exiting the bridge.
+CRASH_RECONNECT_MAX = int(os.environ.get("NUXBT_CRASH_RECONNECT_MAX", "8"))
 # Stable body/button colours (do not randomize — same look as the paired pad).
 # Override with NUXBT_COLOUR_BODY / NUXBT_COLOUR_BUTTONS as "R,G,B".
 _DEFAULT_BODY = (0x32, 0x32, 0x32)
@@ -484,6 +487,32 @@ def _respawn(
     return _spawn_controller(nx, adapter, reconnect_address=reconnect_address)
 
 
+def _recover_controller(
+    nx: Nuxbt,
+    old_idx: int | None,
+    adapter: str,
+    *,
+    reconnect_address: str | None,
+    log_path: str,
+) -> tuple[Nuxbt, int]:
+    """Respawn a controller; if the Nuxbt manager is dead, start a fresh one."""
+    try:
+        return nx, _respawn(nx, old_idx, adapter, reconnect_address=reconnect_address)
+    except Exception as e:
+        _log(f"respawn failed ({e}) — recreating Nuxbt manager")
+    try:
+        nx.shutdown()
+    except Exception:
+        pass
+    time.sleep(0.6)
+    fresh = Nuxbt(debug=False, log_file_path=log_path)
+    adapters = fresh.get_available_adapters()
+    if adapter not in adapters:
+        raise RuntimeError(f"{adapter} missing after Nuxbt recreate (have {adapters})")
+    idx = _spawn_controller(fresh, adapter, reconnect_address=reconnect_address)
+    return fresh, idx
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--adapter", default=ADAPTER)
@@ -560,6 +589,9 @@ def main() -> int:
     reconnect_attempt_since: float | None = None
     last_st: str | None = None
     grip_logged_done = False
+    ever_connected = False
+    post_grip_paired = False  # True after L+R hold — leave Grip → MAC reconnect
+    crash_reconnects = 0
 
     stop = False
 
@@ -584,13 +616,16 @@ def main() -> int:
         if _consume_flag(WANT_GRIP):
             _log("nuxbt-want-grip → advertise + L+R hold")
             try:
-                idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                nx, idx = _recover_controller(
+                    nx, idx, args.adapter, reconnect_address=None, log_path=LOG
+                )
             except Exception as e:
                 _log(f"want-grip respawn failed ({e}) — exiting for hard restart")
                 stop = True
                 break
             use_advertise = True
             pending_grip_lr = True
+            post_grip_paired = False
             reconnect_attempt_since = now
             disconnected_since = None
             grip_until = 0.0
@@ -598,7 +633,13 @@ def main() -> int:
         elif _consume_flag(WANT_RECONNECT):
             _log(f"nuxbt-want-reconnect → MAC {args.switch}")
             try:
-                idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                nx, idx = _recover_controller(
+                    nx,
+                    idx,
+                    args.adapter,
+                    reconnect_address=args.switch,
+                    log_path=LOG,
+                )
             except Exception as e:
                 _log(f"want-reconnect respawn failed ({e}) — exiting for hard restart")
                 stop = True
@@ -627,12 +668,22 @@ def main() -> int:
         if st != last_st:
             _log(f"state={st}")
             if st == "connecting":
-                _log("advertising — open Switch Controllers → Change Grip/Order if it does not auto-join")
+                if use_advertise and not post_grip_paired:
+                    _log(
+                        "advertising — open Switch Controllers → Change Grip/Order "
+                        "if it does not auto-join"
+                    )
+                else:
+                    _log(f"connecting (MAC reconnect → {args.switch})")
+            elif st == "reconnecting":
+                _log(f"reconnecting → {args.switch}")
             last_st = st
 
         if st == "connected":
             if disconnected_since is not None or reconnect_attempt_since is not None:
                 _log("Switch link up")
+            ever_connected = True
+            crash_reconnects = 0
             disconnected_since = None
             reconnect_attempt_since = None
             if pending_grip_lr and grip_until <= 0:
@@ -652,14 +703,20 @@ def main() -> int:
                 reconnect_attempt_since = now
 
             do_respawn = False
-            to_advertise = use_advertise
+            # After a successful Grip pair (or any prior link), prefer MAC reconnect
+            # so leaving Change Grip/Order rejoins without another Grip menu.
+            prefer_mac = post_grip_paired or (ever_connected and not use_advertise)
+            to_advertise = bool(use_advertise) and not prefer_mac
             if st == "crashed":
                 do_respawn = True
+                # Leaving Grip/Order often surfaces as "crashed" — rejoin by MAC.
+                if post_grip_paired or ever_connected:
+                    to_advertise = False
             elif waiting:
-                giveup = ADVERTISE_GIVEUP_S if use_advertise else RECONNECT_GIVEUP_S
+                giveup = ADVERTISE_GIVEUP_S if to_advertise else RECONNECT_GIVEUP_S
                 if (now - (reconnect_attempt_since or now)) >= giveup:
                     do_respawn = True
-                    if not use_advertise:
+                    if not to_advertise:
                         _log(
                             f"reconnect stuck {RECONNECT_GIVEUP_S:.0f}s — "
                             "falling back to advertise (open Grip/Order)"
@@ -676,25 +733,46 @@ def main() -> int:
 
             if do_respawn:
                 if st == "crashed":
-                    # Manager/BlueZ often dies with the controller — exit cleanly so
-                    # systemd/API can hard-restart a fresh Nuxbt instead of nesting.
-                    _log("NUXBT crashed — exiting for hard restart (re-run grip)")
-                    stop = True
-                    break
+                    crash_reconnects += 1
+                    if crash_reconnects > CRASH_RECONNECT_MAX:
+                        _log(
+                            f"NUXBT crashed {crash_reconnects} times — "
+                            "exiting for hard restart (nuxbt-api reconnect|grip)"
+                        )
+                        stop = True
+                        break
+                    mode = "advertise" if to_advertise else f"MAC reconnect→{args.switch}"
+                    _log(
+                        f"NUXBT crashed — in-process {mode} "
+                        f"(attempt {crash_reconnects}/{CRASH_RECONNECT_MAX})"
+                    )
                 if to_advertise:
                     _log(f"link {st} — respawning advertise (Grip/Order)")
                     try:
-                        idx = _respawn(nx, idx, args.adapter, reconnect_address=None)
+                        nx, idx = _recover_controller(
+                            nx,
+                            idx,
+                            args.adapter,
+                            reconnect_address=None,
+                            log_path=LOG,
+                        )
                     except Exception as e:
                         _log(f"advertise respawn failed ({e}) — exiting for hard restart")
                         stop = True
                         break
                     use_advertise = True
                     pending_grip_lr = True
+                    post_grip_paired = False
                 else:
                     _log(f"link down ({st}) — respawning MAC reconnect → {args.switch}")
                     try:
-                        idx = _respawn(nx, idx, args.adapter, reconnect_address=args.switch)
+                        nx, idx = _recover_controller(
+                            nx,
+                            idx,
+                            args.adapter,
+                            reconnect_address=args.switch,
+                            log_path=LOG,
+                        )
                     except Exception as e:
                         _log(f"reconnect respawn failed ({e}) — exiting for hard restart")
                         stop = True
@@ -711,7 +789,12 @@ def main() -> int:
 
         forcing_grip = now < grip_until
         if grip_until > 0 and not forcing_grip and not grip_logged_done:
-            _log("grip L+R hold done — continue bridging; press + on Switch to exit Grip/Order")
+            post_grip_paired = True
+            use_advertise = False
+            _log(
+                "grip L+R hold done — MAC reconnect mode armed; "
+                "press + on Switch to exit Grip/Order (we rejoin by MAC)"
+            )
             grip_logged_done = True
             grip_until = 0.0  # latch so we don't re-enter
         # Sunshine hotplug source

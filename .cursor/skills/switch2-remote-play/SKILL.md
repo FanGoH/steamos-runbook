@@ -37,7 +37,8 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 
 **Stay connected / advertise:**
 - **A)** On Switch drop/crash the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).
-- **B)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or restart with `./scripts/nuxbt-bridge.sh --grip` / `nuxbt-api.py grip` on Change Grip/Order.
+- **B)** After Grip **L+R hold completes**, the bridge arms **MAC reconnect mode** — leaving Change Grip/Order (press +) tears the pairing ACL (often NUXBT `crashed`); we **rejoin in-process by Switch MAC** instead of exiting. Explicit Grip (`nuxbt-want-grip` / `--grip`) still advertises.
+- **C)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or restart with `./scripts/nuxbt-bridge.sh --grip` / `nuxbt-api.py grip` on Change Grip/Order.
 - **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). Status / Reconnect / Grip / Start / Stop via `scripts/nuxbt-api.py` (hard restart under `systemd-run --user` so PluginLoader cannot kill the bridge). Soft flag-only (`--soft`) is weaker — prefer hard.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
@@ -249,8 +250,9 @@ Ordered by expected impact. Keep additive — do not rewrite dual-stream / EmuPa
 | **Bridge process hygiene** | `systemd-run` `KillMode=process` can leave orphan `nuxbt-sunshine-bridge.py` children after stop/restart. Harden `_stop_bridge` / unit `KillMode=control-group` (test Decky QAM still cannot SIGTERM the live bridge). |
 | **BlueZ wedge recovery** | `org.freedesktop.DBus.Error.NoReply` → `nuxbt-bluez enable` (restarts bluetoothd with override) then **Reconnect** (pinned MAC). **Grip** only if that fails on Change Grip/Order. Could auto-detect NoReply in `nuxbt-api.py` and re-enable once. |
 | **WirePlumber V4L2 hold** | Camera monitor leaves `STREAMON` EBUSY with no userspace opener. Viewer already `pw-cli destroy`s nodes; optional WirePlumber rule to not auto-open MS2109. |
-| **Grip still sometimes required** | Needed for **first pair**, after changing `~/.config/nuxbt/controller-mac` / `NUXBT_CONTROLLER_MAC`, or after a BlueZ wipe. Day-to-day: same pinned MAC → **Reconnect**. Auto-advertise fallback after ~25s stuck reconnect still needs the Grip menu if you follow it. |
+| **Grip still sometimes required** | Needed for **first pair**, after changing `~/.config/nuxbt/controller-mac` / `NUXBT_CONTROLLER_MAC`, or after a BlueZ wipe. After a successful Grip L+R, leaving the menu should **MAC-reconnect in-process** (not exit). Day-to-day: **Reconnect**. Advertise fallback after ~25s stuck reconnect still needs the Grip menu if you follow it. |
 | **Stable controller MAC** | `scripts/nuxbt-pin-controller-mac.py` + `~/.config/nuxbt/controller-mac`. Never call NXBT’s random `7C:BB:8A:…` generator per spawn. Body/button colours are fixed too (`NUXBT_COLOUR_BODY` / `NUXBT_COLOUR_BUTTONS`). |
+| **Post-Grip crash → rejoin** | Switch teardown after + often shows NUXBT `crashed`. Bridge retries MAC reconnect up to `NUXBT_CRASH_RECONNECT_MAX` (default 8) and can recreate the Nuxbt manager; only then exits for a hard `nuxbt-api` restart. |
 | **Decky UX** | Status copy when advertising vs connected; avoid soft reconnect as default; one-tap “clean restart” that waits for single bridge PID. |
 | **Steam tile one-shot** | Launch viewer + ensure BlueZ override + start bridge (or attach if already up) from one desktop entry — without touching other Game Mode services. |
 

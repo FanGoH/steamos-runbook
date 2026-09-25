@@ -35,20 +35,31 @@ if [ ! -x "$CAP_PY" ] || ! getcap "$CAP_PY" 2>/dev/null | grep -q cap_net_raw; t
   echo "warn: $CAP_PY lacks cap_net_raw — Switch may ignore wrong CoD."
 fi
 
-# Keep MT7922 down when USB dongle is the NUXBT radio
-"$CAP_PY" - <<'PY' 2>/dev/null || true
-import dbus
-bus = dbus.SystemBus()
-for path, on in (("/org/bluez/hci0", False), ("/org/bluez/hci1", True)):
-    try:
-        p = dbus.Interface(bus.get_object("org.bluez", path), "org.freedesktop.DBus.Properties")
-        p.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(on))
-    except Exception:
-        pass
-PY
-
 export NUXBT_ADAPTER="${NUXBT_ADAPTER:-/org/bluez/hci1}"
 export NUXBT_SWITCH_MAC="${NUXBT_SWITCH_MAC:-48:F1:EB:C3:F4:85}"
+# Controller BD_ADDR (what the Switch pairs to). Locked in ~/.config/nuxbt/controller-mac
+# on first run (dongle hardware MAC). Do not randomize — a new MAC forces Grip/Order.
+# Override with NUXBT_CONTROLLER_MAC=7C:BB:8A:DE:F0:01 (Nintendo OUI) only when
+# deliberately re-pairing; then Grip once and leave it alone.
+
+# USB dongle prep: MT7922 off, power-cycle hci1, Pro Controller name + gamepad CoD.
+# Same path Decky QAM Grip/Reconnect uses via nuxbt-api.py.
+if [ -x "$CAP_PY" ]; then
+  "$CAP_PY" "$ROOT/scripts/nuxbt-prepare-radio.py" 2>/dev/null \
+    || echo "warn: radio prepare failed (continuing)"
+else
+  "$PY" "$ROOT/scripts/nuxbt-prepare-radio.py" 2>/dev/null \
+    || echo "warn: radio prepare failed (continuing)"
+fi
+
+# Pin / re-apply before create_controller (spoofed MACs die across BlueZ restart).
+if [ -x "$CAP_PY" ]; then
+  "$CAP_PY" "$ROOT/scripts/nuxbt-pin-controller-mac.py" 2>/dev/null \
+    || echo "warn: controller MAC pin failed (continuing with live adapter Address)"
+else
+  "$PY" "$ROOT/scripts/nuxbt-pin-controller-mac.py" 2>/dev/null \
+    || echo "warn: controller MAC pin failed (continuing with live adapter Address)"
+fi
 
 # Shared Steam QAM/overlay mute flag ($XDG_RUNTIME_DIR/emupads-mute). The bridge
 # also polls gamescope atoms; this watcher is the proven EmuPads path.

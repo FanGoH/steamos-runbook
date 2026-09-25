@@ -104,7 +104,7 @@ function Content() {
               layout: "below",
               disabled: Boolean(busy),
               onClick: () => run("Reconnect", reconnectBridge),
-              children: busy === "Reconnect" ? "…" : "Reconnect (MAC)",
+              children: busy === "Reconnect" ? "…" : "Reconnect (MAC + radio prep)",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -115,7 +115,7 @@ function Content() {
               children:
                 busy === "Grip / Order"
                   ? "…"
-                  : "Grip / Order (advertise + L+R)",
+                  : "Grip / Order (dongle prep + advertise)",
             }),
           }),
           SP_JSX.jsx(DFL.PanelSectionRow, {
@@ -146,7 +146,7 @@ function Content() {
             children: SP_JSX.jsx("div", {
               style: { opacity: 0.6, fontSize: "0.78em", lineHeight: 1.35 },
               children:
-                "Reconnect / Grip hard-restart the bridge under systemd --user (same as SSH). Close overlay so inputs reach Switch.",
+                "Grip / Reconnect run USB dongle prep (power-cycle hci1) then hard-restart the bridge. Stay on Change Grip/Order for Grip. Close overlay so inputs reach Switch.",
             }),
           }),
         ],

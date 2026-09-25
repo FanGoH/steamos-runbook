@@ -133,12 +133,12 @@ class Plugin:
         return _json_from(_run(["stop"], timeout=30))
 
     async def grip(self) -> dict:
-        """Change Grip/Order: hard restart advertise + L+R (same as CLI)."""
-        return _json_from(_run(["grip"], timeout=90))
+        """Change Grip/Order: radio prep (hci1 power-cycle) + advertise + L+R."""
+        return _json_from(_run(["grip"], timeout=120))
 
     async def reconnect(self) -> dict:
-        """MAC reconnect via hard bridge restart (flag-only was too weak for QAM)."""
-        return _json_from(_run(["reconnect"], timeout=90))
+        """MAC reconnect: radio prep + hard bridge restart (same as CLI)."""
+        return _json_from(_run(["reconnect"], timeout=120))
 
     async def _main(self) -> None:
         _log(f"Switch 2 / NUXBT plugin loaded; playbook={_playbook()} euid={os.geteuid()}")

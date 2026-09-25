@@ -38,6 +38,14 @@ SESSION = "nuxbt-bridge"
 UNIT = "nuxbt-bridge.service"
 SWITCH_MAC = os.environ.get("NUXBT_SWITCH_MAC", "48:F1:EB:C3:F4:85")
 ADAPTER = os.environ.get("NUXBT_ADAPTER", "/org/bluez/hci1")
+CONTROLLER_MAC_FILE = Path(
+    os.environ.get(
+        "NUXBT_CONTROLLER_MAC_FILE",
+        str(HOME / ".config" / "nuxbt" / "controller-mac"),
+    )
+)
+PIN_MAC_PY = ROOT / "scripts" / "nuxbt-pin-controller-mac.py"
+PREPARE_RADIO_PY = ROOT / "scripts" / "nuxbt-prepare-radio.py"
 
 
 def _ok(data: dict | None = None, **extra) -> dict:
@@ -86,6 +94,8 @@ def _user_bus_env() -> dict[str, str]:
     env["STEAMOS_PLAYBOOK_DIR"] = str(ROOT)
     env["NUXBT_ADAPTER"] = ADAPTER
     env["NUXBT_SWITCH_MAC"] = SWITCH_MAC
+    if os.environ.get("NUXBT_CONTROLLER_MAC"):
+        env["NUXBT_CONTROLLER_MAC"] = os.environ["NUXBT_CONTROLLER_MAC"]
     env["PATH"] = env.get("PATH") or "/usr/bin:/bin"
     # Ensure common bins even if PluginLoader handed us a root-ish PATH.
     for p in ("/usr/bin", "/bin", "/usr/local/bin", str(HOME / ".local" / "bin")):
@@ -176,12 +186,37 @@ def _sunshine_source() -> dict | None:
     return None
 
 
+def _controller_mac_info() -> dict:
+    """Resolve pinned controller BD_ADDR (no HCI write)."""
+    env = _user_bus_env()
+    py = HOME / "code" / "nuxbt-host" / "bin" / "python3-nuxbt"
+    if not py.is_file():
+        py = Path(sys.executable)
+    try:
+        proc = subprocess.run(
+            [str(py), str(PIN_MAC_PY), "--print"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env=env,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout.strip().splitlines()[-1])
+        return {
+            "ok": False,
+            "message": (proc.stderr or proc.stdout or "pin --print failed")[:200],
+        }
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
 def cmd_status(_: argparse.Namespace) -> dict:
     running = bridge_running()
     tail = _tail_out()
     state = _parse_state(tail) if running else ""
     switch = _bluez_switch()
     source = _sunshine_source()
+    ctrl = _controller_mac_info()
     messages = []
     if running and state:
         messages.append(f"NUXBT {state}")
@@ -201,11 +236,17 @@ def cmd_status(_: argparse.Namespace) -> dict:
         messages.append(f"source {source.get('name')}")
     else:
         messages.append("no Sunshine pad")
+    ctrl_mac = ctrl.get("controller_mac") or switch.get("adapter_address") or ""
+    if ctrl_mac:
+        messages.append(f"controller MAC {ctrl_mac}")
     return _ok(
         running=running,
         state=state or ("stopped" if not running else "unknown"),
         adapter=ADAPTER,
         switch_mac=SWITCH_MAC,
+        controller_mac=ctrl_mac,
+        controller_mac_source=ctrl.get("source"),
+        controller_mac_file=str(CONTROLLER_MAC_FILE),
         switch=switch,
         source=source,
         want_grip=WANT_GRIP.is_file(),
@@ -213,8 +254,9 @@ def cmd_status(_: argparse.Namespace) -> dict:
         log_tail=tail[-800:],
         message="; ".join(messages),
         tips=[
-            "Grip/Order: stay on that Switch screen, then Grip (advertise + L+R).",
-            "Day-to-day: Start / Reconnect (MAC). Auto-recovers on drop.",
+            "Day-to-day: Reconnect (MAC). QAM Grip/Reconnect power-cycles the USB dongle first.",
+            "Grip/Order only for first pair, after changing ~/.config/nuxbt/controller-mac, or after a BlueZ wipe.",
+            "Do not randomize NUXBT_CONTROLLER_MAC — a new BD_ADDR forces Grip.",
             f"SSH: touch {WANT_GRIP} or {WANT_RECONNECT}",
         ],
     )
@@ -321,6 +363,10 @@ def _launch_via_systemd(extra: list[str]) -> tuple[bool, str]:
         "-lc",
         inner,
     ]
+    ctrl_env = os.environ.get("NUXBT_CONTROLLER_MAC")
+    if ctrl_env:
+        # Insert before /bin/bash
+        cmd.insert(-3, f"--setenv=NUXBT_CONTROLLER_MAC={ctrl_env}")
     proc = subprocess.run(
         cmd, capture_output=True, text=True, timeout=20, env=_user_bus_env()
     )
@@ -356,9 +402,52 @@ def _launch_via_tmux(extra: list[str]) -> tuple[bool, str]:
     return False, (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300]
 
 
+def _prepare_radio() -> dict:
+    """Dongle power-cycle + Pro Controller name/class (same prep Decky Grip needs)."""
+    if os.environ.get("NUXBT_SKIP_RADIO_PREP", "").strip() in ("1", "true", "yes"):
+        return {"ok": True, "skipped": True}
+    py = HOME / "code" / "nuxbt-host" / "bin" / "python3-nuxbt"
+    if not py.is_file():
+        py = Path(sys.executable)
+    try:
+        proc = subprocess.run(
+            [str(py), str(PREPARE_RADIO_PY)],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            env=_user_bus_env(),
+        )
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    line = ""
+    for ln in (proc.stdout or "").splitlines():
+        if ln.strip():
+            line = ln.strip()
+    if not line:
+        return {
+            "ok": False,
+            "message": (proc.stderr or f"exit {proc.returncode}")[:300],
+            "rc": proc.returncode,
+        }
+    try:
+        data = json.loads(line)
+    except json.JSONDecodeError:
+        return {"ok": False, "message": line[:300], "rc": proc.returncode}
+    if not isinstance(data, dict):
+        return {"ok": False, "message": "bad radio prepare json"}
+    data.setdefault("ok", proc.returncode == 0)
+    return data
+
+
 def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
     if not BRIDGE_SH.is_file():
         return _err(f"missing {BRIDGE_SH}")
+    radio = _prepare_radio()
+    if not radio.get("ok") and not radio.get("skipped"):
+        # Soft-fail: still try to start — but surface the prep warning.
+        radio_warn = radio.get("message") or "radio prepare failed"
+    else:
+        radio_warn = None
     _stop_bridge()
     try:
         OUT.write_text("", encoding="utf-8")
@@ -391,14 +480,19 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
             via = "popen"
             detail = f"pid {bg.pid}"
             state = _wait_connected(_wait_for_mode(extra)) if wait else "started"
-            return _ok(
+            out = _ok(
                 message=f"started {detail} (fallback); state={state}",
                 pid=bg.pid,
                 mode="grip" if "--grip" in extra else "reconnect",
                 state=state,
                 via=via,
                 log_tail=_tail_out(25),
+                radio=radio,
             )
+            if radio_warn:
+                out["ok"] = False
+                out["message"] = f"{out['message']}; radio: {radio_warn}"
+            return out
 
     for _ in range(20):
         time.sleep(0.5)
@@ -411,12 +505,22 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
     tips = []
     if "--grip" in extra and state != "connected" and bridge_running():
         tips.append(
-            "Still advertising — on the Switch open Controllers → Change Grip/Order, "
-            "then: python3 scripts/nuxbt-api.py status"
+            "Still advertising — on the Switch open Controllers → Change Grip/Order "
+            "and stay there (QAM Grip already power-cycled the USB dongle)."
         )
+    elif "--grip" not in extra and state != "connected" and bridge_running():
+        tips.append(
+            "MAC reconnect waiting — if it stays down, open Change Grip/Order and tap Grip."
+        )
+    msg = f"started {mode}; state={state}"
+    if radio.get("message") and not radio.get("skipped"):
+        msg = f"{msg}; {radio.get('message')}"
+    if radio_warn:
+        ok = False
+        msg = f"{msg}; radio warn: {radio_warn}"
     return {
         "ok": ok,
-        "message": f"started {mode}; state={state}",
+        "message": msg,
         "running": bridge_running(),
         "mode": "grip" if "--grip" in extra else "reconnect",
         "state": state,
@@ -425,6 +529,7 @@ def _start_bridge(extra: list[str], *, wait: bool = True) -> dict:
         "wait_s": wait_s if wait else 0,
         "log_tail": _tail_out(25),
         "tips": tips,
+        "radio": radio,
     }
 
 

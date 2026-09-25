@@ -22,6 +22,8 @@ Every hard **Grip / Reconnect / Start** runs `scripts/nuxbt-prepare-radio.py` fi
 
 That off→on on `hci1` is what unstuck Grip advertise when the Switch saw nothing (no ACL). Soft flag-only (`--soft`) skips prep — QAM uses hard.
 
+After Grip **L+R**, leaving Change Grip/Order tears the pairing ACL; the bridge **MAC-reconnects in-process** (stable-link + backoff — no connect/crash thrash). Day-to-day: **Reconnect**. Grip only for first pair / MAC change / paused flap. **HOME** on the Switch is Plus+L+D-Pad Down (Guide alone still works).
+
 Status shows bridge up/down, BlueZ Switch link on `hci1`, and the Sunshine source pad (Odin/Thor/phone).
 
 ## Install / reload

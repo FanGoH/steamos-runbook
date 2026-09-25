@@ -23,9 +23,9 @@ Moonlight → Sunshine virtual pad → (later) evdev bridge → NXBT → BT → 
 
 Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One console only** (Switch 2) until that path works.
 
-## Status (2026-09-24)
+## Status (2026-09-25)
 
-**Working end-to-end (gates A–G largely green):** remote Odin/Thor Moonlight pad → Sunshine → NUXBT → Switch 2; HDMI capture tile fullscreen under Game Mode; Moonlight sees the session; capture audio reaches the stream via HDMI leaf loopback.
+**Working end-to-end (gates A–G largely green):** remote Odin/Thor Moonlight pad → Sunshine → NUXBT → Switch 2; HDMI capture tile fullscreen under Game Mode; Moonlight sees the session; capture audio reaches the stream via HDMI leaf loopback. **Reliability landed:** pinned controller MAC, USB dongle radio prep on QAM Grip/Reconnect, MAC rejoin after leaving Grip/Order (stable-link + backoff, no connect/crash thrash), HOME = Plus+L+Down.
 
 **Capture Steam tile:** `ensure-switch2-capture-shortcut.sh` → non-Steam **Nintendo Switch 2** (`switch2-capture-viewer.sh`). **mpv** AppImage (`ensure-switch2-mpv.sh` → `~/.local/bin/mpv-switch2`, `vo=x11` under gamescope; ffplay fallback). **Default 1280×720@60** — MS2109 USB2 only delivers ~30fps at 1080p MJPEG; 720p is real 60. Override `SWITCH2_CAPTURE_WIDTH/HEIGHT`. **Audio:** Pulse `module-loopback` from MS2109 → HDMI leaf sink (same path Sunshine `audio_sink` captures) — not `sink-sunshine-stereo`. `SWITCH2_CAPTURE_AUDIO=0` disables. If STREAMON busy: Switch HDMI into card or `sudo usbreset 534d:2109` / viewer PCI-rebind (`hide-controllers-sysfs.sh usb-pci-rebind`).
 
@@ -36,10 +36,10 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 **Input bridge:** `scripts/nuxbt-bridge.sh` → `scripts/nuxbt-sunshine-bridge.py`. **Mux-like:** NUXBT↔Switch is the long-lived sink; Sunshine/Odin pads hotplug as sources (Moonlight drop → idle to Switch; reconnect picks up the new event node without re-pairing). Face buttons by position (**west→X north→Y**), Plus/Minus inverted vs naive SDL, **HOME = Plus + L + D-Pad Down** (Guide still works; L/Plus/Down suppressed during the combo), 120 Hz. **Steam overlay / QAM / Home (769)** → idle to Switch (drain pad, discard presses; also honors `$XDG_RUNTIME_DIR/emupads-mute` via `start-emu-steam-ui-inhibit.sh`). EmuPads off for the session. NUXBT is **Bluetooth HID only**.
 
 **Stay connected / advertise:**
-- **A)** On Switch drop/crash the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).
-- **B)** After Grip **L+R hold completes**, the bridge arms **MAC reconnect mode** — leaving Change Grip/Order (press +) tears the pairing ACL (often NUXBT `crashed`); we **rejoin in-process by Switch MAC** instead of exiting. Explicit Grip (`nuxbt-want-grip` / `--grip`) still advertises.
-- **C)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or restart with `./scripts/nuxbt-bridge.sh --grip` / `nuxbt-api.py grip` on Change Grip/Order.
-- **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). Status / Reconnect / Grip / Start / Stop via `scripts/nuxbt-api.py` (hard restart under `systemd-run --user` so PluginLoader cannot kill the bridge). Soft flag-only (`--soft`) is weaker — prefer hard.
+- **A)** On Switch drop the bridge **auto-respawns** (MAC reconnect first; if stuck ~25s → advertise).
+- **B)** After Grip **L+R hold completes**, arm **MAC reconnect mode** — leaving Change Grip/Order (press +) tears the pairing ACL (often NUXBT `crashed`); we **rejoin in-process by Switch MAC** with backoff. Crash counter only clears after a **20s stable** link (`NUXBT_STABLE_LINK_S`); after `NUXBT_CRASH_RECONNECT_MAX` (default 6) unstable crashes, **pause** until QAM Grip/Reconnect (do not thrash). Explicit Grip still advertises.
+- **C)** While running: `touch $XDG_RUNTIME_DIR/nuxbt-want-grip` → advertise + hold L+R; `touch …/nuxbt-want-reconnect` → MAC reconnect. Or `nuxbt-api.py grip|reconnect` (hard; includes radio prep).
+- **Decky QAM:** `decky/Switch2/` → `scripts/ensure-switch2-decky.sh` (reload name **Switch 2**). **Grip / Reconnect / Start** all call `nuxbt-prepare-radio.py` then hard-restart under `systemd-run --user`. Soft flag-only is weaker — prefer hard.
 
 - Skill decisions locked (Decky first, then Game Mode DS; one console; no-touch existing stack).
 - **NUXBT** works on **lab** (BCM43438 + USB) and **De-FanGoH** (USB only; MT7922 fails).
@@ -54,7 +54,7 @@ Video/OBS/capture/KVM are **later**. Wake/dock/always-on is **deferred**. **One 
 | Proof | USB-forced demo 2026-09-24: `Finished!` ACL up | Software OK; radio stalls |
 | Runtime | Native `~/code/nuxbt/.venv` | Host `~/code/nuxbt-host` + capped `bin/python3-nuxbt` |
 
-**Next on De-FanGoH:** plug the same USB adapter, unblock rfkill if needed, power off MT7922, create controller only on the USB path, Grip/Order demo.
+**De-FanGoH path (proven):** USB RTL8761BU only; keep MT7922 powered off; create controller only on `/org/bluez/hci1`; QAM Grip/Reconnect with radio prep.
 
 **Dongle note:** Lab stick is Realtek RTL8761BU (UB500-class VID), not CSR `0a12:0001`. It worked on lab against Switch 2. Prefer CSR UB400/UB4A if buying another.
 
@@ -250,10 +250,12 @@ Ordered by expected impact. Keep additive — do not rewrite dual-stream / EmuPa
 | **Bridge process hygiene** | `systemd-run` `KillMode=process` can leave orphan `nuxbt-sunshine-bridge.py` children after stop/restart. Harden `_stop_bridge` / unit `KillMode=control-group` (test Decky QAM still cannot SIGTERM the live bridge). |
 | **BlueZ wedge recovery** | `org.freedesktop.DBus.Error.NoReply` → `nuxbt-bluez enable` (restarts bluetoothd with override) then **Reconnect** (pinned MAC). **Grip** only if that fails on Change Grip/Order. Could auto-detect NoReply in `nuxbt-api.py` and re-enable once. |
 | **WirePlumber V4L2 hold** | Camera monitor leaves `STREAMON` EBUSY with no userspace opener. Viewer already `pw-cli destroy`s nodes; optional WirePlumber rule to not auto-open MS2109. |
-| **Grip still sometimes required** | Needed for **first pair**, after changing `~/.config/nuxbt/controller-mac` / `NUXBT_CONTROLLER_MAC`, or after a BlueZ wipe. After a successful Grip L+R, leaving the menu should **MAC-reconnect in-process** (not exit). Day-to-day: **Reconnect**. Advertise fallback after ~25s stuck reconnect still needs the Grip menu if you follow it. |
-| **Stable controller MAC** | `scripts/nuxbt-pin-controller-mac.py` + `~/.config/nuxbt/controller-mac`. Never call NXBT’s random `7C:BB:8A:…` generator per spawn. Body/button colours are fixed too (`NUXBT_COLOUR_BODY` / `NUXBT_COLOUR_BUTTONS`). |
-| **Post-Grip crash → rejoin** | Switch teardown after + often shows NUXBT `crashed`. Bridge retries MAC reconnect up to `NUXBT_CRASH_RECONNECT_MAX` (default 8) and can recreate the Nuxbt manager; only then exits for a hard `nuxbt-api` restart. |
-| **Decky UX** | Status copy when advertising vs connected; avoid soft reconnect as default; one-tap “clean restart” that waits for single bridge PID. |
+| **Grip still sometimes required** | Needed for **first pair**, after changing `~/.config/nuxbt/controller-mac`, or after a BlueZ wipe / paused flap. After Grip L+R, leaving the menu should MAC-reconnect (with backoff). Day-to-day: QAM **Reconnect**. |
+| **Stable controller MAC** | `scripts/nuxbt-pin-controller-mac.py` + `~/.config/nuxbt/controller-mac`. Never randomize per spawn. Body/button colours fixed (`NUXBT_COLOUR_*`). |
+| **Post-Grip crash → rejoin** | **Done (2026-09-25):** in-process MAC reconnect; clear counter only after `NUXBT_STABLE_LINK_S` (20s); exponential backoff; pause after max unstable crashes (no connect/disconnect thrash). |
+| **USB dongle radio prep** | **Done:** `scripts/nuxbt-prepare-radio.py` — QAM Grip/Reconnect/Start and `nuxbt-bridge.sh` power-cycle `hci1`, keep `hci0` off, set Pro Controller name/class. |
+| **HOME chord** | **Done:** Plus + L + D-Pad Down (Guide alone still works); L/Plus/Down suppressed during the combo. |
+| **Decky UX** | Status copy when advertising vs connected; soft reconnect avoided as default. Optional: one-tap clean restart waiting for single bridge PID. |
 | **Steam tile one-shot** | Launch viewer + ensure BlueZ override + start bridge (or attach if already up) from one desktop entry — without touching other Game Mode services. |
 
 ### Out of scope / defer

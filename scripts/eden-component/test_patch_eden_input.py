@@ -95,6 +95,14 @@ def test_pick_emupads_p1_first() -> None:
     assert picked["product"] == "e301"
 
 
+def test_pick_no_fallback_without_emupads() -> None:
+    pads = [
+        {"vendor": "28de", "product": "11ff", "name": "Microsoft X-Box 360 pad 0"},
+        {"vendor": "045e", "product": "028e", "name": "Sunshine (libvirtualhid) Odin2_Portal"},
+    ]
+    assert mod.pick_pad(pads) is None
+
+
 def test_emupads_15_button_map() -> None:
     guid = mod.sdl_guid("1209", "e301", "0114")
     src = (
@@ -115,11 +123,35 @@ def test_emupads_15_button_map() -> None:
     assert "button:4" in out.split("player_0_button_x=", 1)[1].split("\n", 1)[0]
 
 
+def test_repair_steam_11_when_emupads_missing() -> None:
+    steam = "03000000de280000ff11000001000000"
+    src = (
+        f'player_0_button_l="engine:sdl,port:0,guid:{steam},button:6"\n'
+        f'player_0_button_r="engine:sdl,port:0,guid:{steam},button:7"\n'
+        f'player_0_button_minus="engine:sdl,port:0,guid:{steam},button:10"\n'
+        f'player_0_button_plus="engine:sdl,port:0,guid:{steam},button:11"\n'
+        f'player_0_button_x="engine:sdl,port:0,guid:{steam},button:4"\n'
+        f'player_0_button_rstick="engine:sdl,port:0,guid:{steam},button:14"\n'
+        "fullscreen_mode=1\n"
+    )
+    out = mod.patch(src, None)
+    assert steam in out
+    assert "button:4" in out.split("player_0_button_l=", 1)[1].split("\n", 1)[0]
+    assert "button:5" in out.split("player_0_button_r=", 1)[1].split("\n", 1)[0]
+    assert "button:6" in out.split("player_0_button_minus=", 1)[1].split("\n", 1)[0]
+    assert "button:7" in out.split("player_0_button_plus=", 1)[1].split("\n", 1)[0]
+    assert "button:3" in out.split("player_0_button_x=", 1)[1].split("\n", 1)[0]
+    assert "button:10" in out.split("player_0_button_rstick=", 1)[1].split("\n", 1)[0]
+    assert "fullscreen_mode=0\n" in out
+
+
 if __name__ == "__main__":
     test_borderless_and_async()
     test_pin_4gb_overrides_global()
     test_sdl_guid_stable()
     test_pick_emupads_p1_first()
+    test_pick_no_fallback_without_emupads()
     test_emupads_15_button_map()
+    test_repair_steam_11_when_emupads_missing()
     test_ensure_fps_mods_copies_atmosphere_ips()
     print("ok")

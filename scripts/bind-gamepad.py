@@ -877,6 +877,44 @@ def ensure_mux_running() -> None:
     )
 
 
+def wait_for_sinks(*, attempts: int = 40, delay_s: float = 0.25) -> bool:
+    for _ in range(attempts):
+        if list_sink_joysticks():
+            return True
+        time.sleep(delay_s)
+    return bool(list_sink_joysticks())
+
+
+def ensure_emupads_for_bind() -> None:
+    """Ensure mux is up and On so emu binds target live P1/P2 sinks.
+
+    QAM Off closes the uinput nodes on purpose (Dusklight). Emulator Apply /
+    launch needs them back — re-enable rather than falling back to Steam's
+    11-button wrap with a leftover 15-button Eden map.
+    """
+    if os.environ.get("EMUPADS_MUX_SKIP_START") == "1":
+        return
+    cfg = load_mux_config()
+    if mux_running() and not cfg.get("enabled", True):
+        write_mux_routing(
+            str(cfg.get("mode") or "shared"),
+            list(cfg.get("sources") or []),
+            cemu_p1=str(cfg.get("cemu_p1") or "gamepad"),
+            dual_screen=str(cfg.get("dual_screen") or "auto"),
+            enabled=True,
+        )
+        if wait_for_sinks():
+            return
+    ensure_mux_running()
+    if list_sink_joysticks():
+        return
+    if wait_for_sinks():
+        return
+    raise SystemExit(
+        "EmuPads P1/P2 missing. Turn Emu Pads On in QAM, or start emupads-mux.service."
+    )
+
+
 def resolve_pads(
     pads: list[dict[str, str]], tokens: list[str]
 ) -> list[dict[str, str]] | None:
@@ -2237,7 +2275,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
     sysfs = Path(args.sysfs)
     skip_mux = os.environ.get("EMUPADS_MUX_SKIP_START") == "1" or str(sysfs) != str(INPUT_ROOT)
     if not skip_mux:
-        ensure_mux_running()
+        ensure_emupads_for_bind()
+        mux_cfg = load_mux_config()
     if getattr(args, "all_sources", False) or picked == []:
         write_mux_routing(mode, [], cemu_p1=cemu_p1)
         messages_route = ["Mux routing: all host pads → " + ("shared P1" if mode == "shared" else "P1/P2")]
@@ -2265,7 +2304,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
             rc=1,
             emu=emu,
             ordered=[],
-            messages=["EmuPads mux is not running (P1/P2 missing)."],
+            messages=[
+                "EmuPads P1/P2 missing. Turn Emu Pads On in QAM, or start emupads-mux.service."
+            ],
             mode=mode,
         )
     targets = EMUS if emu == "all" else (emu,)
@@ -2861,6 +2902,17 @@ def _self_test() -> int:
         assert mux_is_ready(running=True, sinks=[], enabled=True) is False
         assert mux_is_ready(running=True, sinks=[{"name": "EmuPads P1"}], enabled=True) is True
         assert mux_is_ready(running=False, sinks=[], enabled=False) is False
+        # ensure_emupads_for_bind re-enables Off so emu Apply can bind sinks.
+        write_mux_routing("shared", [], enabled=False)
+        assert json.loads(mux_cfg.read_text())["enabled"] is False
+        os.environ["EMUPADS_MUX_SKIP_START"] = "1"
+        try:
+            # Skip path must not raise; live path is covered by integration.
+            ensure_emupads_for_bind()
+        finally:
+            os.environ.pop("EMUPADS_MUX_SKIP_START", None)
+        write_mux_routing("shared", [], enabled=True)
+        assert json.loads(mux_cfg.read_text())["enabled"] is True
         both_log = (
             "Second display requested: 1920x1080@60 at 5600 Kbps\n"
             "CLIENT CONNECTED\n"

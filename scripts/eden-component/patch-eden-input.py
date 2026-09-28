@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Bind Eden player 0 to whichever real pad is plugged in at launch.
+"""Bind Eden player 0 to EmuPads P1 at launch.
 
-Skip motherboard LED and gamescope mouse js nodes. Prefer a physical
-Xbox (not Sunshine), then Switch Pro, then Steam's virtual pad (the
-wrapped held controller), then Sunshine, then the first remaining
-joystick. Sunshine is a fallback — it is injected even during local
-play, and Steam hides that Xbox ID from SDL. SDL GUID is USB bus +
-vendor/product/version with no name-CRC — the form Eden's UI writes
-for Xbox One.
+Only EmuPads P1 (``1209:e301``). Do not fall back to physical Xbox, Steam
+virtual, or Sunshine — those use different SDL packing, and a leftover
+15-button Emupads map on Steam's 11-button wrap makes Minus/Plus fire
+bumpers, LB fire X, and RS fire Minus. If the mux is Off / sinks are
+missing, leave the existing player-0 GUID alone and only keep Joy-Con
+HID off + borderless/async prefs. ``bind-gamepad.py apply --emu eden``
+re-enables the mux when sinks are needed.
 
-If nothing is present, leave the existing player-0 GUID (last session)
-and only keep the Joy-Con HID driver off.
+SDL GUID is USB bus + vendor/product/version with no name-CRC — the form
+Eden's UI writes for Xbox pads.
 """
 from __future__ import annotations
 
@@ -45,6 +45,25 @@ EDEN_EMUPADS_BUTTONS = {
     "player_0_button_srright": "button:7",
 }
 
+# Steam virtual ``28de:11ff`` is dense 11-button (no C/Z/TL2/TR2).
+EDEN_STEAM_11_BUTTONS = {
+    "player_0_button_a": "button:1",
+    "player_0_button_b": "button:0",
+    "player_0_button_x": "button:3",
+    "player_0_button_y": "button:2",
+    "player_0_button_l": "button:4",
+    "player_0_button_r": "button:5",
+    "player_0_button_plus": "button:7",
+    "player_0_button_minus": "button:6",
+    "player_0_button_home": "button:8",
+    "player_0_button_lstick": "button:9",
+    "player_0_button_rstick": "button:10",
+    "player_0_button_slleft": "button:4",
+    "player_0_button_srleft": "button:5",
+    "player_0_button_slright": "button:4",
+    "player_0_button_srright": "button:5",
+}
+
 
 def _read(path: Path) -> str:
     try:
@@ -73,29 +92,12 @@ def list_joysticks(root: Path = INPUT_ROOT) -> list[dict[str, str]]:
     return pads
 
 
-def _is_sunshine(pad: dict[str, str]) -> bool:
-    return "sunshine" in pad["name"].lower()
-
-
 def pick_pad(pads: list[dict[str, str]]) -> dict[str, str] | None:
-    if not pads:
-        return None
+    """Only EmuPads P1. No Steam / Sunshine / physical fallback."""
     for pad in pads:
         if pad["vendor"] == EMUPADS_VENDOR and pad["product"] == EMUPADS_P1:
             return pad
-    for pad in pads:
-        if pad["vendor"] == "045e" and not _is_sunshine(pad):
-            return pad
-    for pad in pads:
-        if pad["vendor"] == "057e" and pad["product"] == "2009":
-            return pad
-    for pad in pads:
-        if pad["vendor"] == "28de" and pad["product"] == "11ff":
-            return pad
-    for pad in pads:
-        if _is_sunshine(pad):
-            return pad
-    return pads[0]
+    return None
 
 
 def sdl_guid(vendor: str, product: str, version: str = "0000") -> str:
@@ -159,9 +161,9 @@ def pin_4gb_layout(text: str) -> str:
     return new + "\n" + core + inject
 
 
-def _rewrite_emupads_buttons(line: str) -> str:
+def _rewrite_buttons(line: str, table: dict[str, str]) -> str:
     key = line.split("=", 1)[0]
-    mapped = EDEN_EMUPADS_BUTTONS.get(key)
+    mapped = table.get(key)
     if not mapped:
         return line
     return re.sub(r"button:\d+", mapped, line)
@@ -169,6 +171,23 @@ def _rewrite_emupads_buttons(line: str) -> str:
 
 def _is_emupads_guid(guid: str) -> bool:
     return "0912000001e3" in (guid or "").lower()
+
+
+def _is_steam_virtual_guid(guid: str) -> bool:
+    return "de280000ff11" in (guid or "").lower()
+
+
+def _button_table_for_guid(guid: str) -> dict[str, str] | None:
+    if _is_emupads_guid(guid):
+        return EDEN_EMUPADS_BUTTONS
+    if _is_steam_virtual_guid(guid):
+        return EDEN_STEAM_11_BUTTONS
+    return None
+
+
+def _guid_from_player_line(line: str) -> str:
+    match = re.search(r"guid:([0-9a-fA-F]{32})", line)
+    return (match.group(1).lower() if match else "")
 
 
 def patch(text: str, guid: str | None) -> str:
@@ -185,8 +204,21 @@ def patch(text: str, guid: str | None) -> str:
                     "engine:sdl,port:0,",
                     f"engine:sdl,port:0,guid:{guid},",
                 )
-            if _is_emupads_guid(guid):
-                line = _rewrite_emupads_buttons(line)
+            table = _button_table_for_guid(guid)
+            if table:
+                line = _rewrite_buttons(line, table)
+        elif (
+            not guid
+            and line.startswith("player_0_")
+            and "engine:sdl" in line
+            and "button:" in line
+        ):
+            # Mux Off / no sink: do not retarget GUID, but repair a leftover
+            # 15-button map stuck on Steam virtual from a prior Emupads bind.
+            existing = _guid_from_player_line(line)
+            table = _button_table_for_guid(existing)
+            if table is EDEN_STEAM_11_BUTTONS:
+                line = _rewrite_buttons(line, table)
         else:
             # Exclusive fullscreen on gamescope leaves Steam on Launching
             # while RSS climbs until earlyoom SIGTERMs Eden. Borderless

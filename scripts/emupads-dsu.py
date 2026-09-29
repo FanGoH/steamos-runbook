@@ -45,6 +45,34 @@ CONN_BLUETOOTH = 2
 CLIENT_TIMEOUT = 5.0
 RESCAN_S = 1.0
 
+# Axis remap: hid-nintendo ABS → cemuhook (pitch/yaw/roll, Y≈±1g at rest).
+# Same transform as joycond-cemuhook (proven with yuzu/Cemu/Dolphin).
+# Override with EMUPADS_DSU_ACCEL_SIGN / EMUPADS_DSU_GYRO_SIGN as "s0,s1,s2".
+def _parse_signs(env_key: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
+    raw = os.environ.get(env_key, "").strip()
+    if not raw:
+        return default
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) != 3:
+        return default
+    try:
+        return (float(parts[0]), float(parts[1]), float(parts[2]))
+    except ValueError:
+        return default
+
+
+ACCEL_SIGN = _parse_signs("EMUPADS_DSU_ACCEL_SIGN", (1.0, -1.0, 1.0))
+GYRO_SIGN = _parse_signs("EMUPADS_DSU_GYRO_SIGN", (-1.0, -1.0, 1.0))
+# EMA alpha (0..1): higher = snappier, lower = smoother. Gyro needs more smoothing.
+ACCEL_EMA = float(os.environ.get("EMUPADS_DSU_ACCEL_EMA", "0.35"))
+GYRO_EMA = float(os.environ.get("EMUPADS_DSU_GYRO_EMA", "0.20"))
+# After bias removal, zero gyro below this (deg/s) so rest does not drift.
+GYRO_DEADZONE = float(os.environ.get("EMUPADS_DSU_GYRO_DEADZONE", "0.35"))
+# Still-sample bias: |gyro| and |accel|-1g below thresholds for N samples.
+BIAS_GYRO_MAX = float(os.environ.get("EMUPADS_DSU_BIAS_GYRO_MAX", "2.0"))
+BIAS_ACCEL_ERR = float(os.environ.get("EMUPADS_DSU_BIAS_ACCEL_ERR", "0.12"))
+BIAS_SAMPLES = int(os.environ.get("EMUPADS_DSU_BIAS_SAMPLES", "40"))
+
 
 def log(msg: str) -> None:
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -235,6 +263,26 @@ class DSUServer:
                 pass
 
 
+def _ema(
+    prev: tuple[float, float, float] | None,
+    sample: tuple[float, float, float],
+    alpha: float,
+) -> tuple[float, float, float]:
+    if prev is None or alpha >= 1.0:
+        return sample
+    if alpha <= 0.0:
+        return prev
+    return (
+        prev[0] + alpha * (sample[0] - prev[0]),
+        prev[1] + alpha * (sample[1] - prev[1]),
+        prev[2] + alpha * (sample[2] - prev[2]),
+    )
+
+
+def _deadzone(v: float, dz: float) -> float:
+    return 0.0 if abs(v) < dz else v
+
+
 class ImuSource:
     def __init__(self, dev: InputDevice) -> None:
         self.dev = dev
@@ -258,6 +306,12 @@ class ImuSource:
             ecodes.ABS_RY: 0,
             ecodes.ABS_RZ: 0,
         }
+        self._accel_f: tuple[float, float, float] | None = None
+        self._gyro_f: tuple[float, float, float] | None = None
+        self._gyro_bias = (0.0, 0.0, 0.0)
+        self._bias_ready = False
+        self._bias_sum = (0.0, 0.0, 0.0)
+        self._bias_n = 0
         # Seed from current abs state when possible.
         for code in list(self.raw):
             try:
@@ -271,14 +325,76 @@ class ImuSource:
         self.raw[ev.code] = ev.value
         return True
 
-    def scaled(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    def _raw_scaled(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
         ax = self.raw[ecodes.ABS_X] / float(self.accel_res[0])
         ay = self.raw[ecodes.ABS_Y] / float(self.accel_res[1])
         az = self.raw[ecodes.ABS_Z] / float(self.accel_res[2])
         gx = self.raw[ecodes.ABS_RX] / float(self.gyro_res[0])
         gy = self.raw[ecodes.ABS_RY] / float(self.gyro_res[1])
         gz = self.raw[ecodes.ABS_RZ] / float(self.gyro_res[2])
-        return (ax, ay, az), (gx, gy, gz)
+        # joycond-cemuhook report(): accel (Y, -Z, X), gyro (-Y, -Z, X) as pitch/yaw/roll.
+        accel = (
+            ACCEL_SIGN[0] * ay,
+            ACCEL_SIGN[1] * az,
+            ACCEL_SIGN[2] * ax,
+        )
+        gyro = (
+            GYRO_SIGN[0] * gy,
+            GYRO_SIGN[1] * gz,
+            GYRO_SIGN[2] * gx,
+        )
+        return accel, gyro
+
+    def _maybe_calibrate_bias(
+        self, accel: tuple[float, float, float], gyro: tuple[float, float, float]
+    ) -> None:
+        if self._bias_ready:
+            return
+        gmag = (accel[0] ** 2 + accel[1] ** 2 + accel[2] ** 2) ** 0.5
+        if abs(gmag - 1.0) > BIAS_ACCEL_ERR:
+            self._bias_sum = (0.0, 0.0, 0.0)
+            self._bias_n = 0
+            return
+        if max(abs(gyro[0]), abs(gyro[1]), abs(gyro[2])) > BIAS_GYRO_MAX:
+            self._bias_sum = (0.0, 0.0, 0.0)
+            self._bias_n = 0
+            return
+        self._bias_sum = (
+            self._bias_sum[0] + gyro[0],
+            self._bias_sum[1] + gyro[1],
+            self._bias_sum[2] + gyro[2],
+        )
+        self._bias_n += 1
+        if self._bias_n >= BIAS_SAMPLES:
+            n = float(self._bias_n)
+            self._gyro_bias = (
+                self._bias_sum[0] / n,
+                self._bias_sum[1] / n,
+                self._bias_sum[2] / n,
+            )
+            self._bias_ready = True
+            log(
+                f"gyro bias {self._gyro_bias[0]:+.3f},{self._gyro_bias[1]:+.3f},"
+                f"{self._gyro_bias[2]:+.3f} dps ({self.name})"
+            )
+
+    def scaled(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        accel, gyro = self._raw_scaled()
+        self._maybe_calibrate_bias(accel, gyro)
+        if self._bias_ready:
+            gyro = (
+                gyro[0] - self._gyro_bias[0],
+                gyro[1] - self._gyro_bias[1],
+                gyro[2] - self._gyro_bias[2],
+            )
+        gyro = (
+            _deadzone(gyro[0], GYRO_DEADZONE),
+            _deadzone(gyro[1], GYRO_DEADZONE),
+            _deadzone(gyro[2], GYRO_DEADZONE),
+        )
+        self._accel_f = _ema(self._accel_f, accel, ACCEL_EMA)
+        self._gyro_f = _ema(self._gyro_f, gyro, GYRO_EMA)
+        return self._accel_f, self._gyro_f
 
 
 def open_imu_sources() -> list[ImuSource]:
@@ -375,6 +491,13 @@ def self_test() -> int:
     assert not is_imu_name("Sunshine (libvirtualhid) Odin2_Portal")
     assert "cemuhookudp" in EDEN_MOTION_BIND
     assert "pad:0" in EDEN_MOTION_BIND
+    # joycond remap: flat face-up (ax,ay,az)=(0,0,1) → cemuhook (0,-1,0)
+    assert ACCEL_SIGN == (1.0, -1.0, 1.0)
+    assert GYRO_SIGN == (-1.0, -1.0, 1.0)
+    assert _deadzone(0.1, 0.35) == 0.0
+    assert _deadzone(0.5, 0.35) == 0.5
+    assert _ema(None, (1.0, 2.0, 3.0), 0.5) == (1.0, 2.0, 3.0)
+    assert _ema((0.0, 0.0, 0.0), (1.0, 1.0, 1.0), 0.5) == (0.5, 0.5, 0.5)
     tmp = Path("/tmp/emupads-dsu-eden-ini-test.ini")
     tmp.write_text(
         "motion_enabled=false\n"

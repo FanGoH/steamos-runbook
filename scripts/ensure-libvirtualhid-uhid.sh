@@ -32,16 +32,21 @@ ask_install() {
   record_manual "install 99-libvirtualhid-uhid.rules (/dev/uhid for switch/ds5)" <<EOF
 # Switch Pro / DualSense / DS4 Sunshine pads need /dev/uhid (x360 uses uinput).
 # SteamOS root is readonly; a SteamOS update can wipe this rule.
+# Rule must TAG+=seat + uaccess (uaccess alone does not ACL deck).
 sudo steamos-readonly disable
 sudo install -m 644 $UDEV_SRC $UDEV_DEST
 sudo udevadm control --reload
-sudo udevadm trigger --property-match=DEVNAME=/dev/uhid
+sudo udevadm trigger --action=add --sysname-match=uhid
+# Immediate ACL if trigger did not land user:deck yet:
+sudo setfacl -m u:deck:rw /dev/uhid
+# Optional persistence across weird boots (deck is not in input by default):
+sudo usermod -aG input deck
 sudo steamos-readonly enable
-# Confirm the seat ACL landed (deck:rw or mode 0660 + input group):
 ls -l /dev/uhid
 getfacl /dev/uhid
-# Then set GAMESTREAM_PAD_PROFILE=switch, ensure-sunshine-ds-apps.sh,
-# restart sunshine-ds-kms, reconnect Moonlight.
+# New group membership needs a fresh login for existing sessions.
+# Then: GAMESTREAM_PAD_PROFILE=switch, ensure-sunshine-ds-apps.sh,
+# systemctl --user restart steamos-sunshine-ds-gamemode.service, reconnect.
 EOF
 }
 

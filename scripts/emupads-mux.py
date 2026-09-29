@@ -154,6 +154,12 @@ def is_switch_pro_source(dev) -> bool:
     return vid_pid(dev) == SWITCH_PRO
 
 
+def is_imu_device(dev) -> bool:
+    """hid-nintendo companion IMU node — buttons/sticks stay on the non-IMU pad."""
+    name = (dev.name or "").lower()
+    return "(imu)" in name or name.endswith(" imu")
+
+
 def is_local_usb_pad(dev) -> bool:
     """Physical Xbox / xpad on the host — not a Sunshine Moonlight pad."""
     if is_sunshine_source(dev) or is_steam_virtual(dev):
@@ -196,11 +202,15 @@ def is_source_name(name: str) -> bool:
         return False
     if "mouse" in low:
         return False
+    if "(imu)" in low or low.endswith(" imu"):
+        return False
     return True
 
 
 def is_source_device(dev) -> bool:
     if not is_source_name(dev.name or ""):
+        return False
+    if is_imu_device(dev):
         return False
     pair = vid_pid(dev)
     if pair is None:
@@ -855,6 +865,10 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
+    assert not is_source_name("Sunshine (libvirtualhid) Odin2_Portal (IMU)")
+    assert is_imu_device(
+        Fake("Sunshine (libvirtualhid) Odin2_Portal (IMU)", "/dev/input/event31", 0x057E, 0x2009)
+    )
     assert enabled_from({}) is True
     assert enabled_from({"enabled": True}) is True
     assert enabled_from({"enabled": False}) is False

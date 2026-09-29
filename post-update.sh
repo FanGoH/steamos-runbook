@@ -100,6 +100,7 @@ run_step "ensure-sunshine-ds-kms-setcap" "$ROOT/scripts/ensure-sunshine-ds-kms-s
 run_step "ensure-libvirtualhid-uhid" "$ROOT/scripts/ensure-libvirtualhid-uhid.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
 run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
+run_step "ensure-emupads-dsu" "$ROOT/scripts/ensure-emupads-dsu.sh" warn
 run_step "ensure-emu-pads-decky" "$ROOT/scripts/ensure-emu-pads-decky.sh" warn
 run_step "ensure-emu-quick-decky" "$ROOT/scripts/ensure-emu-quick-decky.sh" warn
 run_step "ensure-second-screen-decky" "$ROOT/scripts/ensure-second-screen-decky.sh" warn

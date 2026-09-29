@@ -11,5 +11,6 @@ KERNEL=="uhid", SUBSYSTEM=="misc", MODE="0660", GROUP="input", TAG+="uaccess", T
 # Virtual HID pads advertise phys libvirtualhid/uhid/*; grant seat access to
 # the resulting hidraw / event nodes (motion / HIDAPI consumers).
 SUBSYSTEM=="hidraw", KERNEL=="hidraw*", IMPORT{parent}="HID_*"
-SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ENV{HID_PHYS}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess"
-SUBSYSTEM=="input", KERNEL=="event*", ATTRS{phys}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ENV{HID_PHYS}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess", TAG+="seat"
+# Gamepad + companion "(IMU)" event nodes (hid-nintendo). seat+uaccess ACLs deck.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{phys}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess", TAG+="seat"

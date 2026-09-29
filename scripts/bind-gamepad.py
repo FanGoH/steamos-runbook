@@ -49,7 +49,7 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
-from pad_profile import load_profile
+from pad_profile import load_profile, sink_profile
 
 INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
@@ -1646,6 +1646,11 @@ def azahar_map_for_profile(name: str | None = None) -> dict[str, str]:
     return load_profile(name).azahar_map
 
 
+def azahar_map_for_sinks() -> dict[str, str]:
+    """EmuPads sinks are always Xbox 15-button (mux remaps Switch/ds5 sources)."""
+    return sink_profile().azahar_map
+
+
 def _set_ini_line(text: str, key: str, value: str) -> str:
     line = f"{key}={value}"
     pat = re.compile(r"^" + re.escape(key) + r"=.*$", re.M)
@@ -1666,15 +1671,22 @@ def patch_azahar_ini(
     guid: str,
     profile_name: str | None = None,
     slot: int = 1,
+    *,
+    sink: bool = False,
 ) -> str:
-    """Bind Azahar profile ``slot`` (1-based) to ``guid`` with the pad map."""
+    """Bind Azahar profile ``slot`` (1-based) to ``guid`` with the pad map.
+
+    ``sink=True`` (EmuPads) always uses Xbox 15-button maps. ``profile_name``
+    is only for direct Sunshine binds / tests.
+    """
     if not re.fullmatch(r"[0-9a-f]{32}", guid):
         raise ValueError(f"bad SDL GUID {guid!r}")
     if slot < 1:
         raise ValueError(f"bad Azahar profile slot {slot}")
     if slot > 1:
         text = _ensure_azahar_profile_slot(text, slot)
-    for name, tmpl in azahar_map_for_profile(profile_name).items():
+    mapping = azahar_map_for_sinks() if sink else azahar_map_for_profile(profile_name)
+    for name, tmpl in mapping.items():
         key = f"profiles\\{slot}\\" + name
         text = _set_ini_line(text, key, '"' + tmpl.format(guid=guid) + '"')
     if slot > 1:
@@ -2067,9 +2079,10 @@ def apply_azahar_pads(
             continue
         text = path.read_text()
         try:
-            new = patch_azahar_ini(text, ordered[0]["guid"], slot=1)
+            # Sinks are Xbox-packed; mux remaps Sunshine switch/ds5 sources.
+            new = patch_azahar_ini(text, ordered[0]["guid"], slot=1, sink=True)
             if len(ordered) >= 2:
-                new = patch_azahar_ini(new, ordered[1]["guid"], slot=2)
+                new = patch_azahar_ini(new, ordered[1]["guid"], slot=2, sink=True)
         except ValueError as exc:
             messages.append(str(exc))
             rc = max(rc, 1)
@@ -2731,7 +2744,7 @@ def _self_test() -> int:
             'profiles\\1\\button_b="button:0,engine:sdl,'
             "guid:03008d205e040000ea02000008040000,port:0\"\n"
         )
-        az = patch_azahar_ini(ini, thor["guid"])
+        az = patch_azahar_ini(ini, thor["guid"], sink=True)
         assert f'guid:{thor["guid"]}' in az
         assert "03008d205e040000ea02000008040000" not in az
         assert 'profiles\\1\\button_a="button:0,' in az
@@ -2746,8 +2759,14 @@ def _self_test() -> int:
         ds = patch_azahar_ini(ini, thor["guid"], "ds5")
         assert 'profiles\\1\\button_l="button:4,' in ds
         assert 'profiles\\1\\button_select="button:6,' in ds
-        two = patch_azahar_ini(ini, thor["guid"], slot=1)
-        two = patch_azahar_ini(two, odin["guid"], slot=2)
+        sw = patch_azahar_ini(ini, thor["guid"], "switch")
+        assert 'profiles\\1\\button_l="button:4,' in sw
+        assert 'profiles\\1\\button_zl="button:6,' in sw
+        sink_az = patch_azahar_ini(ini, thor["guid"], "switch", sink=True)
+        assert 'profiles\\1\\button_l="button:6,' in sink_az
+        assert "axis:2,direction:+" in sink_az
+        two = patch_azahar_ini(ini, thor["guid"], slot=1, sink=True)
+        two = patch_azahar_ini(two, odin["guid"], slot=2, sink=True)
         assert azahar_guid_for_slot(two, 1) == thor["guid"]
         assert azahar_guid_for_slot(two, 2) == odin["guid"]
         az_path = Path(tmp) / "azahar-qt-config.ini"

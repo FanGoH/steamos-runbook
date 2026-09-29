@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """GameStream virtual-pad profiles (sunshine-ds ``gamepad`` + emulator binds).
 
-One knob: ``GAMESTREAM_PAD_PROFILE`` in ``.env`` (default ``x360``). Cemu uses
-SDL GameController labels, so a profile switch mainly changes GUID/VID/PID.
-Azahar uses packed joystick indices, which differ between Xbox (15-button
-sparse) and DualSense/DS4 (11-button dense). Do not change the profile without
-rewriting Azahar maps and restarting sunshine-ds.
+One knob: ``GAMESTREAM_PAD_PROFILE`` in ``.env`` (default ``x360``). Sunshine
+creates that virtual pad (motion on ``switch`` / ``ds5`` / ``ds4``).
+
+EmuPads sinks stay Xbox 15-button. ``emupads-mux`` remaps Switch Pro sources
+onto those sinks, so Cemu / Azahar / Eden keep sink maps from
+``sink_profile()`` (always ``x360``). Azahar packed indices only matter when
+binding an emulator straight to a Sunshine pad — do not do that while the mux
+is up. Restart sunshine-ds after changing the profile.
 """
 from __future__ import annotations
 
@@ -182,9 +185,18 @@ PROFILES: dict[str, PadProfile] = {
         supports_motion=True,
         steam_guide=False,
         azahar_map=_AZAHAR_SWITCH,
-        notes="Switch Pro. Gyro yes; Nintendo face packing. Untested on GameStream Azahar.",
+        notes=(
+            "Switch Pro. Gyro yes on the Sunshine pad. EmuPads mux remaps onto "
+            "Xbox sinks so Cemu/Azahar/Eden keep x360 sink maps. Steam Guide "
+            "(hold-Select) is not the x360 path."
+        ),
     ),
 }
+
+
+def sink_profile() -> PadProfile:
+    """EmuPads P1/P2 packing — always Xbox 15-button, regardless of Sunshine profile."""
+    return PROFILES["x360"]
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -298,6 +310,7 @@ def apply_sunshine_conf(path: Path | None = None) -> bool:
 
 
 def profile_public_dict(profile: PadProfile) -> dict[str, object]:
+    sink = sink_profile()
     return {
         "name": profile.name,
         "sunshine_gamepad": profile.sunshine_gamepad,
@@ -306,6 +319,7 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
         "vid_pid": f"{profile.vendor}:{profile.product}",
         "supports_motion": profile.supports_motion,
         "steam_guide": profile.steam_guide,
+        "sink_profile": sink.name,
         "sdl_except": sdl_except(profile),
         "sdl_except_sinks": sdl_except_sinks(),
         "notes": profile.notes,
@@ -315,22 +329,30 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
 def _self_test() -> int:
     x360 = load_profile("x360")
     ds5 = load_profile("ds5")
+    switch = load_profile("switch")
     assert x360.vendor == "045e" and x360.product == "028e"
     assert not x360.supports_motion and x360.steam_guide
     assert ds5.supports_motion and ds5.vendor == "054c"
+    assert switch.supports_motion and switch.vendor == "057e"
+    assert sink_profile().name == "x360"
     assert "button:6" in x360.azahar_map["button_l"]
     assert "button:10" in x360.azahar_map["button_select"]
     assert "button:4" in ds5.azahar_map["button_l"]
     assert "button:6" in ds5.azahar_map["button_select"]
+    assert "button:4" in switch.azahar_map["button_l"]
     except_s = sdl_except(x360)
     assert "0x045e/0x028e" in except_s
     assert "0x054c/0x0ce6" in except_s
+    assert "0x057e/0x2009" in except_s
     sinks = sdl_except_sinks()
     assert "0x1209/0xe301" in sinks
     assert "0x1209/0xe302" in sinks
     env = emu_sink_env()
     assert env["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] == sinks
     assert env["SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT"] == sinks
+    pub = profile_public_dict(switch)
+    assert pub["sink_profile"] == "x360"
+    assert pub["supports_motion"] is True
     tmp = Path("/tmp/pad-profile-conf-test.conf")
     tmp.write_text("gamepad = auto\n")
     prev = os.environ.get("GAMESTREAM_PAD_PROFILE")
@@ -338,6 +360,9 @@ def _self_test() -> int:
     assert apply_sunshine_conf(tmp) is True
     assert "gamepad = x360" in tmp.read_text()
     assert apply_sunshine_conf(tmp) is False
+    os.environ["GAMESTREAM_PAD_PROFILE"] = "switch"
+    assert apply_sunshine_conf(tmp) is True
+    assert "gamepad = switch" in tmp.read_text()
     tmp.unlink(missing_ok=True)
     if prev is None:
         os.environ.pop("GAMESTREAM_PAD_PROFILE", None)

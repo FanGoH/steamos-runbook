@@ -265,7 +265,7 @@ From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-az
 
 ## Gyro / motion (Thor and Odin)
 
-Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion. `ds5` / `ds4` / `switch` can, but they change VID/PID and break Steam Guide plus current Cemu/Azahar binds. To experiment later: set the env var, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, re-bind. Stay on x360 until the user asks.
+Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion. **`switch`** (preferred for Eden) / `ds5` / `ds4` can. EmuPads sinks stay Xbox — the mux remaps Switch face + ZL/ZR so Cemu/Azahar/Eden binds do not change. Steam Guide hold-Select is x360-only. IMU is on the Sunshine pad; the mux does not forward it yet (DSU next). After changing: `ensure-sunshine-ds-apps.sh`, restart desktop DS and/or Game Mode kms, reconnect Moonlight.
 
 ## Do not
 

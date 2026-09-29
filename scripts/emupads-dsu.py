@@ -309,51 +309,88 @@ def open_imu_sources() -> list[ImuSource]:
     return out
 
 
+# Eden/yuzu cemuhook UDP pad id for 127.0.0.1 (see input_common udp client).
+DSU_GUID = "0000000000000000000000007f000001"
+EDEN_MOTION_BIND = (
+    f'"engine:cemuhookudp,guid:{DSU_GUID},port:{DSU_PORT},pad:0,motion:0"'
+)
+
+
+def _set_ini_key(lines: list[str], key: str, value: str) -> tuple[list[str], bool]:
+    """Set ``key=value`` (and ``key\\default=false`` when present)."""
+    changed = False
+    out: list[str] = []
+    seen = False
+    for line in lines:
+        if line.startswith(key + "="):
+            seen = True
+            new = f"{key}={value}\n"
+            if line != new and line.rstrip("\n") + "\n" != new:
+                changed = True
+            out.append(new)
+            continue
+        if line.startswith(key + "\\default="):
+            if line.strip() != f"{key}\\default=false":
+                out.append(f"{key}\\default=false\n")
+                changed = True
+            else:
+                out.append(line if line.endswith("\n") else line + "\n")
+            continue
+        out.append(line if line.endswith("\n") else line + "\n")
+    if not seen:
+        out.append(f"{key}={value}\n")
+        changed = True
+    return out, changed
+
+
 def enable_eden_udp(ini: Path | None = None) -> bool:
+    """Point Eden at DSU and bind player 0 motion to cemuhookudp pad 0.
+
+    ``enable_udp_controller`` alone is not enough — ``player_0_motionleft`` /
+    ``motionright`` must use ``engine:cemuhookudp`` or motion stays empty.
+    """
     path = ini or (Path.home() / ".config/eden/qt-config.ini")
     if not path.is_file():
         return False
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
     changed = False
-    out: list[str] = []
-    seen_enable = False
-    seen_servers = False
-    for line in lines:
-        if line.startswith("enable_udp_controller="):
-            seen_enable = True
-            if line.strip() != "enable_udp_controller=true":
-                out.append("enable_udp_controller=true\n")
-                changed = True
-            else:
-                out.append(line)
-            continue
-        if line.startswith("udp_input_servers="):
-            seen_servers = True
-            if "127.0.0.1:26760" not in line:
-                out.append("udp_input_servers=127.0.0.1:26760\n")
-                changed = True
-            else:
-                out.append(line)
-            continue
-        out.append(line)
-    if not seen_enable:
-        out.append("enable_udp_controller=true\n")
-        changed = True
-    if not seen_servers:
-        out.append("udp_input_servers=127.0.0.1:26760\n")
-        changed = True
+    for key, value in (
+        ("motion_enabled", "true"),
+        ("udp_input_servers", "127.0.0.1:26760"),
+        ("enable_udp_controller", "true"),
+        ("player_0_motionleft", EDEN_MOTION_BIND),
+        ("player_0_motionright", EDEN_MOTION_BIND),
+    ):
+        lines, did = _set_ini_key(lines, key, value)
+        changed = changed or did
     if changed:
-        path.write_text("".join(out), encoding="utf-8")
-        log(f"enabled Eden UDP motion in {path}")
+        path.write_text("".join(lines), encoding="utf-8")
+        log(f"enabled Eden UDP motion binds in {path}")
     return changed
 
 
 def self_test() -> int:
     assert is_imu_name("Sunshine (libvirtualhid) Odin2_Portal (IMU)")
     assert not is_imu_name("Sunshine (libvirtualhid) Odin2_Portal")
+    assert "cemuhookudp" in EDEN_MOTION_BIND
+    assert "pad:0" in EDEN_MOTION_BIND
+    tmp = Path("/tmp/emupads-dsu-eden-ini-test.ini")
+    tmp.write_text(
+        "motion_enabled=false\n"
+        "udp_input_servers=127.0.0.1:1\n"
+        "enable_udp_controller=false\n"
+        "player_0_motionleft=[empty]\n"
+        "player_0_motionright=[empty]\n",
+        encoding="utf-8",
+    )
+    assert enable_eden_udp(tmp) is True
+    text = tmp.read_text(encoding="utf-8")
+    assert "enable_udp_controller=true" in text
+    assert "engine:cemuhookudp" in text
+    assert enable_eden_udp(tmp) is False
+    tmp.unlink(missing_ok=True)
     srv = DSUServer(host="127.0.0.1", port=0)
-    # bind ephemeral for finish/header packing only
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
     srv.port = sock.getsockname()[1]

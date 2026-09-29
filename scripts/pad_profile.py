@@ -199,6 +199,35 @@ def sink_profile() -> PadProfile:
     return PROFILES["x360"]
 
 
+def uhid_writable(path: str = "/dev/uhid") -> bool:
+    """Switch / DualSense / DS4 need ``/dev/uhid``. x360 uses uinput only."""
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
+
+
+def needs_uhid(profile: PadProfile | None = None) -> bool:
+    p = profile or load_profile()
+    return p.name in ("switch", "ds5", "ds4")
+
+
+def effective_profile() -> PadProfile:
+    """Requested profile, or x360 when motion profiles cannot open /dev/uhid."""
+    requested = load_profile()
+    if needs_uhid(requested) and not uhid_writable():
+        print(
+            f"GAMESTREAM_PAD_PROFILE={requested.name} needs /dev/uhid "
+            "(Permission denied). Falling back to x360 until "
+            "scripts/ensure-libvirtualhid-uhid.sh installs the udev rule.",
+            file=sys.stderr,
+        )
+        return PROFILES["x360"]
+    return requested
+
+
 def _parse_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if not path.is_file():
@@ -282,8 +311,8 @@ def emu_sink_env_bash() -> str:
 
 
 def apply_sunshine_conf(path: Path | None = None) -> bool:
-    """Set ``gamepad =`` from the active profile. Does not restart sunshine-ds."""
-    profile = load_profile()
+    """Set ``gamepad =`` from the effective profile. Does not restart sunshine-ds."""
+    profile = effective_profile()
     conf = path or Path(
         os.environ.get("SUNSHINE_DS_CONF")
         or str(SUNSHINE_DS_CONF)
@@ -311,6 +340,7 @@ def apply_sunshine_conf(path: Path | None = None) -> bool:
 
 def profile_public_dict(profile: PadProfile) -> dict[str, object]:
     sink = sink_profile()
+    eff = effective_profile()
     return {
         "name": profile.name,
         "sunshine_gamepad": profile.sunshine_gamepad,
@@ -320,6 +350,9 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
         "supports_motion": profile.supports_motion,
         "steam_guide": profile.steam_guide,
         "sink_profile": sink.name,
+        "needs_uhid": needs_uhid(profile),
+        "uhid_writable": uhid_writable(),
+        "effective_name": eff.name,
         "sdl_except": sdl_except(profile),
         "sdl_except_sinks": sdl_except_sinks(),
         "notes": profile.notes,
@@ -350,9 +383,11 @@ def _self_test() -> int:
     env = emu_sink_env()
     assert env["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] == sinks
     assert env["SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT"] == sinks
+    assert needs_uhid(switch) and not needs_uhid(x360)
     pub = profile_public_dict(switch)
     assert pub["sink_profile"] == "x360"
     assert pub["supports_motion"] is True
+    assert pub["needs_uhid"] is True
     tmp = Path("/tmp/pad-profile-conf-test.conf")
     tmp.write_text("gamepad = auto\n")
     prev = os.environ.get("GAMESTREAM_PAD_PROFILE")
@@ -361,8 +396,13 @@ def _self_test() -> int:
     assert "gamepad = x360" in tmp.read_text()
     assert apply_sunshine_conf(tmp) is False
     os.environ["GAMESTREAM_PAD_PROFILE"] = "switch"
-    assert apply_sunshine_conf(tmp) is True
-    assert "gamepad = switch" in tmp.read_text()
+    # Without /dev/uhid access, apply must not strand Moonlight on a dead pad.
+    if uhid_writable():
+        assert apply_sunshine_conf(tmp) is True
+        assert "gamepad = switch" in tmp.read_text()
+    else:
+        apply_sunshine_conf(tmp)
+        assert "gamepad = x360" in tmp.read_text()
     tmp.unlink(missing_ok=True)
     if prev is None:
         os.environ.pop("GAMESTREAM_PAD_PROFILE", None)
@@ -400,11 +440,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(emu_sink_env_bash())
         return 0
     if cmd == "sunshine":
-        print(profile.sunshine_gamepad)
+        # Effective gamepad string for conf writers (falls back if uhid blocked).
+        print(effective_profile().sunshine_gamepad)
         return 0
     if cmd == "name":
         print(profile.name)
         return 0
+    if cmd == "uhid":
+        print("writable" if uhid_writable() else "blocked")
+        return 0 if uhid_writable() else 2
     if cmd == "apply-sunshine-conf":
         path = Path(args[1]) if len(args) > 1 else None
         apply_sunshine_conf(path)

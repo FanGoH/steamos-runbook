@@ -265,7 +265,7 @@ From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-az
 
 ## Gyro / motion (Thor and Odin)
 
-Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion. **`switch`** (preferred for Eden) / `ds5` / `ds4` can. EmuPads sinks stay Xbox — the mux remaps Switch face + ZL/ZR so Cemu/Azahar/Eden binds do not change. Steam Guide hold-Select is x360-only. IMU is on the Sunshine pad; the mux does not forward it yet (DSU next). After changing: `ensure-sunshine-ds-apps.sh`, restart desktop DS and/or Game Mode kms, reconnect Moonlight.
+Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion (uinput). **`switch`** / `ds5` / `ds4` need **`/dev/uhid`**. If uhid is `crw------- root:root`, log shows `create libvirtualhid gamepad: failed to open /dev/uhid: Permission denied` and the client has **no** host pad — install `udev/99-libvirtualhid-uhid.rules` via `scripts/ensure-libvirtualhid-uhid.sh` (sudo + steamos-readonly), then set the profile and restart kms. Until uhid is writable, conf falls back to x360. EmuPads sinks stay Xbox (mux remaps Switch). Steam Guide hold-Select is x360-only. IMU is on the Sunshine pad; mux does not forward it yet (DSU next).
 
 ## Do not
 

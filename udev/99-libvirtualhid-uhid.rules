@@ -1,0 +1,13 @@
+# sunshine-ds libvirtualhid: Switch Pro / DualSense / DS4 need /dev/uhid.
+# Xbox 360 uses uinput (already TAG+=uaccess via Steam rules). Without this,
+# gamepad=switch fails with "failed to open /dev/uhid: Permission denied" and
+# Moonlight pads produce no host input.
+#
+# Match uinput: seat ACL via uaccess + static_node so the node exists early.
+KERNEL=="uhid", SUBSYSTEM=="misc", MODE="0660", GROUP="input", TAG+="uaccess", OPTIONS+="static_node=uhid"
+
+# Virtual HID pads advertise phys libvirtualhid/uhid/*; grant seat access to
+# the resulting hidraw / event nodes (motion / HIDAPI consumers).
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", IMPORT{parent}="HID_*"
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ENV{HID_PHYS}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{phys}=="libvirtualhid/uhid/*", MODE="0660", GROUP="input", TAG+="uaccess"

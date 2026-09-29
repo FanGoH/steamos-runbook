@@ -64,14 +64,61 @@ def _parse_signs(env_key: str, default: tuple[float, float, float]) -> tuple[flo
 ACCEL_SIGN = _parse_signs("EMUPADS_DSU_ACCEL_SIGN", (1.0, -1.0, 1.0))
 GYRO_SIGN = _parse_signs("EMUPADS_DSU_GYRO_SIGN", (-1.0, -1.0, 1.0))
 # EMA alpha (0..1): higher = snappier, lower = smoother. Gyro needs more smoothing.
-ACCEL_EMA = float(os.environ.get("EMUPADS_DSU_ACCEL_EMA", "0.35"))
-GYRO_EMA = float(os.environ.get("EMUPADS_DSU_GYRO_EMA", "0.20"))
-# After bias removal, zero gyro below this (deg/s) so rest does not drift.
-GYRO_DEADZONE = float(os.environ.get("EMUPADS_DSU_GYRO_DEADZONE", "0.35"))
-# Still-sample bias: |gyro| and |accel|-1g below thresholds for N samples.
+ACCEL_EMA = float(os.environ.get("EMUPADS_DSU_ACCEL_EMA", "0.40"))
+GYRO_EMA = float(os.environ.get("EMUPADS_DSU_GYRO_EMA", "0.22"))
+# Still-sample bias when no saved calibration (see gamestream-pad-config recalibrate-dsu).
 BIAS_GYRO_MAX = float(os.environ.get("EMUPADS_DSU_BIAS_GYRO_MAX", "2.0"))
 BIAS_ACCEL_ERR = float(os.environ.get("EMUPADS_DSU_BIAS_ACCEL_ERR", "0.12"))
 BIAS_SAMPLES = int(os.environ.get("EMUPADS_DSU_BIAS_SAMPLES", "40"))
+
+
+def _load_host_dsu_triplets() -> dict[str, tuple[float, float, float]] | None:
+    try:
+        root = Path(__file__).resolve().parent
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        import gamestream_pad_config as gsp  # noqa: WPS433
+
+        return gsp.dsu_triplets()
+    except Exception:
+        return None
+
+
+def _env_triplet(key: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return default
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) != 3:
+        return default
+    try:
+        return (float(parts[0]), float(parts[1]), float(parts[2]))
+    except ValueError:
+        return default
+
+
+def _motion_tuning() -> dict[str, tuple[float, float, float]]:
+    host = _load_host_dsu_triplets()
+    defaults_gyro_dz = (0.35, 0.35, 0.22)
+    defaults_gyro_gain = (1.0, 1.15, 1.4)
+    defaults_accel_gain = (1.0, 1.0, 1.25)
+    defaults_bias = (0.0, 0.0, 0.0)
+    defaults_grav = (0.0, -1.0, 0.0)
+    if host:
+        return {
+            "gyro_gain": _env_triplet("EMUPADS_DSU_GYRO_GAIN", host["gyro_gain"]),
+            "gyro_deadzone": _env_triplet("EMUPADS_DSU_GYRO_DEADZONE", host["gyro_deadzone"]),
+            "accel_gain": _env_triplet("EMUPADS_DSU_ACCEL_GAIN", host["accel_gain"]),
+            "gyro_bias": _env_triplet("EMUPADS_DSU_GYRO_BIAS", host["gyro_bias"]),
+            "gravity": _env_triplet("EMUPADS_DSU_GRAVITY", host["gravity"]),
+        }
+    return {
+        "gyro_gain": _env_triplet("EMUPADS_DSU_GYRO_GAIN", defaults_gyro_gain),
+        "gyro_deadzone": _env_triplet("EMUPADS_DSU_GYRO_DEADZONE", defaults_gyro_dz),
+        "accel_gain": _env_triplet("EMUPADS_DSU_ACCEL_GAIN", defaults_accel_gain),
+        "gyro_bias": _env_triplet("EMUPADS_DSU_GYRO_BIAS", defaults_bias),
+        "gravity": _env_triplet("EMUPADS_DSU_GRAVITY", defaults_grav),
+    }
 
 
 def log(msg: str) -> None:
@@ -280,7 +327,23 @@ def _ema(
 
 
 def _deadzone(v: float, dz: float) -> float:
-    return 0.0 if abs(v) < dz else v
+    if abs(v) < dz:
+        return 0.0
+    sign = 1.0 if v >= 0 else -1.0
+    return sign * (abs(v) - dz)
+
+
+def _apply_triplet(
+    sample: tuple[float, float, float],
+    bias: tuple[float, float, float],
+    gain: tuple[float, float, float],
+    deadzone: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    out = []
+    for i in range(3):
+        v = (sample[i] - bias[i]) * gain[i]
+        out.append(_deadzone(v, deadzone[i]))
+    return (out[0], out[1], out[2])
 
 
 class ImuSource:
@@ -308,8 +371,17 @@ class ImuSource:
         }
         self._accel_f: tuple[float, float, float] | None = None
         self._gyro_f: tuple[float, float, float] | None = None
-        self._gyro_bias = (0.0, 0.0, 0.0)
-        self._bias_ready = False
+        tune = _motion_tuning()
+        self._saved_bias = tune["gyro_bias"]
+        self._gravity = tune["gravity"]
+        self._gyro_bias = self._saved_bias
+        host_bias = _load_host_dsu_triplets() is not None
+        try:
+            import gamestream_pad_config as gsp  # noqa: WPS433
+
+            self._bias_ready = bool(gsp.dsu_bias_ready()) if host_bias else False
+        except Exception:
+            self._bias_ready = False
         self._bias_sum = (0.0, 0.0, 0.0)
         self._bias_n = 0
         # Seed from current abs state when possible.
@@ -379,19 +451,18 @@ class ImuSource:
             )
 
     def scaled(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        tune = _motion_tuning()
         accel, gyro = self._raw_scaled()
-        self._maybe_calibrate_bias(accel, gyro)
-        if self._bias_ready:
-            gyro = (
-                gyro[0] - self._gyro_bias[0],
-                gyro[1] - self._gyro_bias[1],
-                gyro[2] - self._gyro_bias[2],
-            )
-        gyro = (
-            _deadzone(gyro[0], GYRO_DEADZONE),
-            _deadzone(gyro[1], GYRO_DEADZONE),
-            _deadzone(gyro[2], GYRO_DEADZONE),
+        if not self._bias_ready:
+            self._maybe_calibrate_bias(accel, gyro)
+        bias = self._gyro_bias if self._bias_ready else (0.0, 0.0, 0.0)
+        # Tilt relative to saved neutral gravity (roll/yaw left easier with accel_gain[2]).
+        accel = (
+            (accel[0] - self._gravity[0]) * tune["accel_gain"][0],
+            (accel[1] - self._gravity[1]) * tune["accel_gain"][1],
+            (accel[2] - self._gravity[2]) * tune["accel_gain"][2],
         )
+        gyro = _apply_triplet(gyro, bias, tune["gyro_gain"], tune["gyro_deadzone"])
         self._accel_f = _ema(self._accel_f, accel, ACCEL_EMA)
         self._gyro_f = _ema(self._gyro_f, gyro, GYRO_EMA)
         return self._accel_f, self._gyro_f
@@ -495,7 +566,7 @@ def self_test() -> int:
     assert ACCEL_SIGN == (1.0, -1.0, 1.0)
     assert GYRO_SIGN == (-1.0, -1.0, 1.0)
     assert _deadzone(0.1, 0.35) == 0.0
-    assert _deadzone(0.5, 0.35) == 0.5
+    assert abs(_deadzone(0.5, 0.35) - 0.15) < 1e-6
     assert _ema(None, (1.0, 2.0, 3.0), 0.5) == (1.0, 2.0, 3.0)
     assert _ema((0.0, 0.0, 0.0), (1.0, 1.0, 1.0), 0.5) == (0.5, 0.5, 0.5)
     tmp = Path("/tmp/emupads-dsu-eden-ini-test.ini")

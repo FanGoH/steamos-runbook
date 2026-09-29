@@ -147,6 +147,20 @@ class PadProfile:
 
 
 PROFILES: dict[str, PadProfile] = {
+    "auto": PadProfile(
+        name="auto",
+        sunshine_gamepad="auto",
+        vendor="045e",
+        product="0b13",
+        supports_motion=True,
+        steam_guide=False,
+        azahar_map=_AZAHAR_SPARSE_XBOX,
+        notes=(
+            "Sunshine picks pad type from Moonlight LI_CTYPE (and motion caps). "
+            "Use gamestream-pad-config moonlight_report_type=host so Odin reports "
+            "Switch while sending device gyro."
+        ),
+    ),
     "x360": PadProfile(
         name="x360",
         sunshine_gamepad="x360",
@@ -211,12 +225,14 @@ def uhid_writable(path: str = "/dev/uhid") -> bool:
 
 def needs_uhid(profile: PadProfile | None = None) -> bool:
     p = profile or load_profile()
-    return p.name in ("switch", "ds5", "ds4")
+    return p.name in ("switch", "ds5", "ds4", "auto")
 
 
 def effective_profile() -> PadProfile:
     """Requested profile, or x360 when motion profiles cannot open /dev/uhid."""
     requested = load_profile()
+    if requested.name == "auto":
+        return requested
     if needs_uhid(requested) and not uhid_writable():
         print(
             f"GAMESTREAM_PAD_PROFILE={requested.name} needs /dev/uhid "
@@ -241,11 +257,37 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _host_config_profile() -> str | None:
+    """Optional override from ~/.config/emupads/gamestream-pad.json."""
+    path = Path(
+        os.environ.get(
+            "GAMESTREAM_PAD_CONFIG",
+            Path.home() / ".config/emupads/gamestream-pad.json",
+        )
+    )
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    prof = raw.get("profile")
+    if prof is None or str(prof).strip() == "":
+        return None
+    return str(prof).strip().lower()
+
+
 def requested_profile_name() -> str:
-    env = os.environ.get("GAMESTREAM_PAD_PROFILE", "").strip()
-    if not env:
-        env = _parse_env_file(ROOT / ".env").get("GAMESTREAM_PAD_PROFILE", "")
-    name = (env or DEFAULT_NAME).strip().lower()
+    host = _host_config_profile()
+    if host:
+        name = host
+    else:
+        env = os.environ.get("GAMESTREAM_PAD_PROFILE", "").strip()
+        if not env:
+            env = _parse_env_file(ROOT / ".env").get("GAMESTREAM_PAD_PROFILE", "")
+        name = (env or DEFAULT_NAME).strip().lower()
     if name in ("xbox", "xbox360", "360"):
         return "x360"
     if name in ("dualsense", "ps5"):

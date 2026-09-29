@@ -402,6 +402,35 @@ def pad_status() -> None:
     _emit(run("bind-gamepad.py", ["status"], timeout=15))
 
 
+@pad_app.command("profile")
+def pad_profile_cmd(
+    action: str = typer.Argument("status", help="status | x360 | auto | switch | ds5 | ds4 | recalibrate"),
+) -> None:
+    """Host GameStream pad type + DSU neutral calibration."""
+    action = action.strip().lower()
+    if action in ("status", "show", ""):
+        _emit(run("gamestream_pad_config.py", ["json"], timeout=10))
+        return
+    if action == "recalibrate":
+        warn("Hold the controller level and still for ~2s.")
+        _emit(run("gamestream_pad_config.py", ["recalibrate-dsu"], timeout=20, json_out=True))
+        return
+    if action in ("x360", "auto", "switch", "ds5", "ds4"):
+        _emit(run("gamestream_pad_config.py", ["set-profile", action], timeout=10, json_out=False))
+        _emit(
+            run(
+                "gamestream_pad_config.py",
+                ["apply", "--restart-gamemode"],
+                timeout=120,
+                json_out=True,
+            ),
+            ok_msg=f"GameStream profile set to {action} (reconnect Moonlight).",
+        )
+        return
+    err("status | x360 | auto | switch | ds5 | ds4 | recalibrate")
+    raise typer.Exit(2)
+
+
 @pad_app.command("mode")
 def pad_mode(
     mode: str = typer.Argument(..., help="shared | multi"),

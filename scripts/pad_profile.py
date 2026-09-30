@@ -193,16 +193,20 @@ PROFILES: dict[str, PadProfile] = {
     ),
     "switch": PadProfile(
         name="switch",
-        sunshine_gamepad="switch",
+        # Follow Moonlight LI_CTYPE (Host/Switch/Xbox toggle). Host mode reports
+        # Nintendo via fgpc; forcing gamepad=switch ignored Xbox and always
+        # spawned a Switch Pro.
+        sunshine_gamepad="auto",
         vendor="057e",
         product="2009",
         supports_motion=True,
         steam_guide=False,
         azahar_map=_AZAHAR_SWITCH,
         notes=(
-            "Switch Pro. Gyro yes on the Sunshine pad. EmuPads mux remaps onto "
-            "Xbox sinks so Cemu/Azahar/Eden keep x360 sink maps. Steam Guide "
-            "(hold-Select) is not the x360 path."
+            "Preferred pad is Switch Pro when Moonlight is Host/Switch. Sunshine "
+            "gamepad=auto so an Xbox toggle creates Xbox on the host. EmuPads "
+            "mux remaps onto Xbox sinks. Steam Guide (hold-Select) is not the "
+            "x360 path."
         ),
     ),
 }
@@ -438,10 +442,11 @@ def _self_test() -> int:
     assert "gamepad = x360" in tmp.read_text()
     assert apply_sunshine_conf(tmp) is False
     os.environ["GAMESTREAM_PAD_PROFILE"] = "switch"
-    # Without /dev/uhid access, apply must not strand Moonlight on a dead pad.
+    # switch prefers Switch via Moonlight Host LI_CTYPE, but sunshine stays auto
+    # so a client Xbox toggle is honored. Without /dev/uhid, fall back to x360.
     if uhid_writable():
         assert apply_sunshine_conf(tmp) is True
-        assert "gamepad = switch" in tmp.read_text()
+        assert "gamepad = auto" in tmp.read_text()
     else:
         apply_sunshine_conf(tmp)
         assert "gamepad = x360" in tmp.read_text()

@@ -18,7 +18,7 @@ EXAMPLES = [
     ("fgpc", "Home + arrow menu"),
     ("fgpc tips", "Do-not-rediscover rules"),
     ("fgpc pad list", "Host pads (Thor / Xbox / …)"),
-    ("fgpc pad profile switch", "Host Switch Pro + motion on :48200"),
+    ("fgpc pad profile switch", "Host prefers Switch; Moonlight Xbox toggle still works"),
     ("fgpc pad profile recalibrate", "DSU neutral pose for Eden gyro"),
     ("fgpc hide list", "Which pads can look unplugged"),
     ("fgpc hide off usb:045e:028e:5F19FC0A", "NMH3: hide the physical Xbox"),

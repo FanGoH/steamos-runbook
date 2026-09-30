@@ -54,7 +54,7 @@ NMH3 / native games that freak out with two controllers: **Pad Hide**, not mux r
 
 Pad type: `.env` `GAMESTREAM_PAD_PROFILE` or `~/.config/emupads/gamestream-pad.json` (`scripts/gamestream_pad_config.py`). **`fgpc pad profile switch`** patches sunshine conf and restarts `:48200` kms. **`auto`** + Moonlight **Host profile (fgpc HTTP)** (`scripts/build-moonlight-ds.sh`) lets the host pick Switch while the client sends gyro. Motion needs `/dev/uhid` (`ensure-libvirtualhid-uhid.sh`). EmuPads sinks stay Xbox 15-button. Steam Guide hold-Select is x360-only.
 
-**Eden motion:** `scripts/ensure-emupads-dsu.sh` runs `emupads-dsu.service` — reads Sunshine `*(IMU)` evdev (hid-nintendo) and serves cemuhook on `127.0.0.1:26760`. Axes follow joycond-cemuhook (accel `Y,-Z,X`; gyro pitch/yaw/roll `-RY,-RZ,RX`) plus rest gyro bias, EMA, and deadzone. Tune with `EMUPADS_DSU_{ACCEL,GYRO}_SIGN` / `_EMA` / `_GYRO_DEADZONE` on the unit if a client feels inverted. Enables Eden `enable_udp_controller` + cemuhookudp motion binds. Mux skips IMU nodes (do not copy ABS onto sticks). Moonlight: **Allow use of gamepad motion sensors** + **Emulate gamepad motion sensor support**. Restart Eden after the DSU service starts.
+**Eden motion:** `emupads-dsu.service` → cemuhook `:26760`. **`fgpc pad profile recalibrate`** (level, still ~2s) stores neutral gravity/gyro bias and roll gain in `gamestream-pad.json`. Moonlight: motion sensors + emulate fallback + **Host profile** report type. Restart Eden after recalibrate.
 
 Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
 RetroDECK Cemu XML: `~/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml`.

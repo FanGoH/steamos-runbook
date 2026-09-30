@@ -437,6 +437,9 @@ def _self_test() -> int:
     tmp = Path("/tmp/pad-profile-conf-test.conf")
     tmp.write_text("gamepad = auto\n")
     prev = os.environ.get("GAMESTREAM_PAD_PROFILE")
+    prev_cfg = os.environ.get("GAMESTREAM_PAD_CONFIG")
+    # Ignore host JSON so GAMESTREAM_PAD_PROFILE drives apply_sunshine_conf.
+    os.environ["GAMESTREAM_PAD_CONFIG"] = "/tmp/pad-profile-no-host-config.json"
     os.environ["GAMESTREAM_PAD_PROFILE"] = "x360"
     assert apply_sunshine_conf(tmp) is True
     assert "gamepad = x360" in tmp.read_text()
@@ -455,6 +458,10 @@ def _self_test() -> int:
         os.environ.pop("GAMESTREAM_PAD_PROFILE", None)
     else:
         os.environ["GAMESTREAM_PAD_PROFILE"] = prev
+    if prev_cfg is None:
+        os.environ.pop("GAMESTREAM_PAD_CONFIG", None)
+    else:
+        os.environ["GAMESTREAM_PAD_CONFIG"] = prev_cfg
     print("pad_profile self-test ok")
     return 0
 

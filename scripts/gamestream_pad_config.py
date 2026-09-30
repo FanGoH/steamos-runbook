@@ -187,7 +187,7 @@ def apply_sunshine(*, restart_gamemode: bool = False) -> dict[str, Any]:
     sys.path.insert(0, str(ROOT / "scripts"))
     import pad_profile as pp  # noqa: WPS433
 
-    kms = Path.home() / ".config/sunshine-ds-gamemode/sunshine.conf"
+    kms = Path.home() / ".config/sunshine-ds-gamemode/sunshine/sunshine.conf"
     desk = Path.home() / ".config/sunshine-ds-dev/sunshine/sunshine.conf"
     changed = False
     for path in (desk, kms):

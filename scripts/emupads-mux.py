@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Always-on virtual pads for Emu Pads (Cemu / Azahar / Eden).
 
-Creates ``EmuPads P1`` / ``EmuPads P2`` uinput sinks. Host pads (Sunshine,
-local Xbox, Steam virtual, phones) stay sources. Emulators bind the sinks
-once; Decky only changes routing.
+Creates ``EmuPads P1`` / ``EmuPads P2`` uinput sinks (Xbox 15-button packing).
+Host pads (Sunshine, local Xbox, Steam virtual, phones) stay sources.
+Emulators bind the sinks once; Decky only changes routing.
+
+Sunshine ``GAMESTREAM_PAD_PROFILE=switch`` (or ds5/ds4) still feeds these
+Xbox sinks: Switch Pro sources remap A/B and digital ZL/ZR→LT/RT so Cemu /
+Azahar / Eden keep their existing EmuPads maps. Motion stays on the Sunshine
+pad (DSU path later); this mux only copies buttons/sticks/triggers.
 
 Shared mode: last source that sent a press/stick move is the only one copied
 to P1 (no analog mix). Multi: first selected source → P1, second → P2.
@@ -38,10 +43,24 @@ SINK_VERSION = 0x0114
 SKIP_VENDORS = {0x0000, 0x001F, 0x26CE, 0x046D, 0xBEEF}
 SKIP_PRODUCTS = {(0x1209, 0x0003)}  # libvirtualhid Mouse
 STEAM_VIRTUAL = (0x28DE, 0x11FF)  # Steam Input wrap; duplicates Sunshine / physical
+SWITCH_PRO = (0x057E, 0x2009)  # Sunshine gamepad=switch / libvirtualhid Switch Pro
 CONFIG_PATH = Path(os.environ.get("EMUPADS_MUX_CONFIG", Path.home() / ".config/emupads/mux.json"))
 PID_NAME = "emupads-mux.pid"
 MUTE_NAME = "emupads-mute"
 LOG_PATH = Path(os.environ.get("EMUPADS_MUX_LOG", Path.home() / "steamos-playbook/logs/emupads-mux.log"))
+
+# Switch Pro Linux face is Nintendo (A=EAST, B=SOUTH). EmuPads sinks are Xbox
+# (A=SOUTH, B=EAST). ZL/ZR are digital BTN_TL2/TR2 on Switch; sinks use ABS_Z/RZ.
+_SWITCH_FACE_TO_XBOX = {
+    ecodes.BTN_EAST: ecodes.BTN_SOUTH,  # A
+    ecodes.BTN_SOUTH: ecodes.BTN_EAST,  # B
+}
+_SWITCH_TRIGGER_BTN_TO_ABS = {
+    ecodes.BTN_TL2: ecodes.ABS_Z,  # ZL → LT
+    ecodes.BTN_TR2: ecodes.ABS_RZ,  # ZR → RT
+}
+# Capture / unused on the Xbox sink — do not poke reserved BTN_Z.
+_SWITCH_DROP_KEYS = {ecodes.BTN_Z}
 
 _BTN = [
     ecodes.BTN_A,
@@ -130,6 +149,17 @@ def is_sunshine_source(dev) -> bool:
     return "sunshine" in low or "libvirtualhid" in low
 
 
+def is_switch_pro_source(dev) -> bool:
+    """Sunshine / physical Switch Pro — needs face + ZL/ZR remap onto Xbox sinks."""
+    return vid_pid(dev) == SWITCH_PRO
+
+
+def is_imu_device(dev) -> bool:
+    """hid-nintendo companion IMU node — buttons/sticks stay on the non-IMU pad."""
+    name = (dev.name or "").lower()
+    return "(imu)" in name or name.endswith(" imu")
+
+
 def is_local_usb_pad(dev) -> bool:
     """Physical Xbox / xpad on the host — not a Sunshine Moonlight pad."""
     if is_sunshine_source(dev) or is_steam_virtual(dev):
@@ -172,11 +202,15 @@ def is_source_name(name: str) -> bool:
         return False
     if "mouse" in low:
         return False
+    if "(imu)" in low or low.endswith(" imu"):
+        return False
     return True
 
 
 def is_source_device(dev) -> bool:
     if not is_source_name(dev.name or ""):
+        return False
+    if is_imu_device(dev):
         return False
     pair = vid_pid(dev)
     if pair is None:
@@ -317,14 +351,37 @@ def source_abs_range(dev, code: int) -> tuple[int, int] | None:
     return rng
 
 
+def _write_abs(ui: UInput, code: int, value: int) -> None:
+    dst = _ABS_DST[code]
+    ui.write(ecodes.EV_ABS, code, max(dst.min, min(dst.max, value)))
+
+
 def forward_event(ui: UInput, ev, src=None) -> None:
+    """Copy one source event onto an Xbox-packed EmuPads sink."""
     if ev.type == ecodes.EV_SYN:
         ui.syn()
         return
-    if ev.type == ecodes.EV_KEY and ev.code in _BTN:
-        ui.write(ev.type, ev.code, ev.value)
+
+    switch = src is not None and is_switch_pro_source(src)
+
+    if ev.type == ecodes.EV_KEY:
+        code = ev.code
+        if switch:
+            if code in _SWITCH_DROP_KEYS:
+                return
+            if code in _SWITCH_TRIGGER_BTN_TO_ABS:
+                axis = _SWITCH_TRIGGER_BTN_TO_ABS[code]
+                _write_abs(ui, axis, _ABS_DST[axis].max if ev.value else 0)
+                return
+            code = _SWITCH_FACE_TO_XBOX.get(code, code)
+        if code in _BTN:
+            ui.write(ecodes.EV_KEY, code, ev.value)
         return
+
     if ev.type == ecodes.EV_ABS and ev.code in _ABS:
+        # Switch Pro has no analog triggers; ignore stray ABS_Z/RZ if present.
+        if switch and ev.code in (ecodes.ABS_Z, ecodes.ABS_RZ):
+            return
         dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
         if src_range is not None:
@@ -808,6 +865,10 @@ def self_test() -> int:
     ]
     assert is_sink_name("EmuPads P2")
     assert not is_source_name("EmuPads P1")
+    assert not is_source_name("Sunshine (libvirtualhid) Odin2_Portal (IMU)")
+    assert is_imu_device(
+        Fake("Sunshine (libvirtualhid) Odin2_Portal (IMU)", "/dev/input/event31", 0x057E, 0x2009)
+    )
     assert enabled_from({}) is True
     assert enabled_from({"enabled": True}) is True
     assert enabled_from({"enabled": False}) is False
@@ -866,6 +927,58 @@ def self_test() -> int:
     _STEAM_UI_CACHE = (time.monotonic(), True)
     _EMU_CACHE = (time.monotonic(), True)
     assert hide_sinks_from_host() is True
+
+    switch = Fake(
+        "Sunshine (libvirtualhid) Odin2_Portal",
+        "/dev/input/event30",
+        0x057E,
+        0x2009,
+    )
+    xbox = Fake(
+        "Sunshine (libvirtualhid) AYN_Thor",
+        "/dev/input/event31",
+        0x045E,
+        0x028E,
+    )
+    assert is_switch_pro_source(switch)
+    assert not is_switch_pro_source(xbox)
+
+    class SinkRec:
+        def __init__(self):
+            self.events: list[tuple[int, int, int]] = []
+
+        def write(self, etype, code, value):
+            self.events.append((etype, code, value))
+
+        def syn(self):
+            self.events.append((ecodes.EV_SYN, 0, 0))
+
+    class Ev:
+        def __init__(self, etype, code, value):
+            self.type = etype
+            self.code = code
+            self.value = value
+
+    sink = SinkRec()
+    forward_event(sink, Ev(ecodes.EV_KEY, ecodes.BTN_EAST, 1), switch)  # type: ignore[arg-type]
+    forward_event(sink, Ev(ecodes.EV_KEY, ecodes.BTN_SOUTH, 1), switch)  # type: ignore[arg-type]
+    forward_event(sink, Ev(ecodes.EV_KEY, ecodes.BTN_TL2, 1), switch)  # type: ignore[arg-type]
+    forward_event(sink, Ev(ecodes.EV_KEY, ecodes.BTN_TL2, 0), switch)  # type: ignore[arg-type]
+    forward_event(sink, Ev(ecodes.EV_KEY, ecodes.BTN_Z, 1), switch)  # type: ignore[arg-type]
+    assert (ecodes.EV_KEY, ecodes.BTN_SOUTH, 1) in sink.events  # Switch A → Xbox A
+    assert (ecodes.EV_KEY, ecodes.BTN_EAST, 1) in sink.events  # Switch B → Xbox B
+    assert (ecodes.EV_ABS, ecodes.ABS_Z, 255) in sink.events  # ZL → LT
+    assert (ecodes.EV_ABS, ecodes.ABS_Z, 0) in sink.events
+    assert not any(e[1] == ecodes.BTN_Z for e in sink.events)
+    assert not any(e[1] == ecodes.BTN_TL2 for e in sink.events)
+
+    passthrough = SinkRec()
+    forward_event(passthrough, Ev(ecodes.EV_KEY, ecodes.BTN_SOUTH, 1), xbox)  # type: ignore[arg-type]
+    forward_event(passthrough, Ev(ecodes.EV_KEY, ecodes.BTN_EAST, 1), xbox)  # type: ignore[arg-type]
+    assert passthrough.events == [
+        (ecodes.EV_KEY, ecodes.BTN_SOUTH, 1),
+        (ecodes.EV_KEY, ecodes.BTN_EAST, 1),
+    ]
 
     class Alive:
         def __init__(self, path):

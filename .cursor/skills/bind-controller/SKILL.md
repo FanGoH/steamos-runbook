@@ -52,7 +52,9 @@ NMH3 / native games that freak out with two controllers: **Pad Hide**, not mux r
 - **Azahar** player 1 = `profiles\1\` → P1. Player 2 = saved `profiles\2\` in multi (one active profile per instance). Shared P1 is the default even though Azahar barely does MP.
 - **Eden** player 1 = `player_0_` CRC-less USB GUID of P1 (`1209:e301`). Player 2 = P2 (`1209:e302`) so GUIDs differ. Steam virtual (`28de:11ff`) stays a source, not a bind target.
 
-Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Default **x360**. `ds5`/`ds4`/`switch` enable Thor/Odin gyro but change VID/PID; after a switch, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, then re-bind. Do not switch the profile unless the user asks to experiment with gyro.
+Pad type: `.env` `GAMESTREAM_PAD_PROFILE` or `~/.config/emupads/gamestream-pad.json` (`scripts/gamestream_pad_config.py`). **`fgpc pad profile switch`** keeps preferred Host LI_CTYPE=Nintendo, sets sunshine `gamepad=auto`, restarts `:48200` kms — Moonlight Host/Switch → Switch Pro on the host; Moonlight Xbox → Xbox. Do **not** force `gamepad=switch` or the Xbox toggle is ignored. Motion needs `/dev/uhid` (`ensure-libvirtualhid-uhid.sh`). EmuPads sinks stay Xbox 15-button. Steam Guide hold-Select is x360-only.
+
+**Eden motion:** `emupads-dsu.service` → cemuhook `:26760`. **`fgpc pad profile recalibrate`** (level, still ~2s) stores neutral gravity/gyro bias and roll gain in `gamestream-pad.json`. Moonlight: motion sensors + emulate fallback + **Host profile** report type. Restart Eden after recalibrate.
 
 Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
 RetroDECK Cemu XML: `~/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml`.

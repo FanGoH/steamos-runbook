@@ -206,7 +206,26 @@ case "$cmd" in
     [[ -x "$override" || -f "$override" ]] || die "missing $override"
     exec bash "$override" "$action"
     ;;
+  kms-setcap)
+    # Game Mode sunshine-ds-kms only. Never desktop ~/.local/bin/sunshine-ds.
+    # Bridge when /etc/sudoers.d/zzz-sunshine-ds-kms-setcap is missing after a
+    # SteamOS update (this script is already NOPASSWD for pad-hide).
+    home="${PAD_HIDE_HOME:-/home/deck}"
+    [[ "$home" == /home/* ]] || die "bad home"
+    setcap_bin=/usr/bin/setcap
+    [[ -x "$setcap_bin" ]] || die "missing $setcap_bin"
+    ok=0
+    for path in "$home/.local/bin/sunshine-ds-kms" "$home/.local/bin/sunshine-ds-kms.new"; do
+      [[ -f "$path" ]] || continue
+      [[ "$(basename "$path")" == sunshine-ds-kms || "$(basename "$path")" == sunshine-ds-kms.new ]] \
+        || die "refusing $path"
+      "$setcap_bin" cap_sys_admin+ep "$path"
+      getcap "$path" >&2 || true
+      ok=1
+    done
+    [[ "$ok" -eq 1 ]] || die "missing sunshine-ds-kms binary under $home/.local/bin"
+    ;;
   *)
-    die "usage: usb-authorized|usb-port-disable|usb-remove|usb-pci-reset|usb-pci-rebind|usb-driver-*|hid-*|fuser-dev|nuxbt-bluez"
+    die "usage: usb-authorized|usb-port-disable|usb-remove|usb-pci-reset|usb-pci-rebind|usb-driver-*|hid-*|fuser-dev|nuxbt-bluez|kms-setcap"
     ;;
 esac

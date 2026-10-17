@@ -19,9 +19,14 @@ EOF
   exit 1
 fi
 
+pin_appimage_sources() {
+  python3 "$ROOT/scripts/gearlever_update_sources.py"
+}
+
 if flatpak info --user "$FLATPAK_ID" >/dev/null 2>&1 || flatpak info "$FLATPAK_ID" >/dev/null 2>&1; then
   echo "Gear Lever already installed ($FLATPAK_ID)."
   flatpak info "$FLATPAK_ID" 2>/dev/null | grep -E '^(ID|Version|Installation)' || true
+  pin_appimage_sources
   exit 0
 fi
 
@@ -36,6 +41,7 @@ fi
 echo "Installing Gear Lever ($FLATPAK_ID) as user Flatpak..."
 if flatpak install --user -y "$REMOTE" "$FLATPAK_ID"; then
   echo "Gear Lever installed."
+  pin_appimage_sources
   exit 0
 fi
 

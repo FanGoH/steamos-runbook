@@ -531,9 +531,9 @@ EOF
 fi
 ST_CFG="/home/$STEAMOS_USER/.local/state/syncthing/config.xml"
 if [ -f "$ST_CFG" ]; then
-  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" "${SYNCTHING_PCSX2_FOLDER_ID:-pcsx2-saves}" <<'PY'
+  eval "$(python3 - "$ST_CFG" "${SYNCTHING_EDEN_FOLDER_ID:-eden-saves}" "${SYNCTHING_AZAHAR_FOLDER_ID:-azahar-saves}" "${SYNCTHING_DUSKLIGHT_FOLDER_ID:-dusklight-saves}" "${SYNCTHING_CEMU_FOLDER_ID:-cemu-saves}" "${SYNCTHING_PCSX2_FOLDER_ID:-pcsx2-saves}" "${SYNCTHING_UNCHARTED_FOLDER_ID:-uncharted-saves}" "${SYNCTHING_WWHD_FOLDER_ID:-wwhd-saves}" <<'PY'
 import sys, xml.etree.ElementTree as ET, shlex
-cfg, eden_id, azahar_id, dusk_id, cemu_id, pcsx2_id = sys.argv[1:7]
+cfg, eden_id, azahar_id, dusk_id, cemu_id, pcsx2_id, uncharted_id, wwhd_id = sys.argv[1:9]
 root = ET.parse(cfg).getroot()
 folders = {f.get("id"): f.get("path") or "" for f in root.findall("folder")}
 gui_el = root.find("gui")
@@ -547,6 +547,8 @@ print(f"st_azahar_path={shlex.quote(folders.get(azahar_id, ''))}")
 print(f"st_dusk_path={shlex.quote(folders.get(dusk_id, ''))}")
 print(f"st_cemu_path={shlex.quote(folders.get(cemu_id, ''))}")
 print(f"st_pcsx2_path={shlex.quote(folders.get(pcsx2_id, ''))}")
+print(f"st_uncharted_path={shlex.quote(folders.get(uncharted_id, ''))}")
+print(f"st_wwhd_path={shlex.quote(folders.get(wwhd_id, ''))}")
 PY
 )"
   if [ "$st_gui_addr" = "$ST_GUI" ]; then
@@ -595,6 +597,24 @@ EOF
   else
     warn "pcsx2-saves folder missing or not RetroDECK PCSX2 memcards"
     record_manual "Share PCSX2 memcards over Syncthing" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_uncharted_path" == *"/uncharted-appimage/app/user/savedata"* ]]; then
+    ok "uncharted-saves -> $st_uncharted_path (lab only)"
+  else
+    warn "uncharted-saves folder missing or not the PC-port savedata dir"
+    record_manual "Share Uncharted PC-port saves with lab only" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-syncthing.sh
+EOF
+  fi
+  if [[ "$st_wwhd_path" == *"/wwhd/save"* ]]; then
+    ok "wwhd-saves -> $st_wwhd_path"
+  else
+    warn "wwhd-saves folder missing or not ~/.local/share/wwhd/save"
+    record_manual "Share Wind Waker HD recomp saves over Syncthing" <<'EOF'
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ./scripts/ensure-syncthing.sh
 EOF
@@ -705,6 +725,15 @@ echo "[Gear Lever]"
 if flatpak info --user "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1 \
   || flatpak info "${GEARLEVER_FLATPAK_ID:-it.mijorus.gearlever}" >/dev/null 2>&1; then
   ok "Gear Lever installed ($GEARLEVER_FLATPAK_ID)"
+  if python3 "$ROOT/scripts/gearlever_update_sources.py" --report; then
+    ok "known AppImages have Gear Lever update sources (or a skip reason)"
+  else
+    warn "some AppImages still lack Gear Lever update sources"
+    record_manual "Pin Gear Lever AppImage update sources" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-gearlever.sh
+EOF
+  fi
 else
   fail "Gear Lever not installed"
   record_manual "Install Gear Lever Flatpak" <<'EOF'

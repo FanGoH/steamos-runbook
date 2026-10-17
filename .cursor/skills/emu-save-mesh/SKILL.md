@@ -1,9 +1,11 @@
 ---
 name: emu-save-mesh
 description: >-
-  Keep Eden, Azahar, Dusklight, Cemu, and PCSX2/NetherSX2 saves on this Steam Machine in the
-  official Syncthing mesh with lab, Odin, and Thor. Use when the user mentions
-  Syncthing, EdenSaves, AzaharSaves, Dusklight, Twilight Princess recomp, Cemu, Wind Waker HD, PCSX2, NetherSX2, Game Mode saves not reaching a handheld, or ensure-syncthing.
+  Keep Eden, Azahar, Dusklight, Cemu, PCSX2/NetherSX2, Uncharted PC-port, and Wind Waker HD
+  recomp saves on this Steam Machine in the official Syncthing mesh with lab, Odin, and Thor.
+  Use when the user mentions Syncthing, EdenSaves, AzaharSaves, Dusklight, Twilight Princess
+  recomp, Cemu, Wind Waker HD, ZeldaWWHDRecomp, Uncharted PC port, PCSX2, NetherSX2, Game Mode
+  saves not reaching a handheld, or ensure-syncthing.
 ---
 
 # Emulator save mesh (Steam Machine)
@@ -29,12 +31,18 @@ Lab-wide device table and handheld ADB: on lab, `~/.cursor/skills/emu-save-mesh/
   Standalone Flatpak `mlc_path` is RetroDECK `~/retrodeck/bios/cemu` (whose `usr/save` already symlinks at that RetroDECK saves dir).
 - **PCSX2 / NetherSX2:** file memory cards only  
   `~/retrodeck/saves/ps2/pcsx2/memcards` (`Mcd001.ps2` / `Mcd002.ps2`). Do **not** share `~/retrodeck/bios/pcsx2/memcards` (that symlink is empty RetroArch LRPS2).
+- **Uncharted PC port:** savedata only, **lab only** (not Thor / Odin)  
+  `~/.local/share/uncharted-appimage/app/user/savedata`  
+  Do **not** share the Proton prefix, shaders, or unpacked `app/` tree. This is SuperMedo's native port, not RPCS3 Uncharted.
+- **Wind Waker HD recomp (ZeldaWWHDRecomp):** `save/` only  
+  `~/.local/share/wwhd/save` (`user/cking.sav`). Do **not** share `game/`, toolchain, or `~/.config/wwhd` shaders.  
+  **Thor / Odin Android:** share the same layout at `Android/data/org.wwhdrecomp.wwhd/files/save`. Handheld Autostart is not this playbook — add that folder on Syncthing-Fork. This is **not** Cemu Wind Waker HD (`10143500`).
 
 `ignorePerms: true`. Azahar/Cemu `caseSensitiveFS: false`. One game on one device; close the emulator after a session.
 
 Title folder `00033500` is **Ocarina of Time 3D** (`0004000000033500`), not Super Mario 3D Land. Slots: `save00.bin` File 1, `save01.bin` File 2, `save02.bin` File 3.
 
-Title folder `10143500` is **The Wind Waker HD**.
+Title folder `10143500` is **Cemu The Wind Waker HD**. ZeldaWWHDRecomp uses `~/.local/share/wwhd/save` instead.
 
 ## One Azahar sdmc on this box
 
@@ -59,12 +67,13 @@ Do **not** symlink `~/retrodeck/saves/wiiu/cemu` into `~/.var/app/info.cemu.Cemu
 5. Dusklight on Android: `Android/data/dev.twilitrealm.dusk/files` is empty (scoped storage). Point **Settings → Data Folder** at `/storage/emulated/0/Sync/Dusklight` so Card A is the mesh. RetroArch Dolphin `*.gci` under `RetroArch/saves/` is a **different** save — do not mix it into Dusklight.
 6. Cemu on Android cannot open `Sync/CemuMLC` (no all-files access). Syncthing watches Cemu’s default `Android/data/info.cemu.cemu/files/mlc01/usr/save/00050000`. Leave `mlc_path` empty. Do **not** share `00050010` or `system/`.
 7. NetherSX2 (`xyz.aethersx2.android`) memcards are the same PCSX2 `Mcd001.ps2` files. Syncthing watches `Android/data/xyz.aethersx2.android/files/memcards`. Do not mix folder memcards.
+8. Wind Waker HD recomp on Android is `org.wwhdrecomp.wwhd`. Syncthing should watch `Android/data/org.wwhdrecomp.wwhd/files/save` (`user/cking.sav`). Do not mix it with Cemu `10143500`. Scoped storage may need the app to create that dir once (open the APK) before the folder appears.
 
 ## Tender vs Argosy vs this mesh
 
 Tender launches RetroDECK (and host Eden/Dusklight). Argosy (`EmulatorRegistry.kt`) launches Android packages. The mesh only joins matching save trees.
 
-Already meshed: Eden, Azahar, Cemu `00050000`, PCSX2 file memcards, Dusklight Card A.
+Already meshed: Eden, Azahar, Cemu `00050000`, PCSX2 file memcards, Dusklight Card A, Uncharted PC-port savedata (lab only), ZeldaWWHDRecomp `wwhd/save`.
 
 Not meshed (do not invent folders):
 

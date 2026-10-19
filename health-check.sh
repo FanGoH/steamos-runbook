@@ -679,6 +679,58 @@ EOF
   fi
 fi
 echo
+echo "[Chrome Remote Desktop]"
+CRD_HOST="${CRD_HOST_BIN:-/opt/google/chrome-remote-desktop/chrome-remote-desktop}"
+CRD_UNIT="${CRD_SERVICE:-chrome-remote-desktop@${STEAMOS_USER}.service}"
+CRD_CFG="${CRD_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/chrome-remote-desktop}"
+if [ -x "$CRD_HOST" ]; then
+  ok "CRD host binary $CRD_HOST"
+else
+  warn "CRD host binary missing"
+  record_manual "Install Chrome Remote Desktop host" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-chrome-remote-desktop.sh
+EOF
+fi
+if command -v Xvfb >/dev/null 2>&1; then
+  ok "Xvfb present (CRD virtual session)"
+else
+  warn "Xvfb missing (CRD virtual session needs xorg-server-xvfb)"
+fi
+if python3 -c "from packaging import version" >/dev/null 2>&1; then
+  ok "python-packaging present (CRD host import)"
+else
+  warn "python-packaging missing (CRD host needs it)"
+fi
+if python3 "$ROOT/scripts/chrome_remote_desktop.py" registered --config-dir "$CRD_CFG"; then
+  ok "CRD host registered ($CRD_CFG)"
+  if systemctl is-enabled "$CRD_UNIT" >/dev/null 2>&1; then
+    ok "$CRD_UNIT enabled"
+  else
+    fail "$CRD_UNIT not enabled"
+    record_manual "Enable Chrome Remote Desktop" <<EOF
+sudo systemctl enable --now $CRD_UNIT
+./scripts/crd.sh status
+EOF
+  fi
+  if systemctl is-active "$CRD_UNIT" >/dev/null 2>&1; then
+    ok "$CRD_UNIT active"
+  else
+    fail "$CRD_UNIT not active"
+    record_manual "Start Chrome Remote Desktop" <<EOF
+sudo systemctl start $CRD_UNIT
+sudo journalctl -u $CRD_UNIT -n 80 --no-pager
+EOF
+  fi
+else
+  warn "CRD host not registered (Google headless + PIN)"
+  record_manual "Register Chrome Remote Desktop (Google PIN)" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/crd.sh setup
+EOF
+fi
+echo
+
 echo "[FGPC WebGUI]"
 FGPC_WEB_UNIT="${FGPC_WEB_SERVICE:-fgpc-web.service}"
 FGPC_WEB_PORT_N="${FGPC_WEB_PORT:-8484}"

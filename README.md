@@ -57,6 +57,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - pacman keyrings (`archlinux` + `holo`), `sshd`, WOL, OpenRGB udev
 - Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
 - Gear Lever, Cursor Agent worker (Switch 2 BLE bridge is skipped by default)
+- Chrome Remote Desktop host (`ensure-chrome-remote-desktop.sh`; official .deb on `/home`, `/opt/google` symlink + `chrome-remote-desktop@deck.service`). Google PIN is manual. Virtual Plasma X11 — not Game Mode HDMI / Sunshine.
 - Eden/Tender wrap, official Tender zip if behind, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 - Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)
@@ -68,6 +69,7 @@ Manual follow-ups (printed when needed):
 
 - Tailscale / Headscale re-login (from `.env` values; no `--ssh` by default)
 - Cursor `agent login` if the worker CLI is signed out
+- Chrome Remote Desktop Google headless setup + PIN (`./scripts/crd.sh setup`) if the host is not registered
 - Switch 2 controller pairing (hold Sync) and optional Decky plugin install (sudo into `~/homebrew/plugins`)
 - Emu Pads / Pad Hide / FGPC / `rom-launcher` copy when `~/homebrew/plugins` is root-owned
 - `sudoers.d/zzz-sunshine-ds-kms-setcap` and `zzz-hide-controllers` after an update wiped `/etc`
@@ -108,6 +110,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-kwin-screencast.sh` | Last-resort: reinitialize KWin if desktop screenshots are all black |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
+| `scripts/ensure-chrome-remote-desktop.sh` | Chrome Remote Desktop host (official .deb on `/home`, system unit). Google PIN is manual |
+| `scripts/crd.sh` | CRD status / start / stop / restart / setup |
+| `scripts/chrome_remote_desktop.py` | CRD unit/PAM/session texts + registration check |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-tender.sh` | Official GitHub Tender zip when behind; then `ensure-eden-component.sh --wrap-launcher` (releases overwrite `bin/rom-launcher`) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
@@ -198,6 +203,8 @@ Copy `.env.example` to `.env`. Important variables:
 | `SYNCTHING_BIN` | Official Syncthing binary (default `~/.local/bin/syncthing`) |
 | `SYNCTHING_VERSION` | Release tag to install (default `v2.1.5`) |
 | `SYNCTHING_PEER_IDS` | Space-separated peer device IDs (lab / Odin / Thor) if `config.xml` is regenerated |
+| `CRD_HOME` | Extracted Chrome Remote Desktop host on `/home` |
+| `CRD_SERVICE` | System unit (`chrome-remote-desktop@deck.service`) |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 
@@ -216,6 +223,32 @@ systemctl --user is-active cursor-agent-worker.service
 curl -sf http://127.0.0.1:18789/healthz
 ```
 
+## Chrome Remote Desktop
+
+Remote admin desktop for this Steam Machine. **Not** Game Mode HDMI, **not** Sunshine/Moonlight, and **not** the live Plasma seat. The host starts a virtual Xvfb + Plasma X11 session.
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-chrome-remote-desktop.sh
+./scripts/crd.sh setup
+```
+
+`post-update.sh` restores the `/opt/google/chrome-remote-desktop` symlink, Arch PAM, `chrome-remote-desktop@deck.service`, Xvfb, and the session file. SteamOS updates wipe `/`; the 62M host payload stays under `~/.local/share/chrome-remote-desktop`.
+
+First-time use (Google account + 6-digit PIN — never put those in the repo):
+
+1. On a browser: https://remotedesktop.google.com/headless → Begin → Authorize
+2. Paste the Debian/Linux `start-host --code=...` command on this box as `deck`
+3. `sudo systemctl enable --now chrome-remote-desktop@deck.service`
+4. Connect from https://remotedesktop.google.com/access (same Google account + PIN)
+
+```bash
+./scripts/crd.sh status
+sudo systemctl status chrome-remote-desktop@deck.service --no-pager
+```
+
+Do **not** replace Decky Sunshine or `kwin_wayland`. Plasma may not like two concurrent sessions — connect while Game Mode is up when possible.
+
 ## Sunshine DS / Moonlight DS
 
 Sunshine DS source lives on https://github.com/FanGoH/Sunshine (`sunshine-ds-linux`). The playbook clones/builds/tests only. Production Decky Sunshine on `:47989` stays untouched; the side-by-side binary is `sunshine-ds` on **`:48100`**. Checkpoint SHAs: `.cursor/skills/sunshine-ds-gamestream/reference.md`.
@@ -233,6 +266,7 @@ systemctl --user is-enabled steamos-sunshine-watch.path
 systemctl --user is-enabled steamos-sunshine-after-gamescope.service
 systemctl --user is-enabled steamos-sunshine-ds-gamemode.service
 systemctl --user status cursor-agent-worker.service --no-pager
+sudo systemctl status chrome-remote-desktop@deck.service --no-pager
 systemctl --user status nso-gc.service --no-pager
 curl -s http://127.0.0.1:47989/serverinfo
 # Web UI login is checked by health-check.sh (Decky lastAuthHeader vs /api/apps)

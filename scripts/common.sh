@@ -105,6 +105,13 @@ load_env() {
   FGPC_WEB_HOSTNAME="${FGPC_WEB_HOSTNAME:-fgpc}"
   FGPC_WEB_SERVICE="${FGPC_WEB_SERVICE:-fgpc-web.service}"
   TAILSCALE_DNS_SUFFIX="${TAILSCALE_DNS_SUFFIX:-}"
+  CRD_HOME="${CRD_HOME:-/home/${STEAMOS_USER}/.local/share/chrome-remote-desktop}"
+  CRD_OPT="${CRD_OPT:-/opt/google/chrome-remote-desktop}"
+  CRD_HOST_BIN="${CRD_HOST_BIN:-/opt/google/chrome-remote-desktop/chrome-remote-desktop}"
+  CRD_SERVICE="${CRD_SERVICE:-chrome-remote-desktop@${STEAMOS_USER}.service}"
+  CRD_CONFIG_DIR="${CRD_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/chrome-remote-desktop}"
+  CRD_FLATPAK_ID="${CRD_FLATPAK_ID:-com.google.Chrome}"
+  CRD_DEB_URL="${CRD_DEB_URL:-https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb}"
 }
 
 setup_user_dbus() {

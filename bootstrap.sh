@@ -74,6 +74,7 @@ run_step "ensure-tender" "$ROOT/scripts/ensure-tender.sh" warn
 run_step "ensure-eden-component" "$ROOT/scripts/ensure-eden-component.sh"
 run_step "ensure-syncthing" "$ROOT/scripts/ensure-syncthing.sh"
 run_step "ensure-cursor-agent" "$ROOT/scripts/ensure-cursor-agent.sh"
+run_step "ensure-chrome-remote-desktop" "$ROOT/scripts/ensure-chrome-remote-desktop.sh" warn
 run_step "ensure-sunshine-ds-apps" "$ROOT/scripts/ensure-sunshine-ds-apps.sh" warn
 run_step "ensure-sunshine-ds" "$ROOT/scripts/ensure-sunshine-ds.sh" warn
 run_step "ensure-sunshine-ds-decky" "$ROOT/scripts/ensure-sunshine-ds-decky.sh" warn

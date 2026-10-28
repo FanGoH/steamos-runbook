@@ -29,7 +29,7 @@ import sys
 import time
 from pathlib import Path
 
-from evdev import AbsInfo, InputDevice, UInput, ecodes, list_devices
+from evdev import AbsInfo, InputDevice, InputEvent, UInput, ecodes, list_devices
 
 SINK_VENDOR = 0x1209
 SINK_PRODUCTS = (0xE301, 0xE302)
@@ -116,6 +116,42 @@ def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: in
     t = (value - src_min) / float(src_max - src_min)
     out = dst_min + t * (dst_max - dst_min)
     return int(round(max(dst_min, min(dst_max, out))))
+
+
+# Odin/Thor Moonlight analog LT often tops out ~200/255 (Steam Test Input ~24k).
+TRIGGER_FULL_AT = int(os.environ.get("EMUPADS_TRIGGER_FULL", "200"))
+
+
+def expand_trigger_value(value: int, full_at: int = TRIGGER_FULL_AT) -> int:
+    """Map a firm Moonlight press onto 0–255 so Steam/SDL reach 32k."""
+    if value <= 0:
+        return 0
+    if full_at <= 0:
+        return min(255, value)
+    if value >= 255:
+        return 255
+    return min(255, int(round(value * 255 / float(full_at))))
+
+
+def rewrite_sunshine_trigger(dev, ev):
+    """Write the expanded LT/RT back onto the Sunshine node (Steam reads it)."""
+    if ev.type != ecodes.EV_ABS or ev.code not in (ecodes.ABS_Z, ecodes.ABS_RZ):
+        return ev
+    if not is_sunshine_source(dev):
+        return ev
+    new = expand_trigger_value(ev.value)
+    if new == ev.value:
+        return ev
+    try:
+        dev.write(ecodes.EV_ABS, ev.code, new)
+        dev.write(ecodes.EV_SYN, ecodes.SYN_REPORT, 0)
+    except OSError:
+        pass
+    return InputEvent(ev.sec, ev.usec, ev.type, ev.code, new)
+
+
+def expand_events(dev, events: list) -> list:
+    return [rewrite_sunshine_trigger(dev, ev) for ev in events]
 
 
 def trigger_source_range(rng: tuple[int, int] | None) -> tuple[int, int]:
@@ -730,8 +766,7 @@ def loop() -> int:
             if ready and muted:
                 for fd in ready:
                     try:
-                        for _ev in fds[fd].read():
-                            pass
+                        expand_events(fds[fd], list(fds[fd].read()))
                     except OSError:
                         pass
             elif ready:
@@ -739,7 +774,7 @@ def loop() -> int:
                 for fd in ready:
                     dev = fds[fd]
                     try:
-                        events = list(dev.read())
+                        events = expand_events(dev, list(dev.read()))
                     except OSError:
                         continue
                     if mode == "multi":
@@ -851,6 +886,35 @@ def self_test() -> int:
     assert trigger_source_range((0, 255)) == (0, 255)
     assert trigger_source_range((0, 1023)) == (0, 1023)
     assert scale_axis(255, *trigger_source_range((-32768, 32767)), 0, 255) == 255
+    assert expand_trigger_value(0) == 0
+    assert expand_trigger_value(200) == 255
+    assert expand_trigger_value(100) == 128
+    assert expand_trigger_value(212) == 255
+    assert expand_trigger_value(255) == 255
+    class FakeWrite(Fake):
+        def __init__(self, name):
+            super().__init__(name, "/dev/input/event99")
+            self.writes = []
+
+        def write(self, typ, code, value):
+            self.writes.append((typ, code, value))
+
+    class FakeEv:
+        def __init__(self, typ, code, value):
+            self.type = typ
+            self.code = code
+            self.value = value
+            self.sec = 0
+            self.usec = 0
+
+    sun = FakeWrite("Sunshine (libvirtualhid) Odin2_Portal")
+    out = rewrite_sunshine_trigger(sun, FakeEv(ecodes.EV_ABS, ecodes.ABS_Z, 200))
+    assert out.value == 255
+    assert (ecodes.EV_ABS, ecodes.ABS_Z, 255) in sun.writes
+    xbox = FakeWrite("Microsoft X-Box 360 pad")
+    raw = rewrite_sunshine_trigger(xbox, FakeEv(ecodes.EV_ABS, ecodes.ABS_Z, 200))
+    assert raw.value == 200
+    assert xbox.writes == []
     cfg2 = {
         "mode": "multi",
         "sources": [{"name": "Odin2_Portal"}, {"name": "Sunshine (libvirtualhid) AYN_Thor"}],

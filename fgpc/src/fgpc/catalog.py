@@ -62,6 +62,8 @@ TOPIC_HELP = {
   fgpc host post-update  ./post-update.sh (includes Tender zip + wrap)
                          Do not sudo. PLAYBOOK_SKIP / SKIP_ENSURE_* skip steps.
   fgpc host bootstrap    ./bootstrap.sh
+  fgpc host crd          Chrome Remote Desktop status / setup
+                         Virtual Plasma X11 — not Game Mode / Sunshine.
 
 QAM Playbook is the same post-update.sh (background oneshot), plus
 Update Tender + wrap (`ensure-tender.sh`) without the full recovery.

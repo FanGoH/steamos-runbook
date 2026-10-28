@@ -248,6 +248,15 @@ def host_bootstrap() -> None:
     raise typer.Exit(result.rc)
 
 
+@host_app.command("crd")
+def host_crd(
+    action: str = typer.Argument("status", help="status | start | stop | restart | setup"),
+) -> None:
+    """Chrome Remote Desktop host (virtual Plasma — not Sunshine)."""
+    result = run("crd.sh", [action], json_out=False, timeout=60, stream=True)
+    raise typer.Exit(result.rc)
+
+
 # --- mode ---
 
 

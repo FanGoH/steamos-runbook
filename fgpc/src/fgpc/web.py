@@ -97,6 +97,15 @@ def handle_request(
     if method == "GET" and route == "/api/self-test":
         data = self_test()
         return _json_bytes(data, 200 if data.get("ok") else 500)
+    if method == "GET" and route == "/api/moonlight/pad-profile":
+        try:
+            sys.path.insert(0, str(playbook_root() / "scripts"))
+            import gamestream_pad_config as gsp  # noqa: WPS433
+
+            data = gsp.moonlight_api_payload()
+        except Exception as exc:  # noqa: BLE001
+            data = {"ok": False, "message": str(exc)[:300]}
+        return _json_bytes(data)
     if method == "GET" and route == "/api/status":
         query = parse_qs(parsed.query)
         want_live = live

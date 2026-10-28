@@ -79,7 +79,11 @@ def _live_status() -> dict[str, Any]:
         return _script_json("second-screen-windows.py", ["status"], timeout=10)
 
     def pad() -> dict[str, Any]:
-        return _script_json("bind-gamepad.py", ["status"], timeout=12)
+        status = _script_json("bind-gamepad.py", ["status"], timeout=12)
+        prof = _script_json("gamestream_pad_config.py", ["json"], timeout=8)
+        if isinstance(status, dict) and isinstance(prof, dict):
+            status["gamestream_pad"] = prof
+        return status
 
     def hide() -> dict[str, Any]:
         return _script_json("hide-controllers.py", ["list"], timeout=10)
@@ -263,6 +267,29 @@ def _run_pad(action: str, *, mode: str, emu: str) -> dict[str, Any]:
         if mode not in ("shared", "multi"):
             return {"ok": False, "message": "pad mode: shared | multi"}
         return _script_json("bind-gamepad.py", ["set-mode", "--mode", mode], timeout=12)
+    if action == "profile":
+        if mode in ("", "status", "show"):
+            return _script_json("gamestream_pad_config.py", ["json"], timeout=8)
+        if mode == "recalibrate":
+            return _script_json("gamestream_pad_config.py", ["recalibrate-dsu"], timeout=15)
+        if mode in ("x360", "auto", "switch", "ds5", "ds4"):
+            out = _script_json(
+                "gamestream_pad_config.py",
+                ["set-profile", mode],
+                timeout=8,
+            )
+            if out.get("ok"):
+                apply_out = _script_json(
+                    "gamestream_pad_config.py",
+                    ["apply", "--restart-gamemode"],
+                    timeout=120,
+                )
+                out["apply"] = apply_out
+            return out
+        return {
+            "ok": False,
+            "message": "pad profile: status | x360 | auto | switch | ds5 | ds4 | recalibrate",
+        }
     if action == "apply":
         if emu not in ("all", "cemu", "azahar", "eden"):
             return {"ok": False, "message": "emu: all | cemu | azahar | eden"}

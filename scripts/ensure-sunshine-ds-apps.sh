@@ -22,6 +22,12 @@ if [ ! -f "$APPS_JSON" ]; then
 fi
 
 python3 "$ROOT/scripts/pad_profile.py" apply-sunshine-conf "$SUNSHINE_DS_CONF" || true
+# Game Mode kms conf is rewritten by run-sunshine-ds-gamemode.sh --write-conf;
+# keep a live file in sync when the unit already created it.
+KMS_CONF="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-gamemode}/sunshine/sunshine.conf"
+if [ -f "$KMS_CONF" ]; then
+  python3 "$ROOT/scripts/pad_profile.py" apply-sunshine-conf "$KMS_CONF" || true
+fi
 
 ICON_DIR="$(dirname "$APPS_JSON")/app-icons"
 mkdir -p "$ICON_DIR"

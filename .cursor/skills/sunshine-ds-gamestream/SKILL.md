@@ -265,7 +265,9 @@ From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-az
 
 ## Gyro / motion (Thor and Odin)
 
-Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion. `ds5` / `ds4` / `switch` can, but they change VID/PID and break Steam Guide plus current Cemu/Azahar binds. To experiment later: set the env var, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, re-bind. Stay on x360 until the user asks.
+Moonlight can send the handheld IMU (`Allow use of gamepad motion sensors`, and **Emulate gamepad motion sensor support** to use the device gyro when the pad has none). The host pad is `GAMESTREAM_PAD_PROFILE` (`scripts/pad_profile.py`). Default **x360** cannot expose motion (uinput). **`switch`** / `ds5` / `ds4` need **`/dev/uhid`**. If uhid is `crw------- root:root`, log shows `create libvirtualhid gamepad: failed to open /dev/uhid: Permission denied` and the client has **no** host pad — install `udev/99-libvirtualhid-uhid.rules` via `scripts/ensure-libvirtualhid-uhid.sh` (sudo + steamos-readonly; needs `TAG+=seat` + `uaccess`, and often `setfacl -m u:deck:rw /dev/uhid`). Until uhid is writable, conf falls back to x360.
+
+With `gamepad=switch`, hid-nintendo creates `Sunshine … (IMU)` beside the pad. **`emupads-dsu.service`** (`scripts/ensure-emupads-dsu.sh`) reads that IMU and serves cemuhook on `127.0.0.1:26760`; Eden `enable_udp_controller=true`. Mux skips IMU nodes. Steam Guide hold-Select is x360-only.
 
 ## Do not
 

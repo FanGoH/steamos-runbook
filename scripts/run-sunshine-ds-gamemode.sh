@@ -93,9 +93,10 @@ hevc_mode = 1
 av1_mode = 1
 # Floor when encode falls behind. Default 0 = half of Moonlight FPS (60→30).
 minimum_fps_target = ${SUNSHINE_DS_KMS_MIN_FPS:-60}
-gamepad = x360
-# Hold Back/Select 500ms → HOME on the UHID x360. sunshine-ds then toggles
-# gamescope STEAM_OVERLAY (Steam ignores UHID Guide). Default is -1 (off).
+# From GAMESTREAM_PAD_PROFILE (default x360; switch/ds5 for motion).
+gamepad = $(python3 "$ROOT/scripts/pad_profile.py" sunshine)
+# Hold Back/Select 500ms → HOME. On x360 this is the UHID Guide path;
+# switch/ds5 do not keep that Steam Guide shortcut. Default is -1 (off).
 back_button_timeout = 500
 ${audio_sink_line}
 min_log_level = info

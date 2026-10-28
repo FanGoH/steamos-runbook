@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """GameStream virtual-pad profiles (sunshine-ds ``gamepad`` + emulator binds).
 
-One knob: ``GAMESTREAM_PAD_PROFILE`` in ``.env`` (default ``x360``). Cemu uses
-SDL GameController labels, so a profile switch mainly changes GUID/VID/PID.
-Azahar uses packed joystick indices, which differ between Xbox (15-button
-sparse) and DualSense/DS4 (11-button dense). Do not change the profile without
-rewriting Azahar maps and restarting sunshine-ds.
+One knob: ``GAMESTREAM_PAD_PROFILE`` in ``.env`` (default ``x360``). Sunshine
+creates that virtual pad (motion on ``switch`` / ``ds5`` / ``ds4``).
+
+EmuPads sinks stay Xbox 15-button. ``emupads-mux`` remaps Switch Pro sources
+onto those sinks, so Cemu / Azahar / Eden keep sink maps from
+``sink_profile()`` (always ``x360``). Azahar packed indices only matter when
+binding an emulator straight to a Sunshine pad — do not do that while the mux
+is up. Restart sunshine-ds after changing the profile.
 """
 from __future__ import annotations
 
@@ -144,6 +147,20 @@ class PadProfile:
 
 
 PROFILES: dict[str, PadProfile] = {
+    "auto": PadProfile(
+        name="auto",
+        sunshine_gamepad="auto",
+        vendor="045e",
+        product="0b13",
+        supports_motion=True,
+        steam_guide=False,
+        azahar_map=_AZAHAR_SPARSE_XBOX,
+        notes=(
+            "Sunshine picks pad type from Moonlight LI_CTYPE (and motion caps). "
+            "Use gamestream-pad-config moonlight_report_type=host so Odin reports "
+            "Switch while sending device gyro."
+        ),
+    ),
     "x360": PadProfile(
         name="x360",
         sunshine_gamepad="x360",
@@ -176,15 +193,59 @@ PROFILES: dict[str, PadProfile] = {
     ),
     "switch": PadProfile(
         name="switch",
-        sunshine_gamepad="switch",
+        # Follow Moonlight LI_CTYPE (Host/Switch/Xbox toggle). Host mode reports
+        # Nintendo via fgpc; forcing gamepad=switch ignored Xbox and always
+        # spawned a Switch Pro.
+        sunshine_gamepad="auto",
         vendor="057e",
         product="2009",
         supports_motion=True,
         steam_guide=False,
         azahar_map=_AZAHAR_SWITCH,
-        notes="Switch Pro. Gyro yes; Nintendo face packing. Untested on GameStream Azahar.",
+        notes=(
+            "Preferred pad is Switch Pro when Moonlight is Host/Switch. Sunshine "
+            "gamepad=auto so an Xbox toggle creates Xbox on the host. EmuPads "
+            "mux remaps onto Xbox sinks. Steam Guide (hold-Select) is not the "
+            "x360 path."
+        ),
     ),
 }
+
+
+def sink_profile() -> PadProfile:
+    """EmuPads P1/P2 packing — always Xbox 15-button, regardless of Sunshine profile."""
+    return PROFILES["x360"]
+
+
+def uhid_writable(path: str = "/dev/uhid") -> bool:
+    """Switch / DualSense / DS4 need ``/dev/uhid``. x360 uses uinput only."""
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
+
+
+def needs_uhid(profile: PadProfile | None = None) -> bool:
+    p = profile or load_profile()
+    return p.name in ("switch", "ds5", "ds4", "auto")
+
+
+def effective_profile() -> PadProfile:
+    """Requested profile, or x360 when motion profiles cannot open /dev/uhid."""
+    requested = load_profile()
+    if requested.name == "auto":
+        return requested
+    if needs_uhid(requested) and not uhid_writable():
+        print(
+            f"GAMESTREAM_PAD_PROFILE={requested.name} needs /dev/uhid "
+            "(Permission denied). Falling back to x360 until "
+            "scripts/ensure-libvirtualhid-uhid.sh installs the udev rule.",
+            file=sys.stderr,
+        )
+        return PROFILES["x360"]
+    return requested
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -200,11 +261,37 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _host_config_profile() -> str | None:
+    """Optional override from ~/.config/emupads/gamestream-pad.json."""
+    path = Path(
+        os.environ.get(
+            "GAMESTREAM_PAD_CONFIG",
+            Path.home() / ".config/emupads/gamestream-pad.json",
+        )
+    )
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    prof = raw.get("profile")
+    if prof is None or str(prof).strip() == "":
+        return None
+    return str(prof).strip().lower()
+
+
 def requested_profile_name() -> str:
-    env = os.environ.get("GAMESTREAM_PAD_PROFILE", "").strip()
-    if not env:
-        env = _parse_env_file(ROOT / ".env").get("GAMESTREAM_PAD_PROFILE", "")
-    name = (env or DEFAULT_NAME).strip().lower()
+    host = _host_config_profile()
+    if host:
+        name = host
+    else:
+        env = os.environ.get("GAMESTREAM_PAD_PROFILE", "").strip()
+        if not env:
+            env = _parse_env_file(ROOT / ".env").get("GAMESTREAM_PAD_PROFILE", "")
+        name = (env or DEFAULT_NAME).strip().lower()
     if name in ("xbox", "xbox360", "360"):
         return "x360"
     if name in ("dualsense", "ps5"):
@@ -270,8 +357,8 @@ def emu_sink_env_bash() -> str:
 
 
 def apply_sunshine_conf(path: Path | None = None) -> bool:
-    """Set ``gamepad =`` from the active profile. Does not restart sunshine-ds."""
-    profile = load_profile()
+    """Set ``gamepad =`` from the effective profile. Does not restart sunshine-ds."""
+    profile = effective_profile()
     conf = path or Path(
         os.environ.get("SUNSHINE_DS_CONF")
         or str(SUNSHINE_DS_CONF)
@@ -298,6 +385,8 @@ def apply_sunshine_conf(path: Path | None = None) -> bool:
 
 
 def profile_public_dict(profile: PadProfile) -> dict[str, object]:
+    sink = sink_profile()
+    eff = effective_profile()
     return {
         "name": profile.name,
         "sunshine_gamepad": profile.sunshine_gamepad,
@@ -306,6 +395,10 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
         "vid_pid": f"{profile.vendor}:{profile.product}",
         "supports_motion": profile.supports_motion,
         "steam_guide": profile.steam_guide,
+        "sink_profile": sink.name,
+        "needs_uhid": needs_uhid(profile),
+        "uhid_writable": uhid_writable(),
+        "effective_name": eff.name,
         "sdl_except": sdl_except(profile),
         "sdl_except_sinks": sdl_except_sinks(),
         "notes": profile.notes,
@@ -315,34 +408,60 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
 def _self_test() -> int:
     x360 = load_profile("x360")
     ds5 = load_profile("ds5")
+    switch = load_profile("switch")
     assert x360.vendor == "045e" and x360.product == "028e"
     assert not x360.supports_motion and x360.steam_guide
     assert ds5.supports_motion and ds5.vendor == "054c"
+    assert switch.supports_motion and switch.vendor == "057e"
+    assert sink_profile().name == "x360"
     assert "button:6" in x360.azahar_map["button_l"]
     assert "button:10" in x360.azahar_map["button_select"]
     assert "button:4" in ds5.azahar_map["button_l"]
     assert "button:6" in ds5.azahar_map["button_select"]
+    assert "button:4" in switch.azahar_map["button_l"]
     except_s = sdl_except(x360)
     assert "0x045e/0x028e" in except_s
     assert "0x054c/0x0ce6" in except_s
+    assert "0x057e/0x2009" in except_s
     sinks = sdl_except_sinks()
     assert "0x1209/0xe301" in sinks
     assert "0x1209/0xe302" in sinks
     env = emu_sink_env()
     assert env["SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"] == sinks
     assert env["SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT"] == sinks
+    assert needs_uhid(switch) and not needs_uhid(x360)
+    pub = profile_public_dict(switch)
+    assert pub["sink_profile"] == "x360"
+    assert pub["supports_motion"] is True
+    assert pub["needs_uhid"] is True
     tmp = Path("/tmp/pad-profile-conf-test.conf")
     tmp.write_text("gamepad = auto\n")
     prev = os.environ.get("GAMESTREAM_PAD_PROFILE")
+    prev_cfg = os.environ.get("GAMESTREAM_PAD_CONFIG")
+    # Ignore host JSON so GAMESTREAM_PAD_PROFILE drives apply_sunshine_conf.
+    os.environ["GAMESTREAM_PAD_CONFIG"] = "/tmp/pad-profile-no-host-config.json"
     os.environ["GAMESTREAM_PAD_PROFILE"] = "x360"
     assert apply_sunshine_conf(tmp) is True
     assert "gamepad = x360" in tmp.read_text()
     assert apply_sunshine_conf(tmp) is False
+    os.environ["GAMESTREAM_PAD_PROFILE"] = "switch"
+    # switch prefers Switch via Moonlight Host LI_CTYPE, but sunshine stays auto
+    # so a client Xbox toggle is honored. Without /dev/uhid, fall back to x360.
+    if uhid_writable():
+        assert apply_sunshine_conf(tmp) is True
+        assert "gamepad = auto" in tmp.read_text()
+    else:
+        apply_sunshine_conf(tmp)
+        assert "gamepad = x360" in tmp.read_text()
     tmp.unlink(missing_ok=True)
     if prev is None:
         os.environ.pop("GAMESTREAM_PAD_PROFILE", None)
     else:
         os.environ["GAMESTREAM_PAD_PROFILE"] = prev
+    if prev_cfg is None:
+        os.environ.pop("GAMESTREAM_PAD_CONFIG", None)
+    else:
+        os.environ["GAMESTREAM_PAD_CONFIG"] = prev_cfg
     print("pad_profile self-test ok")
     return 0
 
@@ -375,11 +494,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(emu_sink_env_bash())
         return 0
     if cmd == "sunshine":
-        print(profile.sunshine_gamepad)
+        # Effective gamepad string for conf writers (falls back if uhid blocked).
+        print(effective_profile().sunshine_gamepad)
         return 0
     if cmd == "name":
         print(profile.name)
         return 0
+    if cmd == "uhid":
+        print("writable" if uhid_writable() else "blocked")
+        return 0 if uhid_writable() else 2
     if cmd == "apply-sunshine-conf":
         path = Path(args[1]) if len(args) > 1 else None
         apply_sunshine_conf(path)

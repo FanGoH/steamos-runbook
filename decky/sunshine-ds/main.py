@@ -140,3 +140,44 @@ class Plugin:
             "ok": True,
             "message": "Switching to Plasma. sunshine-ds starts when KWin is up. Moonlight: :48100.",
         }
+
+    async def ensure_kms_setcap(self) -> dict:
+        """Apply cap_sys_admin on Game Mode sunshine-ds-kms only.
+
+        Uses sudo -n hide-controllers-sysfs.sh kms-setcap (already NOPASSWD)
+        when /etc/sudoers.d/zzz-sunshine-ds-kms-setcap is missing. Never
+        touches desktop ~/.local/bin/sunshine-ds.
+        """
+        helper = os.path.join(_playbook(), "scripts", "hide-controllers-sysfs.sh")
+        if not os.path.isfile(helper):
+            return {"ok": False, "message": f"Missing {helper}"}
+        r = subprocess.run(
+            ["sudo", "-n", helper, "kms-setcap"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        home = _user_home()
+        caps = []
+        for path in (
+            os.path.join(home, ".local", "bin", "sunshine-ds-kms"),
+            os.path.join(home, ".local", "bin", "sunshine-ds-kms.new"),
+        ):
+            if not os.path.isfile(path):
+                continue
+            g = subprocess.run(
+                ["getcap", path],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            caps.append((g.stdout or "").strip())
+        ok = r.returncode == 0 and any("cap_sys_admin" in c for c in caps)
+        _log(f"ensure_kms_setcap rc={r.returncode} caps={caps}")
+        return {
+            "ok": ok,
+            "rc": r.returncode,
+            "stdout": (r.stdout or "").strip(),
+            "stderr": (r.stderr or "").strip(),
+            "getcap": caps,
+        }

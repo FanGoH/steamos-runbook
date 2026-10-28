@@ -52,4 +52,16 @@ if [ -n "${CURSOR_WORKER_NAME:-}" ]; then
 fi
 args+=(start)
 
-exec "$AGENT" "${args[@]}"
+# Do not exec: worker-mode auth can fail while `agent status` still says
+# logged in. Exit 75 so systemd RestartPreventExitStatus stops the loop.
+set +e
+"$AGENT" "${args[@]}"
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then
+  if tail -n 40 "$ROOT/logs/cursor-agent-worker.log" 2>/dev/null | grep -q "Authentication required"; then
+    echo "Authentication required for worker mode." >&2
+    exit 75
+  fi
+fi
+exit "$rc"

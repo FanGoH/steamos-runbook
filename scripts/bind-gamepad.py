@@ -53,7 +53,12 @@ from pad_profile import load_profile
 
 INPUT_ROOT = Path("/sys/class/input")
 SKIP_VENDORS = {"0000", "001f", "26ce", "046d", "beef"}
-SKIP_PRODUCTS = {("1209", "0003")}  # libvirtualhid Mouse
+SKIP_PRODUCTS = {
+    ("1209", "0002"),  # libvirtualhid Keyboard
+    ("1209", "0003"),  # libvirtualhid Mouse
+    ("1209", "0004"),  # libvirtualhid Touchscreen
+    ("1209", "0006"),  # libvirtualhid Pen Tablet
+}
 SINK_VENDOR = "1209"
 SINK_PRODUCTS = ("e301", "e302")
 SINK_NAMES = ("EmuPads P1", "EmuPads P2")
@@ -2840,6 +2845,14 @@ def _self_test() -> int:
         )
         _write_js(
             root,
+            "js11",
+            name="libvirtualhid Pen Tablet",
+            vendor="1209",
+            product="0006",
+            version="0114",
+        )
+        _write_js(
+            root,
             "js10",
             name="Microsoft X-Box 360 pad 0",
             vendor="28de",
@@ -2849,7 +2862,7 @@ def _self_test() -> int:
         listed = list_joysticks(root)
         assert all(not p["name"].startswith("EmuPads") for p in listed), listed
         assert all(p["product"] not in SINK_PRODUCTS for p in listed)
-        assert all(p["product"] != "0003" for p in listed)
+        assert all(p["product"] not in {"0002", "0003", "0004", "0006"} for p in listed)
         assert all(p["product"] != "11ff" for p in listed), listed
         assert any("Thor" in p["name"] for p in listed), listed
         sinks = list_sink_joysticks(root)

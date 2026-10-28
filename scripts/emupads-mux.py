@@ -36,7 +36,12 @@ SINK_PRODUCTS = (0xE301, 0xE302)
 SINK_NAMES = ("EmuPads P1", "EmuPads P2")
 SINK_VERSION = 0x0114
 SKIP_VENDORS = {0x0000, 0x001F, 0x26CE, 0x046D, 0xBEEF}
-SKIP_PRODUCTS = {(0x1209, 0x0003)}  # libvirtualhid Mouse
+SKIP_PRODUCTS = {
+    (0x1209, 0x0002),  # libvirtualhid Keyboard
+    (0x1209, 0x0003),  # libvirtualhid Mouse
+    (0x1209, 0x0004),  # libvirtualhid Touchscreen
+    (0x1209, 0x0006),  # libvirtualhid Pen Tablet
+}
 STEAM_VIRTUAL = (0x28DE, 0x11FF)  # Steam Input wrap; duplicates Sunshine / physical
 CONFIG_PATH = Path(os.environ.get("EMUPADS_MUX_CONFIG", Path.home() / ".config/emupads/mux.json"))
 PID_NAME = "emupads-mux.pid"
@@ -113,6 +118,23 @@ def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: in
     return int(round(max(dst_min, min(dst_max, out))))
 
 
+def trigger_source_range(rng: tuple[int, int] | None) -> tuple[int, int]:
+    """ABS_Z is often advertised as a stick (±32767) while xpad/Sunshine emit 0–255.
+
+    Scaling 0–255 through a signed stick range compresses LT to ~half of RT.
+    """
+    if rng is None:
+        return (0, 255)
+    src_min, src_max = rng
+    if src_min < 0:
+        if src_max <= 255:
+            return (0, 255)
+        if src_max <= 1023:
+            return (0, 1023)
+        return (0, 255)
+    return (src_min, src_max)
+
+
 def vid_pid(dev) -> tuple[int, int] | None:
     try:
         return int(dev.info.vendor), int(dev.info.product)
@@ -126,8 +148,15 @@ def is_steam_virtual(dev) -> bool:
 
 
 def is_sunshine_source(dev) -> bool:
+    """Moonlight pads only — not libvirtualhid mouse / tablet / keyboard."""
     low = (dev.name or "").lower()
-    return "sunshine" in low or "libvirtualhid" in low
+    if "sunshine" in low:
+        return True
+    if "libvirtualhid" not in low:
+        return False
+    if any(part in low for part in ("mouse", "keyboard", "tablet", "touch", "pen")):
+        return False
+    return True
 
 
 def is_local_usb_pad(dev) -> bool:
@@ -170,7 +199,9 @@ def is_source_name(name: str) -> bool:
     low = name.lower()
     if is_sink_name(name):
         return False
-    if "mouse" in low:
+    if any(part in low for part in ("mouse", "keyboard", "tablet", "touchscreen", "pen", "steamos-manager")):
+        return False
+    if "(imu)" in low or low.endswith(" imu"):
         return False
     return True
 
@@ -327,7 +358,10 @@ def forward_event(ui: UInput, ev, src=None) -> None:
     if ev.type == ecodes.EV_ABS and ev.code in _ABS:
         dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
-        if src_range is not None:
+        if ev.code in (ecodes.ABS_Z, ecodes.ABS_RZ):
+            src_range = trigger_source_range(src_range)
+            value = scale_axis(ev.value, src_range[0], src_range[1], dst.min, dst.max)
+        elif src_range is not None:
             value = scale_axis(ev.value, src_range[0], src_range[1], dst.min, dst.max)
         else:
             value = max(dst.min, min(dst.max, ev.value))
@@ -770,21 +804,33 @@ def self_test() -> int:
         Fake("Sunshine (libvirtualhid) AYN_Thor", "/dev/input/event10"),
         Fake("EmuPads P1", "/dev/input/event20", 0x1209, 0xE301),
         Fake("Sunshine (libvirtualhid) Mouse", "/dev/input/event11", 0x1209, 0x0003),
+        Fake("libvirtualhid Keyboard", "/dev/input/event17", 0x1209, 0x0002),
+        Fake("libvirtualhid Touchscreen", "/dev/input/event18", 0x1209, 0x0004),
+        Fake("libvirtualhid Pen Tablet", "/dev/input/event19", 0x1209, 0x0006),
         Fake("Odin2_Portal", "/dev/input/event12", 0x37D7, 0x0001),
         Fake("ASRock LED Controller", "/dev/input/event13", 0x26CE, 0x01A2),
         Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF),
         Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E),
+        Fake("steamos-manager", "/dev/input/event21", 0x28DE, 0x0000),
     ]
     # selected_sources expects InputDevice; duck-type name/path
     got = selected_sources(cfg, devices)  # type: ignore[arg-type]
     names = [d.name for d in got]
     assert "EmuPads P1" not in names
     assert "Sunshine (libvirtualhid) Mouse" not in names
+    assert "libvirtualhid Keyboard" not in names
+    assert "libvirtualhid Touchscreen" not in names
+    assert "libvirtualhid Pen Tablet" not in names
+    assert "steamos-manager" not in names
     assert "ASRock LED Controller" not in names
     assert "Sunshine (libvirtualhid) AYN_Thor" in names
     assert "Odin2_Portal" in names
     assert "Microsoft X-Box 360 pad 0" not in names
     assert "Microsoft X-Box 360 pad" not in names
+    assert is_sunshine_source(Fake("Sunshine (libvirtualhid) AYN_Thor", "/dev/input/event10"))
+    assert not is_sunshine_source(Fake("libvirtualhid Pen Tablet", "/dev/input/event19", 0x1209, 0x0006))
+    assert not is_source_name("libvirtualhid Keyboard")
+    assert not is_source_name("Sunshine (libvirtualhid) AYN_Thor (IMU)")
     usb_only = [Fake("Microsoft X-Box 360 pad", "/dev/input/event16", 0x045E, 0x028E)]
     usb_got = selected_sources(cfg, usb_only)  # type: ignore[arg-type]
     assert [d.name for d in usb_got] == ["Microsoft X-Box 360 pad"]
@@ -797,6 +843,14 @@ def self_test() -> int:
     assert abs(scale_axis(128, 0, 255, -32768, 32767)) < 256
     assert scale_axis(0, 0, 255, -32768, 32767) == -32768
     assert scale_axis(255, 0, 255, -32768, 32767) == 32767
+    assert scale_axis(255, 0, 255, 0, 255) == 255
+    assert scale_axis(0, 0, 255, 0, 255) == 0
+    # Signed stick absinfo + unsigned 0–255 samples used to pin LT at ~128.
+    assert scale_axis(255, -32768, 32767, 0, 255) == 128
+    assert trigger_source_range((-32768, 32767)) == (0, 255)
+    assert trigger_source_range((0, 255)) == (0, 255)
+    assert trigger_source_range((0, 1023)) == (0, 1023)
+    assert scale_axis(255, *trigger_source_range((-32768, 32767)), 0, 255) == 255
     cfg2 = {
         "mode": "multi",
         "sources": [{"name": "Odin2_Portal"}, {"name": "Sunshine (libvirtualhid) AYN_Thor"}],

@@ -22,6 +22,10 @@ worker_healthz_up() {
   return 1
 }
 
+worker_auth_required() {
+  tail -n 40 "$ROOT/logs/cursor-agent-worker.log" 2>/dev/null | grep -q "Authentication required"
+}
+
 if [ ! -x "$RUNNER" ]; then
   chmod +x "$RUNNER"
 fi
@@ -78,6 +82,9 @@ fi
 
 mkdir -p "/home/$STEAMOS_USER/.config/systemd/user" "$ROOT/logs" "$CURSOR_WORKER_DATA_DIR"
 
+# Encode workspace roots in the unit so .env extra-dir changes restart
+# a healthy worker. Do not restart just because the runner file is newer.
+worker_roots_comment="# WorkerRoots: ${worker_dirs[*]}"
 desired_unit="$(cat <<EOS
 [Unit]
 Description=Cursor Agent worker (My Machines)
@@ -86,12 +93,14 @@ After=default.target
 # Must not PartOf=/BindsTo= the Cursor AppImage — this worker outlives the GUI.
 StartLimitIntervalSec=120
 StartLimitBurst=8
+$worker_roots_comment
 
 [Service]
 Type=simple
 ExecStart=$RUNNER
 Restart=always
 RestartSec=10
+RestartPreventExitStatus=75
 Environment=HOME=/home/$STEAMOS_USER
 Environment=PATH=/home/$STEAMOS_USER/.local/bin:/usr/bin:/bin
 StandardOutput=append:$ROOT/logs/cursor-agent-worker.log
@@ -117,19 +126,27 @@ else
   echo "$SERVICE already enabled."
 fi
 
-if [ "$unit_changed" -eq 1 ] || [ "$RUNNER" -nt "$UNIT_PATH" ]; then
-  systemctl --user restart "$SERVICE" || true
-  echo "Restarted $SERVICE after unit or runner change."
-elif systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
-  echo "$SERVICE already active."
-else
-  systemctl --user start "$SERVICE" || true
-  echo "Started $SERVICE."
+if worker_healthz_up && [ "$unit_changed" -eq 0 ]; then
+  echo "$SERVICE already healthy ($HEALTHZ)."
+  exit 0
 fi
 
+systemctl --user reset-failed "$SERVICE" >/dev/null 2>&1 || true
+
 if [ "$logged_in" -eq 0 ]; then
+  systemctl --user stop "$SERVICE" >/dev/null 2>&1 || true
   echo "Unit installed; worker will stay down until agent login succeeds."
   exit 2
+fi
+
+if [ "$unit_changed" -eq 1 ] || ! worker_healthz_up; then
+  if systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+    systemctl --user restart "$SERVICE" || true
+    echo "Restarted $SERVICE after unit change or dead healthz."
+  else
+    systemctl --user start "$SERVICE" || true
+    echo "Started $SERVICE."
+  fi
 fi
 
 echo "Waiting up to ${WAIT_SECS}s for worker healthz at $HEALTHZ..."
@@ -139,9 +156,25 @@ while [ "$waited" -lt "$WAIT_SECS" ]; do
     echo "$SERVICE is healthy ($HEALTHZ)."
     exit 0
   fi
+  if worker_auth_required && ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+    break
+  fi
   sleep 1
   waited=$((waited + 1))
 done
+
+if worker_auth_required; then
+  systemctl --user stop "$SERVICE" >/dev/null 2>&1 || true
+  echo "Worker needs agent login (status can still look logged in)."
+  record_manual "Login to Cursor agent (do not put API keys in the repo)" <<EOF
+export PATH="\$HOME/.local/bin:\$PATH"
+agent login
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+systemctl --user reset-failed $SERVICE
+systemctl --user restart $SERVICE
+EOF
+  exit 2
+fi
 
 if systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
   echo "Warning: $SERVICE is active but healthz is not answering yet."
@@ -159,6 +192,7 @@ record_manual "Start Cursor agent worker (no sudo)" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 # If login expired:
 agent login
+systemctl --user reset-failed $SERVICE
 systemctl --user enable --now $SERVICE
 systemctl --user status $SERVICE --no-pager
 tail -n 50 $ROOT/logs/cursor-agent-worker.log

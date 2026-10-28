@@ -12,7 +12,7 @@ setup_user_dbus
 
 SERVICE="${SYNCTHING_SERVICE:-syncthing.service}"
 BIN="${SYNCTHING_BIN:-/home/${STEAMOS_USER}/.local/bin/syncthing}"
-VERSION="${SYNCTHING_VERSION:-v2.1.5}"
+VERSION="${SYNCTHING_VERSION:-v2.1.6}"
 UNIT_PATH="/home/${STEAMOS_USER}/.config/systemd/user/${SERVICE}"
 GUI="${SYNCTHING_GUI:-127.0.0.1:8384}"
 ARCH="$(uname -m)"
@@ -381,6 +381,15 @@ else
 fi
 echo "PCSX2 memcards: $PCSX2_PATH"
 export SYNCTHING_PCSX2_PATH="$PCSX2_PATH"
+
+UNCHARTED_PATH="${SYNCTHING_UNCHARTED_PATH:-/home/${STEAMOS_USER}/.local/share/uncharted-appimage/app/user/savedata}"
+WWHD_PATH="${SYNCTHING_WWHD_PATH:-/home/${STEAMOS_USER}/.local/share/wwhd/save}"
+mkdir -p "$UNCHARTED_PATH" "$WWHD_PATH"
+echo "Uncharted PC-port saves: $UNCHARTED_PATH (lab only)"
+echo "Wind Waker HD recomp saves: $WWHD_PATH"
+echo "Note: Thor/Odin Android ZeldaWWHDRecomp should share Android/data/org.wwhdrecomp.wwhd/files/save (same cking.sav layout). Handheld Autostart is not this playbook."
+export SYNCTHING_UNCHARTED_PATH="$UNCHARTED_PATH"
+export SYNCTHING_WWHD_PATH="$WWHD_PATH"
 python3 "$ROOT/scripts/syncthing_folders.py"
 
 echo "Syncthing save mesh OK."

@@ -111,8 +111,10 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-tender.sh` | Official GitHub Tender zip when behind; then `ensure-eden-component.sh --wrap-launcher` (releases overwrite `bin/rom-launcher`) |
 | `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
-| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden + Azahar + Dusklight + Cemu + PCSX2 memcards |
-| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share Eden/Azahar/Dusklight/Cemu/PCSX2 folders) |
+| `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden + Azahar + Dusklight + Cemu + PCSX2 + Uncharted (lab) + WWHD recomp |
+| `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share save folders) |
+| `scripts/ensure-gearlever.sh` | Gear Lever Flatpak + pin GitHub/GitLab update sources for AppImages that lack `.upd_info` |
+| `scripts/gearlever_update_sources.py` | Idempotent Gear Lever `gearlever.conf` update-manager pins |
 | `.cursor/skills/emu-save-mesh/` | Eden/Azahar/Dusklight/Cemu/PCSX2 Syncthing mesh; Azahar Game Mode writes the same RetroDECK sdmc |
 | `scripts/eden-from-retrodeck.sh` | Host-side Eden gamescope focus helper (overlay input, `-f`) |
 | `scripts/bind-gamepad.py` | List source pads; route EmuPads mux; bind Cemu/Azahar/Eden to P1/P2 (`apply --emu … --mode shared|multi`) |
@@ -196,8 +198,11 @@ Copy `.env.example` to `.env`. Important variables:
 | `AZAHAR_PAD_MATCH` | Desktop GameStream Azahar pad substring (default `Thor`). Game Mode script defaults to `Odin`. |
 | `AZAHAR_ROM` | Optional standalone Azahar ROM |
 | `SYNCTHING_BIN` | Official Syncthing binary (default `~/.local/bin/syncthing`) |
-| `SYNCTHING_VERSION` | Release tag to install (default `v2.1.5`) |
+| `SYNCTHING_VERSION` | Release tag to install (default `v2.1.6`) |
 | `SYNCTHING_PEER_IDS` | Space-separated peer device IDs (lab / Odin / Thor) if `config.xml` is regenerated |
+| `SYNCTHING_LAB_DEVICE_ID` | Optional lab device ID for Uncharted (else lookup Syncthing name `lab`) |
+| `SYNCTHING_UNCHARTED_PATH` | Uncharted PC-port savedata (default `~/.local/share/uncharted-appimage/app/user/savedata`, lab only) |
+| `SYNCTHING_WWHD_PATH` | ZeldaWWHDRecomp saves (default `~/.local/share/wwhd/save`) |
 
 `CURSOR_WORKER_DIR` is the registered repo. Extra checkouts go in `CURSOR_WORKER_EXTRA_DIRS` as additional workspace roots (one line, paths separated by spaces):
 

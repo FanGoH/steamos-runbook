@@ -34,11 +34,23 @@ CEMU_PATH = os.environ.get("SYNCTHING_CEMU_PATH", "").strip()
 PCSX2_ID = os.environ.get("SYNCTHING_PCSX2_FOLDER_ID", "pcsx2-saves")
 PCSX2_LABEL = os.environ.get("SYNCTHING_PCSX2_FOLDER_LABEL", "Pcsx2Saves")
 PCSX2_PATH = os.environ.get("SYNCTHING_PCSX2_PATH", "").strip()
-PEER_IDS = [
-    p.strip()
-    for p in os.environ.get("SYNCTHING_PEER_IDS", "").split()
-    if p.strip()
-]
+UNCHARTED_ID = os.environ.get("SYNCTHING_UNCHARTED_FOLDER_ID", "uncharted-saves")
+UNCHARTED_LABEL = os.environ.get("SYNCTHING_UNCHARTED_FOLDER_LABEL", "UnchartedSaves")
+UNCHARTED_PATH = os.environ.get("SYNCTHING_UNCHARTED_PATH", "").strip()
+WWHD_ID = os.environ.get("SYNCTHING_WWHD_FOLDER_ID", "wwhd-saves")
+WWHD_LABEL = os.environ.get("SYNCTHING_WWHD_FOLDER_LABEL", "WwhdSaves")
+WWHD_PATH = os.environ.get("SYNCTHING_WWHD_PATH", "").strip()
+LAB_DEVICE_ID = os.environ.get("SYNCTHING_LAB_DEVICE_ID", "").strip()
+LAB_DEVICE_NAME = os.environ.get("SYNCTHING_LAB_DEVICE_NAME", "lab").strip() or "lab"
+UNCHARTED_PEER_IDS_RAW = os.environ.get("SYNCTHING_UNCHARTED_PEER_IDS", "").strip()
+
+
+def parse_id_list(raw: str) -> list[str]:
+    text = (raw or "").strip().strip('"').strip("'")
+    return [p.strip().strip('"').strip("'") for p in text.split() if p.strip().strip('"').strip("'")]
+
+
+PEER_IDS = parse_id_list(os.environ.get("SYNCTHING_PEER_IDS", ""))
 
 
 def api_key() -> str:
@@ -128,6 +140,32 @@ def merge_devices(existing: list[dict], extra_ids: list[str], local_id: str) -> 
     return list(seen.values())
 
 
+def devices_for_folder(
+    existing: list[dict], extra_ids: list[str], local_id: str, exclusive: bool = False
+) -> list[dict]:
+    if exclusive:
+        return merge_devices([], extra_ids, local_id)
+    return merge_devices(existing, extra_ids, local_id)
+
+
+def lookup_device_id(devices: list[dict] | None, name: str) -> str | None:
+    want = (name or "").strip().lower()
+    if not want:
+        return None
+    for entry in devices or []:
+        got = (entry.get("name") or "").strip().lower()
+        if got == want:
+            return entry.get("deviceID") or entry.get("deviceId")
+    return None
+
+
+def uncharted_peer_ids(lab_ids: list[str], extra: str = UNCHARTED_PEER_IDS_RAW) -> list[str]:
+    override = parse_id_list(extra)
+    if override:
+        return override
+    return [did for did in lab_ids if did]
+
+
 def ensure_peer_devices(key: str, peer_ids: list[str], local_id: str) -> None:
     status, devices = request(key, "/rest/config/devices")
     known = {d.get("deviceID") for d in (devices or [])}
@@ -184,8 +222,15 @@ def ensure_gui_listen(key: str, wanted: str) -> None:
     print(f"Bound Syncthing GUI to {wanted}")
 
 
+def resolve_lab_id(devices: list[dict] | None) -> str:
+    if LAB_DEVICE_ID:
+        return LAB_DEVICE_ID
+    found = lookup_device_id(devices, LAB_DEVICE_NAME)
+    return found or ""
+
+
 def main() -> int:
-    if not AZAHAR_PATH and not EDEN_PATH and not DUSKLIGHT_PATH and not CEMU_PATH and not PCSX2_PATH:
+    if not AZAHAR_PATH and not EDEN_PATH and not DUSKLIGHT_PATH and not CEMU_PATH and not PCSX2_PATH and not UNCHARTED_PATH and not WWHD_PATH:
         print("No save-folder paths given; nothing to share")
         return 0
     key = api_key()
@@ -200,34 +245,63 @@ def main() -> int:
     _, folders = request(key, "/rest/config/folders")
     by_id = {f.get("id"): f for f in (folders or [])}
     extra = list(PEER_IDS)
+    _, st_devices = request(key, "/rest/config/devices")
+    lab_id = resolve_lab_id(st_devices or [])
 
     if EDEN_PATH:
         Path(EDEN_PATH).mkdir(parents=True, exist_ok=True)
-        devices = merge_devices(by_id.get(EDEN_ID, {}).get("devices") or [], extra, local_id)
+        devices = devices_for_folder(by_id.get(EDEN_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, EDEN_ID, EDEN_LABEL, EDEN_PATH, devices)
         by_id[EDEN_ID] = {"devices": devices}
 
     if AZAHAR_PATH:
         Path(AZAHAR_PATH).mkdir(parents=True, exist_ok=True)
-        devices = merge_devices(by_id.get(AZAHAR_ID, {}).get("devices") or [], extra, local_id)
+        devices = devices_for_folder(by_id.get(AZAHAR_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, AZAHAR_ID, AZAHAR_LABEL, AZAHAR_PATH, devices)
         by_id[AZAHAR_ID] = {"devices": devices}
 
     if DUSKLIGHT_PATH:
         Path(DUSKLIGHT_PATH).mkdir(parents=True, exist_ok=True)
-        devices = merge_devices(by_id.get(DUSKLIGHT_ID, {}).get("devices") or [], extra, local_id)
+        devices = devices_for_folder(by_id.get(DUSKLIGHT_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, DUSKLIGHT_ID, DUSKLIGHT_LABEL, DUSKLIGHT_PATH, devices)
         by_id[DUSKLIGHT_ID] = {"devices": devices}
 
     if CEMU_PATH:
         Path(CEMU_PATH).mkdir(parents=True, exist_ok=True)
-        devices = merge_devices(by_id.get(CEMU_ID, {}).get("devices") or [], extra, local_id)
+        devices = devices_for_folder(by_id.get(CEMU_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, CEMU_ID, CEMU_LABEL, CEMU_PATH, devices)
 
     if PCSX2_PATH:
         Path(PCSX2_PATH).mkdir(parents=True, exist_ok=True)
-        devices = merge_devices(by_id.get(PCSX2_ID, {}).get("devices") or [], extra, local_id)
+        devices = devices_for_folder(by_id.get(PCSX2_ID, {}).get("devices") or [], extra, local_id)
         ensure_folder(key, PCSX2_ID, PCSX2_LABEL, PCSX2_PATH, devices)
+
+    if UNCHARTED_PATH:
+        Path(UNCHARTED_PATH).mkdir(parents=True, exist_ok=True)
+        uncharted_ids = uncharted_peer_ids([lab_id] if lab_id else [])
+        if not uncharted_ids:
+            print(
+                "Uncharted PC-port saves present, but no lab Syncthing device "
+                f"(name {LAB_DEVICE_NAME!r} or SYNCTHING_LAB_DEVICE_ID). Skipping share."
+            )
+        else:
+            devices = devices_for_folder(
+                by_id.get(UNCHARTED_ID, {}).get("devices") or [],
+                uncharted_ids,
+                local_id,
+                exclusive=True,
+            )
+            ensure_folder(key, UNCHARTED_ID, UNCHARTED_LABEL, UNCHARTED_PATH, devices)
+            print("Uncharted PC-port saves are lab-only (not Thor / Odin).")
+
+    if WWHD_PATH:
+        Path(WWHD_PATH).mkdir(parents=True, exist_ok=True)
+        devices = devices_for_folder(by_id.get(WWHD_ID, {}).get("devices") or [], extra, local_id)
+        ensure_folder(key, WWHD_ID, WWHD_LABEL, WWHD_PATH, devices)
+        print(
+            "Note: Thor/Odin Android ZeldaWWHDRecomp should share the same folder "
+            "(Android/data/org.wwhdrecomp.wwhd/files/save). Handheld Autostart is not this playbook."
+        )
 
     return 0
 

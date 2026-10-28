@@ -118,8 +118,10 @@ def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: in
     return int(round(max(dst_min, min(dst_max, out))))
 
 
-# Odin/Thor Moonlight analog LT often tops out ~200/255 (Steam Test Input ~24k).
-TRIGGER_FULL_AT = int(os.environ.get("EMUPADS_TRIGGER_FULL", "200"))
+# Optional host fallback. Moonlight DS now remaps a firm press to 255.
+# Default 255 is a no-op so we do not double-scale after the new APK.
+# Old APKs: EMUPADS_TRIGGER_FULL=200
+TRIGGER_FULL_AT = int(os.environ.get("EMUPADS_TRIGGER_FULL", "255"))
 
 
 def expand_trigger_value(value: int, full_at: int = TRIGGER_FULL_AT) -> int:
@@ -886,11 +888,12 @@ def self_test() -> int:
     assert trigger_source_range((0, 255)) == (0, 255)
     assert trigger_source_range((0, 1023)) == (0, 1023)
     assert scale_axis(255, *trigger_source_range((-32768, 32767)), 0, 255) == 255
-    assert expand_trigger_value(0) == 0
-    assert expand_trigger_value(200) == 255
-    assert expand_trigger_value(100) == 128
-    assert expand_trigger_value(212) == 255
-    assert expand_trigger_value(255) == 255
+    assert expand_trigger_value(0, 200) == 0
+    assert expand_trigger_value(200, 200) == 255
+    assert expand_trigger_value(100, 200) == 128
+    assert expand_trigger_value(212, 200) == 255
+    assert expand_trigger_value(255, 200) == 255
+    assert expand_trigger_value(200) == 200
     class FakeWrite(Fake):
         def __init__(self, name):
             super().__init__(name, "/dev/input/event99")
@@ -909,8 +912,8 @@ def self_test() -> int:
 
     sun = FakeWrite("Sunshine (libvirtualhid) Odin2_Portal")
     out = rewrite_sunshine_trigger(sun, FakeEv(ecodes.EV_ABS, ecodes.ABS_Z, 200))
-    assert out.value == 255
-    assert (ecodes.EV_ABS, ecodes.ABS_Z, 255) in sun.writes
+    assert out.value == 200
+    assert sun.writes == []
     xbox = FakeWrite("Microsoft X-Box 360 pad")
     raw = rewrite_sunshine_trigger(xbox, FakeEv(ecodes.EV_ABS, ecodes.ABS_Z, 200))
     assert raw.value == 200

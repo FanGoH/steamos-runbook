@@ -46,6 +46,27 @@ def test_pin_4gb_overrides_global() -> None:
     assert "memory_layout_mode=0\n" in out
 
 
+def test_pin_known_4gb_creates_engage_only() -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "eden/custom"
+        (root / "0100A6301214E000.ini").parent.mkdir(parents=True)
+        (root / "0100A6301214E000.ini").write_text(
+            "memory_layout_mode\\use_global=true\n"
+            "memory_layout_mode=2\n"
+        )
+        pinned = mod.pin_known_4gb(root)
+        titles = {p.name for p in pinned}
+        assert titles == {"0100A6301214E000.ini"}
+        engage = (root / "0100A6301214E000.ini").read_text()
+        assert "memory_layout_mode\\use_global=false\n" in engage
+        assert "memory_layout_mode=0\n" in engage
+        assert not (root / "01007EF00011E000.ini").exists()
+        assert "0100152000022000.ini" not in titles
+        assert "0100F2C0115B6000.ini" not in titles
+
+
 def test_ensure_fps_mods_copies_atmosphere_ips() -> None:
     import tempfile
 
@@ -148,6 +169,7 @@ def test_repair_steam_11_when_emupads_missing() -> None:
 if __name__ == "__main__":
     test_borderless_and_async()
     test_pin_4gb_overrides_global()
+    test_pin_known_4gb_creates_engage_only()
     test_sdl_guid_stable()
     test_pick_emupads_p1_first()
     test_pick_no_fallback_without_emupads()

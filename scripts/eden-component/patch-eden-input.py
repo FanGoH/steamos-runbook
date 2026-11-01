@@ -15,6 +15,7 @@ Eden's UI writes for Xbox pads.
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import shutil
 import struct
@@ -44,6 +45,14 @@ EDEN_EMUPADS_BUTTONS = {
     "player_0_button_slright": "button:6",
     "player_0_button_srright": "button:7",
 }
+
+# Per-game 4GB guest DRAM. Global default is 8GB; use_global=true ignores
+# a custom value. Engage earlyooms a 15G cart on 8GB. MK8
+# (0100152000022000) and TotK (0100F2C0115B6000) must stay 8GB.
+# BOTW (01007EF00011E000) SetHeapSize abort is a guest panic, not 8GB DRAM.
+PIN_4GB_TITLES = (
+    "0100A6301214E000",  # Fire Emblem Engage
+)
 
 # Steam virtual ``28de:11ff`` is dense 11-button (no C/Z/TL2/TR2).
 EDEN_STEAM_11_BUTTONS = {
@@ -159,6 +168,30 @@ def pin_4gb_layout(text: str) -> str:
     if core in new:
         return new.replace(core, core + inject, 1)
     return new + "\n" + core + inject
+
+
+def custom_ini_dir(home: Path | None = None) -> Path:
+    if home is not None:
+        return home / ".config/eden/custom"
+    env = os.environ.get("XDG_CONFIG_HOME")
+    if env:
+        return Path(env) / "eden/custom"
+    return Path.home() / ".config/eden/custom"
+
+
+def pin_known_4gb(custom_dir: Path | None = None) -> list[Path]:
+    """Create/pin known 4GB custom inis so the first -g is already 4GB."""
+    root = custom_dir if custom_dir is not None else custom_ini_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    pinned: list[Path] = []
+    for title in PIN_4GB_TITLES:
+        path = root / f"{title}.ini"
+        text = path.read_text() if path.is_file() else ""
+        new = pin_4gb_layout(text)
+        if new != text:
+            path.write_text(new)
+        pinned.append(path)
+    return pinned
 
 
 def _rewrite_buttons(line: str, table: dict[str, str]) -> str:
@@ -345,11 +378,16 @@ def _write_if_changed(path: Path, text: str, new: str, msg: str) -> int:
 
 
 def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--pin-4gb-known":
+        pinned = pin_known_4gb()
+        for path in pinned:
+            print(f"Pinned 4GB memory layout in {path}")
+        return 0
     if len(sys.argv) == 3 and sys.argv[1] == "--pin-4gb":
         path = Path(sys.argv[2])
         if not path.is_file():
-            print(f"skip: no {path}")
-            return 0
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("")
         text = path.read_text()
         new = pin_4gb_layout(text)
         return _write_if_changed(
@@ -367,6 +405,7 @@ def main() -> int:
         print(
             f"usage: {sys.argv[0]} /path/to/qt-config.ini\n"
             f"       {sys.argv[0]} --pin-4gb /path/to/custom.ini\n"
+            f"       {sys.argv[0]} --pin-4gb-known\n"
             f"       {sys.argv[0]} --ensure-fps-mods",
             file=sys.stderr,
         )

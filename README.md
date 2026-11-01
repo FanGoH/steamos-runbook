@@ -110,7 +110,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
 | `scripts/ensure-switch2-controllers.sh` | Switch 2 BLE → uinput bridge (3.12 venv, user units, Steam BT scan off) |
 | `scripts/ensure-tender.sh` | Official GitHub Tender zip when behind; then `ensure-eden-component.sh --wrap-launcher` (releases overwrite `bin/rom-launcher`) |
-| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
+| `scripts/ensure-eden-component.sh` | Eden in RetroDECK user slot; Tender wrap for Switch dumps over 6GiB (host AppImage `-f -g`, Engage 4GB pin, including `~/.local/share/romm-tender/bin/rom-launcher`); move leftover 3DS dumps into `retrodeck/roms/n3ds` |
 | `scripts/ensure-syncthing.sh` | Official Syncthing v2 in `~/.local/bin`, user unit + linger, Eden + Azahar + Dusklight + Cemu + PCSX2 memcards |
 | `scripts/syncthing_folders.py` | REST helper used by `ensure-syncthing.sh` (GUI localhost, share Eden/Azahar/Dusklight/Cemu/PCSX2 folders) |
 | `.cursor/skills/emu-save-mesh/` | Eden/Azahar/Dusklight/Cemu/PCSX2 Syncthing mesh; Azahar Game Mode writes the same RetroDECK sdmc |

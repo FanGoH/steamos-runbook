@@ -12,6 +12,29 @@ HOST_EDEN_MIN_BYTES=$((6 * 1024 * 1024 * 1024))
 PLAYBOOK="${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}"
 PATCHER="$PLAYBOOK/scripts/eden-component/patch-eden-input.py"
 
+# Eden 0.2.1 + BOTW 1.9.0 aborts in U-King SetHeapSize (Userspace PANIC /
+# 2001-0114) with 4GB or 8GB. Base 1.5.0 boots. Tender drops 1.9.0 in
+# update/ next to the XCI; move it out so ext_content_from_game_dirs
+# cannot apply it. 1.8.2 can stay.
+stash_botw_19_update() {
+  local rom="$1"
+  local dir dest found
+  case "$rom" in
+    *01007EF00011E000*) ;;
+    *) return 0 ;;
+  esac
+  dir="$(dirname "$rom")"
+  dest="${XDG_DATA_HOME:-${HOME}/.local/share}/eden/botw-addon-stash/update"
+  found="$(find "$dir/update" -maxdepth 1 -type f \
+    \( -iname '*v1.9.0*' -o -iname '*1.9.0*' \) -print -quit 2>/dev/null || true)"
+  if [ -z "${found:-}" ]; then
+    return 0
+  fi
+  mkdir -p "$dest"
+  mv "$found" "$dest/"
+  echo "rom-launcher: stashed BOTW 1.9.0 update -> $dest (Eden 0.2.1 SetHeapSize abort)" >&2
+}
+
 pick_switch_rom() {
   local dir="$1"
   local match
@@ -133,12 +156,11 @@ if [ "$is_retrodeck" -eq 1 ] \
     # -g is the same BootGame as clicking the list; Eden runs it in the
     # MainWindow constructor before show(), which is why Steam sits on
     # Launching. No second-instance IPC to delay that.
-    # Pin 4GB only for Engage. MK8 (0100152000022000) must stay 8GB /
-    # 64-bit; --pin-4gb forced 32-bit and ExceptionRaised at 0x0.
-    engage_custom="${XDG_CONFIG_HOME}/eden/custom/0100A6301214E000.ini"
-    if [ -f "$engage_custom" ] && [ -f "$PATCHER" ]; then
-      python3 "$PATCHER" --pin-4gb "$engage_custom" || true
+    # Pin 4GB for Engage (15G earlyoom). MK8 / TotK / BOTW stay 8GB.
+    if [ -f "$PATCHER" ]; then
+      python3 "$PATCHER" --pin-4gb-known || true
     fi
+    stash_botw_19_update "$rom"
     exec env DESKTOPINTEGRATION=1 "$HOST_EDEN_APPIMAGE" -f -g "$rom"
   fi
 fi

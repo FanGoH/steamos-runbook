@@ -48,6 +48,7 @@ EOF
   done <<EOF
 /home/${STEAMOS_USER}/homebrew/plugins/decky-romm-sync/bin/rom-launcher
 /home/${STEAMOS_USER}/homebrew/plugins/romm-tender/bin/rom-launcher
+/home/${STEAMOS_USER}/.local/share/romm-tender/bin/rom-launcher
 EOF
 }
 
@@ -163,10 +164,7 @@ elif [ -f "$eden_ini" ]; then
   python3 "$PATCHER_SRC" "$eden_ini"
 fi
 python3 "$PATCHER_SRC" --ensure-fps-mods || true
-engage_custom="/home/${STEAMOS_USER}/.config/eden/custom/0100A6301214E000.ini"
-if [ -f "$engage_custom" ]; then
-  python3 "$PATCHER_SRC" --pin-4gb "$engage_custom"
-fi
+python3 "$PATCHER_SRC" --pin-4gb-known || true
 shortcuts_script="$ROOT/scripts/eden-component/set-steam-launch-options.py"
 # 3DS dumps often land in ~/emulation first. Move them into RetroDECK n3ds
 # (same inode, no copy) and mark Tender rom_installs launchable. Do this

@@ -806,6 +806,16 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-emupads-mux.sh
 EOF
 fi
+if systemctl --user is-enabled steamos-watch-resources.service >/dev/null 2>&1 \
+  && systemctl --user is-active steamos-watch-resources.service >/dev/null 2>&1; then
+  ok "steamos-watch-resources.service sampling RAM"
+else
+  warn "steamos-watch-resources.service not active"
+  record_manual "Enable RAM watcher" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-watch-resources.sh
+EOF
+fi
 if playbook_emupads_off; then
   ok "EmuPads Off (P1/P2 unplugged)"
 elif grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then

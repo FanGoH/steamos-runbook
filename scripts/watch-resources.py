@@ -5,14 +5,18 @@ Answers “did this session actually top RAM?” Capacity pressure is MemAvailab
 swap/zram, memory PSI, and earlyoom’s kill line. It does **not** measure DRAM
 bandwidth. Desktop Ryzen is dual-channel even with four DIMMs.
 
-  python3 scripts/watch-resources.py start          # background, 2s samples
-  python3 scripts/watch-resources.py stop           # kill watcher, write HTML
-  python3 scripts/watch-resources.py status
-  python3 scripts/watch-resources.py report         # HTML from latest jsonl
-  python3 scripts/watch-resources.py watch          # foreground (Ctrl-C)
-  python3 scripts/watch-resources.py sample         # one JSON snapshot
+Always-on (user systemd, daily jsonl under logs/resources/):
 
-Output: <playbook>/logs/resources/<stamp>.jsonl and .html (gitignored).
+  ./scripts/ensure-watch-resources.sh
+  python3 scripts/watch-resources.py report         # HTML, service keeps running
+  python3 scripts/watch-resources.py status
+
+One-shot / debug:
+
+  python3 scripts/watch-resources.py start|stop|watch|sample
+
+earlyoom.service already runs, but it only prints a journal line about once an
+hour (`-r 3600`). That is not a time series.
 """
 from __future__ import annotations
 
@@ -46,6 +50,12 @@ CMDLINE_LABELS = (
     ("retrodeck", "retrodeck"),
     ("steam", "steam"),
 )
+SERVICE_NAME = os.environ.get(
+    "WATCH_RESOURCES_SERVICE", "steamos-watch-resources.service"
+)
+CHART_POINTS = 720
+KEEP_DAYS_DEFAULT = 14
+ROLLING_INTERVAL_DEFAULT = 5.0
 
 
 def proc_root() -> Path:
@@ -101,6 +111,79 @@ def pid_path() -> Path:
 
 def session_path() -> Path:
     return runtime_dir() / "watch-resources.session"
+
+
+def daily_jsonl(when: float | None = None) -> Path:
+    stamp = time.strftime("%Y%m%d", time.localtime(when or time.time()))
+    return out_dir() / f"{stamp}.jsonl"
+
+
+def prune_old(keep_days: int = KEEP_DAYS_DEFAULT) -> list[str]:
+    removed: list[str] = []
+    cutoff = time.strftime(
+        "%Y%m%d", time.localtime(time.time() - max(1, keep_days) * 86400)
+    )
+    for p in out_dir().glob("*"):
+        if p.suffix not in {".jsonl", ".html", ".json"} and p.name != "latest.html":
+            continue
+        stem = p.name[:8]
+        if stem.isdigit() and stem < cutoff:
+            try:
+                p.unlink()
+                removed.append(p.name)
+            except OSError:
+                continue
+    return removed
+
+
+def downsample_series(
+    ys: list[float], max_points: int = CHART_POINTS, how: str = "max"
+) -> list[float]:
+    n = len(ys)
+    if n <= max_points or max_points < 2:
+        return list(ys)
+    out: list[float] = []
+    for i in range(max_points):
+        a = int(i * n / max_points)
+        b = max(a + 1, int((i + 1) * n / max_points))
+        chunk = ys[a:b]
+        if not chunk:
+            chunk = [ys[min(a, n - 1)]]
+        if how == "min":
+            out.append(min(chunk))
+        elif how == "last":
+            out.append(chunk[-1])
+        else:
+            out.append(max(chunk))
+    return out
+
+
+def systemd_cmd(*args: str):
+    import subprocess
+
+    env = os.environ.copy()
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    env.setdefault(
+        "DBUS_SESSION_BUS_ADDRESS", f"unix:path={env['XDG_RUNTIME_DIR']}/bus"
+    )
+    return subprocess.run(
+        ["systemctl", "--user", *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+
+def systemd_unit_path() -> Path:
+    return Path.home() / ".config/systemd/user" / SERVICE_NAME
+
+
+def service_active() -> bool:
+    try:
+        return systemd_cmd("is-active", "--quiet", SERVICE_NAME).returncode == 0
+    except OSError:
+        return False
 
 
 def _read(path: Path) -> str:
@@ -473,6 +556,7 @@ def summarize(samples: list[dict[str, Any]], host: dict[str, Any]) -> dict[str, 
     topped = False
     close = False
     reasons: list[str] = []
+    low_avail = min_avail <= 2 * 1024 * 1024
     if line and min_avail <= line:
         topped = True
         reasons.append(
@@ -485,17 +569,22 @@ def summarize(samples: list[dict[str, Any]], host: dict[str, Any]) -> dict[str, 
             f"MemAvailable bottomed at {kib_m(min_avail)} (earlyoom line "
             f"{kib_m(line)})."
         )
-    if peak_swap >= 256 * 1024:
-        topped = True
-        reasons.append(f"Swap peaked at {kib_m(peak_swap)}.")
-    elif peak_swap >= 64 * 1024:
+    elif low_avail:
         close = True
-        reasons.append(f"Swap climbed to {kib_m(peak_swap)}.")
-    if peak_zram >= 512 * 1024:
+        reasons.append(f"MemAvailable bottomed at {kib_m(min_avail)}.")
+    # Swap/zram only counts as capacity pressure when RAM is also scarce.
+    # Idle zram leftovers with 10 GiB available are not “topped”.
+    if low_avail and peak_swap >= 1024 * 1024:
+        topped = True
+        reasons.append(f"Swap peaked at {kib_m(peak_swap)} while RAM was scarce.")
+    elif low_avail and peak_swap >= 256 * 1024:
+        close = True
+        reasons.append(f"Swap climbed to {kib_m(peak_swap)} while RAM was scarce.")
+    if low_avail and peak_zram >= 512 * 1024:
         close = True
         reasons.append(
-            f"zram stored {kib_m(peak_zram)} uncompressed. zram is compressed "
-            "RAM, not extra capacity."
+            f"zram stored {kib_m(peak_zram)} uncompressed while RAM was scarce. "
+            "zram is compressed RAM, not extra capacity."
         )
     if peak_full >= 0.1:
         topped = True
@@ -649,13 +738,23 @@ def render_html(
         "unknown": "#8b949e",
     }
     accent = colors.get(verdict, "#8b949e")
-    used_gib = [v / (1024 * 1024) for v in _series_for(samples, "mem_used_kib")]
-    avail_gib = [v / (1024 * 1024) for v in _series_for(samples, "mem_available_kib")]
-    swap_mib = [v / 1024 for v in _series_for(samples, "swap_used_kib")]
-    zram_mib = [v / 1024 for v in _series_for(samples, "zram_orig_kib")]
-    psi_some = _series_for(samples, "psi_some_avg10")
-    psi_full = _series_for(samples, "psi_full_avg10")
-    vram_gib = [v / (1024 * 1024) for v in _series_for(samples, "vram_used_kib")]
+    used_gib = downsample_series(
+        [v / (1024 * 1024) for v in _series_for(samples, "mem_used_kib")], how="max"
+    )
+    avail_gib = downsample_series(
+        [v / (1024 * 1024) for v in _series_for(samples, "mem_available_kib")], how="min"
+    )
+    swap_mib = downsample_series(
+        [v / 1024 for v in _series_for(samples, "swap_used_kib")], how="max"
+    )
+    zram_mib = downsample_series(
+        [v / 1024 for v in _series_for(samples, "zram_orig_kib")], how="max"
+    )
+    psi_some = downsample_series(_series_for(samples, "psi_some_avg10"), how="max")
+    psi_full = downsample_series(_series_for(samples, "psi_full_avg10"), how="max")
+    vram_gib = downsample_series(
+        [v / (1024 * 1024) for v in _series_for(samples, "vram_used_kib")], how="max"
+    )
     total_gib = (host.get("mem_total_kib") or 0) / (1024 * 1024)
     kill_gib = (host.get("earlyoom_kill_kib") or 0) / (1024 * 1024)
     notify_gib = (host.get("earlyoom_notify_kib") or 0) / (1024 * 1024)
@@ -697,7 +796,9 @@ def render_html(
     if not interesting:
         interesting = sorted(peaks, key=lambda k: peaks[k], reverse=True)[:4]
     for i, name in enumerate(interesting[:6]):
-        ys = [v / (1024 * 1024) for v in _label_series(samples, name)]
+        ys = downsample_series(
+            [v / (1024 * 1024) for v in _label_series(samples, name)], how="max"
+        )
         proc_series.append((name, palette[i % len(palette)], ys))
     proc_max = max([0.5, *(max(ys) if ys else 0 for _n, _c, ys in proc_series)])
     proc_chart = svg_chart(proc_series, y_max=proc_max, y_unit="G") if proc_series else ""
@@ -823,33 +924,64 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def latest_jsonl() -> Path | None:
+    daily = daily_jsonl()
+    if daily.is_file():
+        return daily
     files = sorted(out_dir().glob("*.jsonl"))
     return files[-1] if files else None
 
 
-def write_report(jsonl: Path, host: dict[str, Any] | None = None) -> dict[str, Any]:
-    samples = load_jsonl(jsonl)
-    meta_path = jsonl.with_suffix(".meta.json")
-    meta = {}
-    if meta_path.is_file():
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            meta = {}
-    host = host or meta.get("host") or hardware_snapshot()
+def load_recent(hours: float) -> tuple[list[dict[str, Any]], list[Path]]:
+    cutoff = time.time() - max(0.1, hours) * 3600
+    paths = sorted(out_dir().glob("*.jsonl"))
+    samples: list[dict[str, Any]] = []
+    used: list[Path] = []
+    for path in paths:
+        rows = [s for s in load_jsonl(path) if float(s.get("t") or 0) >= cutoff]
+        if rows:
+            samples.extend(rows)
+            used.append(path)
+    samples.sort(key=lambda s: float(s.get("t") or 0))
+    return samples, used
+
+
+def write_report(
+    jsonl: Path | None = None,
+    host: dict[str, Any] | None = None,
+    samples: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    path = jsonl or latest_jsonl()
+    if samples is None:
+        if path is None:
+            return {"ok": False, "message": "no resource sessions in logs/resources"}
+        samples = load_jsonl(path)
+        meta_path = path.with_suffix(".meta.json")
+        meta = {}
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                meta = {}
+        host = host or meta.get("host") or hardware_snapshot()
+    else:
+        host = host or hardware_snapshot()
+        path = path or daily_jsonl()
     summary = summarize(samples, host)
     html = render_html(samples, host, summary)
-    html_path = jsonl.with_suffix(".html")
+    html_path = path.with_suffix(".html") if path else out_dir() / "latest.html"
     html_path.write_text(html, encoding="utf-8")
     latest = out_dir() / "latest.html"
     try:
         if latest.is_symlink() or latest.is_file():
             latest.unlink()
-        latest.symlink_to(html_path.name)
+        if html_path.resolve() != latest.resolve():
+            latest.symlink_to(html_path.name)
+        else:
+            latest.write_text(html, encoding="utf-8")
     except OSError:
         latest.write_text(html, encoding="utf-8")
     summary["html"] = str(html_path)
-    summary["jsonl"] = str(jsonl)
+    summary["jsonl"] = str(path) if path else None
     summary["ok"] = True
     return summary
 
@@ -900,16 +1032,21 @@ def cmd_sample() -> int:
 
 def cmd_status() -> int:
     pid = running_pid()
+    active = service_active()
     sess = read_session()
     jsonl = Path(sess["jsonl"]) if sess.get("jsonl") else latest_jsonl()
     samples = load_jsonl(jsonl) if jsonl else []
     data = {
         "ok": True,
-        "running": pid is not None,
+        "running": bool(pid) or active,
+        "service": SERVICE_NAME,
+        "service_active": active,
         "pid": pid,
         "session": sess.get("session"),
         "jsonl": str(jsonl) if jsonl else None,
-        "html": sess.get("html") or (str(jsonl.with_suffix(".html")) if jsonl else None),
+        "html": str(out_dir() / "latest.html")
+        if (out_dir() / "latest.html").exists()
+        else sess.get("html"),
         "samples": len(samples),
         "host": sess.get("host") or hardware_snapshot(),
     }
@@ -919,12 +1056,24 @@ def cmd_status() -> int:
     return 0
 
 
-def cmd_watch(interval: float, duration: float, jsonl: Path | None) -> int:
+def cmd_watch(
+    interval: float,
+    duration: float,
+    jsonl: Path | None,
+    rolling: bool = False,
+    keep_days: int = KEEP_DAYS_DEFAULT,
+) -> int:
     host = hardware_snapshot()
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    dest = jsonl or (out_dir() / f"{stamp}.jsonl")
+    dest = daily_jsonl() if rolling else (jsonl or (out_dir() / f"{stamp}.jsonl"))
     dest.parent.mkdir(parents=True, exist_ok=True)
-    meta = {"session": dest.stem, "host": host, "interval": interval, "jsonl": str(dest)}
+    meta = {
+        "session": dest.stem,
+        "host": host,
+        "interval": interval,
+        "jsonl": str(dest),
+        "rolling": rolling,
+    }
     dest.with_suffix(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     write_session({**meta, "pid": os.getpid(), "html": str(dest.with_suffix(".html"))})
     pid_path().write_text(str(os.getpid()) + "\n", encoding="utf-8")
@@ -938,8 +1087,24 @@ def cmd_watch(interval: float, duration: float, jsonl: Path | None) -> int:
     prev_vm = parse_vmstat()
     start = time.time()
     n = 0
-    with dest.open("a", encoding="utf-8") as fh:
+    if rolling:
+        prune_old(keep_days)
+    fh = dest.open("a", encoding="utf-8")
+    try:
         while not stop["flag"]:
+            if rolling:
+                wanted = daily_jsonl()
+                if wanted != dest:
+                    fh.close()
+                    dest = wanted
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    fh = dest.open("a", encoding="utf-8")
+                    meta["jsonl"] = str(dest)
+                    meta["session"] = dest.stem
+                    dest.with_suffix(".meta.json").write_text(
+                        json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+                    )
+                    prune_old(keep_days)
             sample = take_sample(prev_vm)
             prev_vm = {k: int(sample.get(k) or 0) for k in parse_vmstat()}
             fh.write(json.dumps(sample, separators=(",", ":")) + "\n")
@@ -952,13 +1117,20 @@ def cmd_watch(interval: float, duration: float, jsonl: Path | None) -> int:
                     f"used={kib_g(sample['mem_used_kib'])}\n"
                 )
                 sys.stderr.flush()
+            if rolling and n % 60 == 0:
+                write_report(dest, host)
             if duration > 0 and (time.time() - start) >= duration:
                 break
             deadline = time.time() + interval
             while not stop["flag"] and time.time() < deadline:
                 time.sleep(min(0.2, deadline - time.time()))
+    finally:
+        fh.close()
     summary = write_report(dest, host)
-    print(json.dumps(summary, indent=2))
+    if not rolling:
+        print(json.dumps(summary, indent=2))
+    else:
+        sys.stderr.write(f"watch-resources stopped html={summary.get('html')}\n")
     try:
         pid_path().unlink(missing_ok=True)
     except OSError:
@@ -967,6 +1139,48 @@ def cmd_watch(interval: float, duration: float, jsonl: Path | None) -> int:
 
 
 def cmd_start(interval: float, duration: float) -> int:
+    if duration <= 0 and systemd_unit_path().is_file():
+        if service_active():
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "running": True,
+                        "service": SERVICE_NAME,
+                        "jsonl": str(daily_jsonl()),
+                        "html": str(out_dir() / "latest.html"),
+                        "message": f"{SERVICE_NAME} already active. fgpc host ram report",
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+        got = systemd_cmd("start", SERVICE_NAME)
+        if got.returncode != 0:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "message": (got.stderr or got.stdout or "systemctl start failed").strip(),
+                        "service": SERVICE_NAME,
+                    },
+                    indent=2,
+                )
+            )
+            return 2
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "running": True,
+                    "service": SERVICE_NAME,
+                    "jsonl": str(daily_jsonl()),
+                    "message": f"Started {SERVICE_NAME}. Play; then fgpc host ram report",
+                },
+                indent=2,
+            )
+        )
+        return 0
     existing = running_pid()
     if existing:
         print(json.dumps({"ok": False, "message": f"already running pid={existing}", "pid": existing}))
@@ -1008,7 +1222,7 @@ def cmd_start(interval: float, duration: float) -> int:
                 "html": str(jsonl.with_suffix(".html")),
                 "log": str(log),
                 "interval": interval,
-                "message": "Watching. Play the session, then: python3 scripts/watch-resources.py stop",
+                "message": "Watching. Install the user unit with ./scripts/ensure-watch-resources.sh for always-on.",
             },
             indent=2,
         )
@@ -1031,6 +1245,8 @@ def subprocess_popen(cmd: list[str], log_fh: Any):
 
 def cmd_stop() -> int:
     sess = read_session()
+    if service_active():
+        systemd_cmd("stop", SERVICE_NAME)
     pid = running_pid()
     if pid:
         try:
@@ -1060,34 +1276,52 @@ def cmd_stop() -> int:
     return 0
 
 
-def cmd_report(jsonl: Path | None) -> int:
-    path = jsonl or latest_jsonl()
-    if not path:
-        print(json.dumps({"ok": False, "message": "no resource sessions in logs/resources"}))
-        return 2
-    summary = write_report(path)
+def cmd_report(jsonl: Path | None, hours: float | None = None) -> int:
+    host = hardware_snapshot()
+    if jsonl:
+        summary = write_report(jsonl, host)
+    else:
+        window = 24.0 if hours is None else hours
+        samples, used = load_recent(window)
+        if not samples:
+            print(json.dumps({"ok": False, "message": "no resource samples yet"}))
+            return 2
+        summary = write_report(used[-1] if used else None, host, samples=samples)
+        summary["hours"] = window
+        summary["files"] = [str(p) for p in used]
     print(json.dumps(summary, indent=2))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="RAM / PSI session watcher + HTML")
+    parser = argparse.ArgumentParser(description="RAM / PSI watcher + HTML")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("sample", help="One JSON snapshot")
-    sub.add_parser("status", help="Is the watcher running?")
-    start_p = sub.add_parser("start", help="Background watcher")
-    start_p.add_argument("--interval", type=float, default=2.0)
-    start_p.add_argument("--duration", type=float, default=0.0, help="Auto-stop seconds")
-    stop_p = sub.add_parser("stop", help="Stop watcher and write HTML")
-    del stop_p
-    watch_p = sub.add_parser("watch", help="Foreground loop (also used by start)")
-    watch_p.add_argument("--interval", type=float, default=2.0)
+    sub.add_parser("status", help="Is the watcher / user service running?")
+    start_p = sub.add_parser("start", help="Start user service, or a one-shot if no unit")
+    start_p.add_argument("--interval", type=float, default=ROLLING_INTERVAL_DEFAULT)
+    start_p.add_argument("--duration", type=float, default=0.0, help="One-shot seconds")
+    sub.add_parser("stop", help="Stop watcher/service and write HTML")
+    watch_p = sub.add_parser("watch", help="Foreground loop (systemd ExecStart)")
+    watch_p.add_argument("--interval", type=float, default=ROLLING_INTERVAL_DEFAULT)
     watch_p.add_argument("--duration", type=float, default=0.0)
     watch_p.add_argument("--jsonl", type=Path, default=None)
-    report_p = sub.add_parser("report", help="Write HTML from latest or given jsonl")
+    watch_p.add_argument(
+        "--rolling",
+        action="store_true",
+        help="Daily jsonl + prune (always-on service)",
+    )
+    watch_p.add_argument("--keep-days", type=int, default=KEEP_DAYS_DEFAULT)
+    report_p = sub.add_parser("report", help="Write HTML; does not stop the service")
     report_p.add_argument("--jsonl", type=Path, default=None)
+    report_p.add_argument(
+        "--hours",
+        type=float,
+        default=24.0,
+        help="How far back to chart (ignored if --jsonl)",
+    )
     args = parser.parse_args(argv)
-    interval = max(0.5, float(getattr(args, "interval", 2.0) or 2.0))
+    interval = max(0.5, float(getattr(args, "interval", ROLLING_INTERVAL_DEFAULT) or ROLLING_INTERVAL_DEFAULT))
     duration = max(0.0, float(getattr(args, "duration", 0.0) or 0.0))
     if args.cmd == "sample":
         return cmd_sample()
@@ -1098,9 +1332,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "stop":
         return cmd_stop()
     if args.cmd == "watch":
-        return cmd_watch(interval, duration, args.jsonl)
+        return cmd_watch(
+            interval,
+            duration,
+            args.jsonl,
+            rolling=bool(args.rolling),
+            keep_days=int(args.keep_days),
+        )
     if args.cmd == "report":
-        return cmd_report(args.jsonl)
+        hours = None if args.jsonl else float(args.hours)
+        return cmd_report(args.jsonl, hours=hours)
     parser.error("unknown command")
     return 2
 

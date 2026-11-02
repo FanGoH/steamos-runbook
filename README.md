@@ -139,7 +139,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `.cursor/skills/pad-hide/SKILL.md` | Hide extra USB/BT pads without unplugging (NMH3 / Moonlight) |
 | `.cursor/skills/decky-plugins/SKILL.md` | Reload Decky after every plugin edit (copy is not enough) |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
-| `scripts/watch-resources.py` | Background RAM / swap / zram / PSI / top RSS sampler. `start` while you play, `stop` writes a self-contained HTML report under `logs/resources/` (did this session top RAM?). `fgpc host ram start|stop|status|report` |
+| `scripts/watch-resources.py` | RAM / swap / zram / PSI / top RSS sampler. Always-on via `steamos-watch-resources.service` (daily jsonl). `fgpc host ram report` writes `logs/resources/latest.html` without stopping. earlyoom’s hourly journal line is not a time series. |
+| `scripts/ensure-watch-resources.sh` | Enable the user unit (`WantedBy=default.target` and `gamescope-session.target`). From `post-update.sh` / `bootstrap.sh` |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |
 | `decky/EmuQuick/` | Emu Quick plugin source (live docked/handheld + restart-only resolution) |

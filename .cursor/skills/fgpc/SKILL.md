@@ -21,7 +21,8 @@ fgpc pad list
 fgpc hide list
 fgpc stream gamemode start-kms
 fgpc complete install
-fgpc host ram start    # then play; fgpc host ram stop writes HTML
+fgpc host ram start    # always-on user service
+fgpc host ram report   # HTML; service keeps running
 ```
 
 Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in

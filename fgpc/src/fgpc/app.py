@@ -256,23 +256,21 @@ def host_ram(
     action: str = typer.Argument(
         "status", help="status | start | stop | report | sample"
     ),
-    interval: float = typer.Option(2.0, "--interval", help="Seconds between samples."),
-    duration: float = typer.Option(
-        0.0, "--duration", help="Auto-stop seconds (start only)."
-    ),
+    hours: float = typer.Option(24.0, "--hours", help="Chart window for report."),
 ) -> None:
-    """RAM / swap / PSI session watcher → self-contained HTML."""
+    """Always-on RAM / swap / PSI sampler → HTML (does not stop the service)."""
     known = ("status", "start", "stop", "report", "sample")
     if action not in known:
         err("action is status | start | stop | report | sample")
         raise typer.Exit(2)
-    args = [action]
     if action == "start":
-        args.extend(["--interval", str(interval)])
-        if duration > 0:
-            args.extend(["--duration", str(duration)])
+        result = run("ensure-watch-resources.sh", json_out=False, timeout=40, stream=True)
+        raise typer.Exit(result.rc)
+    args = [action]
+    if action == "report":
+        args.extend(["--hours", str(hours)])
     result = run("watch-resources.py", args, timeout=45)
-    _emit(result, ok_msg="" if action != "stop" else "HTML written.")
+    _emit(result, ok_msg="HTML written." if action in ("report", "stop") else "")
 
 
 # --- mode ---

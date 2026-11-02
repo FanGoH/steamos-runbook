@@ -14,7 +14,7 @@ fgpc stream status
 fgpc --help
 fgpc pad --help
 fgpc host ram start
-fgpc host ram stop
+fgpc host ram report
 ```
 
 Install: `scripts/ensure-fgpc.sh` (uv venv + `~/.local/bin/fgpc`).

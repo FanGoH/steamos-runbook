@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 
 spec = importlib.util.spec_from_file_location(
     "watch_resources",
@@ -170,6 +171,31 @@ def test_verdict_topped_by_available() -> None:
     assert "More GB" in summary["headline"]
 
 
+def test_verdict_ignores_idle_zram() -> None:
+    host = {
+        "mem_total_kib": 16 * 1024 * 1024,
+        "earlyoom_kill_kib": 307200,
+        "earlyoom_notify_kib": 409600,
+        "cpu": "AMD Ryzen 5 9600X",
+        "channel_note": "dual",
+    }
+    samples = [
+        {
+            "t": 1,
+            "iso": "a",
+            "mem_used_kib": 5 * 1024 * 1024,
+            "mem_available_kib": 10 * 1024 * 1024,
+            "swap_used_kib": 600 * 1024,
+            "zram_orig_kib": 590 * 1024,
+            "psi_some_avg10": 0.0,
+            "psi_full_avg10": 0.0,
+            "top": [],
+        }
+    ]
+    summary = mod.summarize(samples, host)
+    assert summary["capacity"] == "headroom", summary
+
+
 def test_verdict_close_on_high_use() -> None:
     host = {
         "mem_total_kib": 16 * 1024 * 1024,
@@ -222,6 +248,33 @@ def test_sample_and_html_from_fake_proc() -> None:
         assert "eden" in html
 
 
+def test_downsample_keeps_peak() -> None:
+    ys = [1.0] * 5000
+    ys[2500] = 42.0
+    out = mod.downsample_series(ys, max_points=100, how="max")
+    assert len(out) == 100
+    assert max(out) == 42.0
+    lows = [10.0] * 5000
+    lows[100] = 0.5
+    assert min(mod.downsample_series(lows, max_points=100, how="min")) == 0.5
+
+
+def test_prune_old_daily_files() -> None:
+    with _fake_roots() as td:
+        root = Path(td)
+        _install_fake(root)
+        out = root / "out"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "19990101.jsonl").write_text("{}\n", encoding="utf-8")
+        (out / "19990101.html").write_text("x", encoding="utf-8")
+        today = time.strftime("%Y%m%d")
+        (out / f"{today}.jsonl").write_text("{}\n", encoding="utf-8")
+        removed = mod.prune_old(keep_days=14)
+        assert "19990101.jsonl" in removed
+        assert not (out / "19990101.jsonl").exists()
+        assert (out / f"{today}.jsonl").exists()
+
+
 def test_watch_duration_writes_jsonl() -> None:
     with _fake_roots() as td:
         root = Path(td)
@@ -248,8 +301,11 @@ if __name__ == "__main__":
         test_channel_note_ryzen_is_dual,
         test_verdict_headroom,
         test_verdict_topped_by_available,
+        test_verdict_ignores_idle_zram,
         test_verdict_close_on_high_use,
         test_sample_and_html_from_fake_proc,
+        test_downsample_keeps_peak,
+        test_prune_old_daily_files,
         test_watch_duration_writes_jsonl,
     ]
     for fn in tests:

@@ -92,6 +92,14 @@ def test_refuse_host_mode_force() -> None:
     assert data["ok"] is False
 
 
+def test_host_metrics_offline() -> None:
+    status, data = _json("GET", "/api/host-metrics")
+    assert status == 200
+    assert data["ok"] is True
+    assert data["points"] == []
+    assert data["service"] == "host-metrics"
+
+
 def test_unknown_route() -> None:
     status, data = _json("GET", "/api/nope")
     assert status == 404
@@ -107,6 +115,7 @@ def main() -> int:
         test_index,
         test_static_files,
         test_refuse_host_mode_force,
+        test_host_metrics_offline,
         test_unknown_route,
     ]
     failed = 0

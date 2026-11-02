@@ -22,6 +22,7 @@ fgpc hide list
 fgpc stream gamemode start-kms
 fgpc complete install
 fgpc host metrics json # sysstat sadf -j memory/swap
+# Pi chart: https://lab.tailnet.fangoh.dev/  (polls GET /api/host-metrics)
 ```
 
 Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in

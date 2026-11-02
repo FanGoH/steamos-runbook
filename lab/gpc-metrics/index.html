@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>steammachine RAM</title>
+  <style>
+    :root {
+      --bg: #111318;
+      --fg: #e8eaed;
+      --muted: #9aa0a6;
+      --line: #2a2e37;
+      --used: #8ab4f8;
+      --avail: #81c995;
+      --swap: #fdd663;
+      --warn: #f28b82;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+    .card .k { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .04em; }
+    .card .v { font-size: 1.45rem; font-weight: 600; margin-top: 4px; }
+    .card.warn .v { color: var(--warn); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      background: transparent; color: var(--fg); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 10px; cursor: pointer;
+    }
+    button[aria-pressed="true"] { border-color: var(--used); color: var(--used); }
+    svg { width: 100%; height: 280px; border: 1px solid var(--line); border-radius: 8px; background: #0c0e12; }
+    .legend { display: flex; gap: 16px; color: var(--muted); font-size: 0.85rem; margin: 8px 0 0; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+    .err { color: var(--warn); min-height: 1.2em; margin: 8px 0; }
+    caption, .cap { color: var(--muted); font-size: 0.82rem; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>steammachine RAM</h1>
+    <p class="sub">sysstat on the Steam Machine, stored on lab. Times are Mexico City.</p>
+    <div class="cards" id="cards"></div>
+    <div class="toolbar">
+      <button data-h="6" aria-pressed="false">6h</button>
+      <button data-h="24" aria-pressed="true">24h</button>
+      <button data-h="72" aria-pressed="false">3d</button>
+      <button data-h="168" aria-pressed="false">7d</button>
+    </div>
+    <div class="err" id="err"></div>
+    <svg id="chart" viewBox="0 0 900 280" preserveAspectRatio="none" role="img" aria-label="RAM used, available, and swap over time"></svg>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--used)"></span>Used</span>
+      <span><span class="swatch" style="background:var(--avail)"></span>Available</span>
+      <span><span class="swatch" style="background:var(--swap)"></span>Swap used</span>
+    </div>
+    <p class="cap" id="cap">Source: sysstat on steammachine (60s) via Tailscale. Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.</p>
+  </main>
+  <script>
+    const TZ = "America/Mexico_City";
+    const GiB = 1024 * 1024;
+    let hours = 24;
+
+    const fmtGiB = (kb) => (kb == null ? "—" : (kb / GiB).toFixed(2) + " GiB");
+    const fmtPct = (n) => (n == null ? "—" : Number(n).toFixed(1) + "%");
+    const when = (iso) => {
+      try {
+        return new Date(iso).toLocaleString("en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      } catch { return iso; }
+    };
+
+    function cards(last, meta) {
+      const low = last && last.avail_kb != null && last.avail_kb < 2 * GiB;
+      document.getElementById("cards").innerHTML = [
+        ["Used", last ? fmtGiB(last.used_kb) : "—", false],
+        ["Available", last ? fmtGiB(last.avail_kb) : "—", low],
+        ["Used %", last ? fmtPct(last.used_pct) : "—", last && last.used_pct >= 85],
+        ["Swap used", last ? fmtGiB(last.swap_used_kb) : "—", last && last.swap_used_pct >= 20],
+      ].map(([k, v, warn]) => `<div class="card${warn ? " warn" : ""}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+      const stale = meta.last_error ? `Fetch error: ${meta.last_error}` : "";
+      document.getElementById("err").textContent = stale;
+      const n = (meta.points || []).length;
+      document.getElementById("cap").textContent =
+        `Source: sysstat on ${meta.host || "steammachine"} (60s) via Tailscale · ${n} samples in window · last poll ${meta.last_fetch ? when(meta.last_fetch) : "—"} Mexico City. Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.`;
+    }
+
+    function polyline(points, key, x0, y0, w, h, maxKb, color) {
+      if (!points.length || maxKb <= 0) return "";
+      const t0 = Date.parse(points[0].t);
+      const t1 = Date.parse(points[points.length - 1].t);
+      const span = Math.max(1, t1 - t0);
+      const coords = points.map((p) => {
+        const x = x0 + ((Date.parse(p.t) - t0) / span) * w;
+        const y = y0 + h - (Math.max(0, Number(p[key] || 0)) / maxKb) * h;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      return `<polyline fill="none" stroke="${color}" stroke-width="2" points="${coords}" />`;
+    }
+
+    function draw(points) {
+      const svg = document.getElementById("chart");
+      const padL = 48, padR = 12, padT = 16, padB = 28;
+      const w = 900 - padL - padR, h = 280 - padT - padB;
+      const maxKb = Math.max(
+        1,
+        ...points.map((p) => Number(p.total_kb || 0)),
+        ...points.map((p) => Number(p.used_kb || 0) + Number(p.avail_kb || 0)),
+      );
+      const yTicks = 4;
+      let grid = "";
+      for (let i = 0; i <= yTicks; i++) {
+        const y = padT + (h * i) / yTicks;
+        const gib = ((maxKb / GiB) * (1 - i / yTicks)).toFixed(0);
+        grid += `<line x1="${padL}" x2="${900 - padR}" y1="${y}" y2="${y}" stroke="#2a2e37" />`;
+        grid += `<text x="8" y="${y + 4}" fill="#9aa0a6" font-size="11">${gib}</text>`;
+      }
+      svg.innerHTML = grid
+        + polyline(points, "used_kb", padL, padT, w, h, maxKb, "#8ab4f8")
+        + polyline(points, "avail_kb", padL, padT, w, h, maxKb, "#81c995")
+        + polyline(points, "swap_used_kb", padL, padT, w, h, maxKb, "#fdd663");
+    }
+
+    async function load() {
+      const res = await fetch(`/api/series?hours=${hours}`);
+      const data = await res.json();
+      const points = data.points || [];
+      cards(points[points.length - 1], data);
+      draw(points);
+    }
+
+    document.querySelectorAll(".toolbar button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        hours = Number(btn.dataset.h);
+        document.querySelectorAll(".toolbar button").forEach((b) => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
+        load().catch((e) => { document.getElementById("err").textContent = String(e); });
+      });
+    });
+    load().catch((e) => { document.getElementById("err").textContent = String(e); });
+    setInterval(() => load().catch(() => {}), 30000);
+  </script>
+</body>
+</html>

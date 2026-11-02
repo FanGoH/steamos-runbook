@@ -59,7 +59,16 @@ def test_series_from_sadf() -> None:
     assert point["total_kb"] == 15396041
 
 
+def test_merge_series_dedupes() -> None:
+    left = {"ok": True, "host": "a", "interval_s": 60, "sa_file": "sa01", "points": [{"t": "2026-11-01T00:00:00Z", "used_kb": 1}]}
+    right = {"ok": True, "host": "b", "interval_s": 60, "sa_file": "sa02", "points": [{"t": "2026-11-01T00:00:00Z", "used_kb": 1}, {"t": "2026-11-02T00:00:00Z", "used_kb": 2}]}
+    got = mod.merge_series([left, right])
+    assert [p["t"] for p in got["points"]] == ["2026-11-01T00:00:00Z", "2026-11-02T00:00:00Z"]
+    assert got["sa_files"] == ["sa01", "sa02"]
+
+
 if __name__ == "__main__":
     test_sa_and_atop_names()
     test_series_from_sadf()
+    test_merge_series_dedupes()
     print("ok")

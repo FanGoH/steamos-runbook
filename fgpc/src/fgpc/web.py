@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -18,6 +19,8 @@ from urllib.parse import parse_qs, urlparse
 from fgpc.api import dump, run_action, self_test
 from fgpc.catalog import WEB_GROUPS
 from fgpc.playbook import playbook_root
+
+_host_metrics_mod = None
 
 STATIC_TYPES = {
     ".css": "text/css; charset=utf-8",
@@ -75,6 +78,23 @@ def listen_hosts() -> list[str]:
     return hosts
 
 
+def _host_metrics():
+    """Load scripts/host-metrics.py once (stdlib, no fgpc package)."""
+    global _host_metrics_mod
+    if _host_metrics_mod is not None:
+        return _host_metrics_mod
+    import importlib.util
+
+    path = playbook_root() / "scripts" / "host-metrics.py"
+    spec = importlib.util.spec_from_file_location("host_metrics", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"missing {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _host_metrics_mod = mod
+    return mod
+
+
 def _json_bytes(data: object, status: int = 200) -> tuple[int, bytes, str]:
     payload = json.dumps(data, indent=None).encode("utf-8")
     return status, payload, "application/json; charset=utf-8"
@@ -97,6 +117,14 @@ def handle_request(
     if method == "GET" and route == "/api/self-test":
         data = self_test()
         return _json_bytes(data, 200 if data.get("ok") else 500)
+    if method == "GET" and route == "/api/host-metrics":
+        if not live:
+            return _json_bytes({"ok": True, "points": [], "service": "host-metrics"})
+        try:
+            data = _host_metrics().series_payload()
+        except Exception as exc:  # noqa: BLE001 — return JSON, do not crash the server
+            return _json_bytes({"ok": False, "message": str(exc)}, 500)
+        return _json_bytes(data, 200 if data.get("ok") else 503)
     if method == "GET" and route == "/api/status":
         query = parse_qs(parsed.query)
         want_live = live
@@ -201,28 +229,46 @@ def _serve(host: str, port: int) -> ThreadingHTTPServer:
 
 def serve(hosts: list[str] | None = None, port: int | None = None) -> None:
     port = default_port() if port is None else port
-    hosts = listen_hosts() if hosts is None else hosts
-    if not hosts:
-        hosts = ["127.0.0.1"]
-    servers = [_serve(hosts[0], port)]
-    threads: list[threading.Thread] = []
-    for host in hosts[1:]:
-        extra = _serve(host, port)
-        servers.append(extra)
-        thread = threading.Thread(target=extra.serve_forever, daemon=True)
-        thread.start()
-        threads.append(thread)
-    print(
-        f"fgpc-web on {', '.join(f'http://{h}:{port}' for h in hosts)} "
-        f"(playbook {playbook_root()})",
-        flush=True,
-    )
+    wanted = listen_hosts() if hosts is None else hosts
+    if not wanted:
+        wanted = ["127.0.0.1"]
+    bound: dict[str, ThreadingHTTPServer] = {}
+    lock = threading.Lock()
+
+    def bind_one(host: str) -> bool:
+        with lock:
+            if host in bound:
+                return True
+            try:
+                server = _serve(host, port)
+            except OSError as exc:
+                print(f"fgpc-web cannot bind {host}:{port}: {exc}", flush=True)
+                return False
+            bound[host] = server
+            if host != wanted[0]:
+                threading.Thread(target=server.serve_forever, daemon=True).start()
+            print(f"fgpc-web listening http://{host}:{port}", flush=True)
+            return True
+
+    if not bind_one(wanted[0]):
+        raise OSError(f"fgpc-web failed to bind {wanted[0]}:{port}")
+    for host in wanted[1:]:
+        bind_one(host)
+
+    def watch_tailnet() -> None:
+        while True:
+            time.sleep(15)
+            for host in listen_hosts():
+                bind_one(host)
+
+    threading.Thread(target=watch_tailnet, daemon=True).start()
+    print(f"fgpc-web playbook {playbook_root()}", flush=True)
     try:
-        servers[0].serve_forever()
+        bound[wanted[0]].serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        for server in servers:
+        for server in list(bound.values()):
             server.shutdown()
 
 

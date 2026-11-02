@@ -2,6 +2,7 @@
 """Status + JSON dump for sysstat (sar) and atop.
 
   python3 scripts/host-metrics.py status
+  python3 scripts/host-metrics.py series        # compact points for the Pi webapp
   python3 scripts/host-metrics.py json          # sadf -j memory/swap/paging
   python3 scripts/host-metrics.py json --all    # whole sa file
 """
@@ -74,6 +75,90 @@ def cmd_status() -> int:
     return 0 if data["ok"] else 2
 
 
+def series_from_sadf(data: dict) -> dict:
+    """Compact memory/swap points from ``sadf -j -- -r -S -W`` JSON."""
+    hosts = ((data.get("sysstat") or {}).get("hosts")) or []
+    nodename = ""
+    interval = 60
+    points: list[dict[str, object]] = []
+    for host in hosts:
+        if not isinstance(host, dict):
+            continue
+        nodename = str(host.get("nodename") or nodename)
+        for row in host.get("statistics") or []:
+            if not isinstance(row, dict):
+                continue
+            ts = row.get("timestamp") or {}
+            mem = row.get("memory") or {}
+            if not isinstance(ts, dict) or not isinstance(mem, dict):
+                continue
+            date = str(ts.get("date") or "")
+            clock = str(ts.get("time") or "")
+            if not date or not clock:
+                continue
+            tz = str(ts.get("tz") or "UTC")
+            iso = f"{date}T{clock}Z" if tz == "UTC" else f"{date}T{clock}"
+            try:
+                interval = int(ts.get("interval") or interval)
+            except (TypeError, ValueError):
+                pass
+            used = mem.get("memused")
+            pct = mem.get("memused-percent")
+            avail = mem.get("avail")
+            total = None
+            if isinstance(used, (int, float)) and isinstance(pct, (int, float)) and pct:
+                total = int(round(float(used) / (float(pct) / 100.0)))
+            elif isinstance(used, (int, float)) and isinstance(avail, (int, float)):
+                total = int(used + avail)
+            points.append(
+                {
+                    "t": iso,
+                    "avail_kb": mem.get("avail"),
+                    "used_kb": mem.get("memused"),
+                    "used_pct": mem.get("memused-percent"),
+                    "swap_used_kb": mem.get("swpused"),
+                    "swap_used_pct": mem.get("swpused-percent"),
+                    "total_kb": total,
+                }
+            )
+    return {
+        "ok": True,
+        "host": nodename or "steammachine",
+        "unit": "kB",
+        "interval_s": interval,
+        "points": points,
+    }
+
+
+def series_payload() -> dict:
+    sa = sa_file()
+    if not sa.is_file():
+        return {
+            "ok": False,
+            "message": f"no {sa} yet (sysstat-collect.timer every 60s)",
+        }
+    got = _run(["sadf", "-j", str(sa), "--", "-r", "-S", "-W"], timeout=60)
+    if got.returncode != 0:
+        return {
+            "ok": False,
+            "message": (got.stderr or got.stdout or "sadf failed").strip(),
+            "rc": got.returncode,
+        }
+    try:
+        data = json.loads(got.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "message": f"sadf JSON: {exc}"}
+    out = series_from_sadf(data if isinstance(data, dict) else {})
+    out["sa_file"] = str(sa)
+    return out
+
+
+def cmd_series() -> int:
+    data = series_payload()
+    print(json.dumps(data))
+    return 0 if data.get("ok") else 2
+
+
 def cmd_json(all_metrics: bool) -> int:
     sa = sa_file()
     if not sa.is_file():
@@ -111,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="sysstat + atop status / JSON")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
+    sub.add_parser("series", help="Compact memory/swap points for the Pi webapp")
     jp = sub.add_parser("json", help="sadf -j memory/swap (today's sa file)")
     jp.add_argument(
         "--all",
@@ -120,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "status":
         return cmd_status()
+    if args.cmd == "series":
+        return cmd_series()
     if args.cmd == "json":
         return cmd_json(bool(args.all))
     parser.error("unknown command")

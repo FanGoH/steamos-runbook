@@ -1117,8 +1117,6 @@ def cmd_watch(
                     f"used={kib_g(sample['mem_used_kib'])}\n"
                 )
                 sys.stderr.flush()
-            if rolling and n % 60 == 0:
-                write_report(dest, host)
             if duration > 0 and (time.time() - start) >= duration:
                 break
             deadline = time.time() + interval
@@ -1126,11 +1124,10 @@ def cmd_watch(
                 time.sleep(min(0.2, deadline - time.time()))
     finally:
         fh.close()
-    summary = write_report(dest, host)
-    if not rolling:
-        print(json.dumps(summary, indent=2))
+    if rolling:
+        sys.stderr.write(f"watch-resources stopped jsonl={dest}\n")
     else:
-        sys.stderr.write(f"watch-resources stopped html={summary.get('html')}\n")
+        print(json.dumps(write_report(dest, host), indent=2))
     try:
         pid_path().unlink(missing_ok=True)
     except OSError:

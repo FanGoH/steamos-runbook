@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Always-on RAM / swap / PSI sampler. Writes daily jsonl under
-# logs/resources/ and latest.html. Not a substitute for earlyoom
-# (hourly journal one-liners). Never sudo systemctl --user.
+# Always-on RAM / swap / PSI sampler. Appends one JSON object per
+# interval to logs/resources/YYYYMMDD.jsonl. No HTML unless you run
+# `watch-resources.py report` later. Never sudo systemctl --user.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -68,7 +68,7 @@ fi
 i=0
 while [ "$i" -lt 15 ]; do
   if systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
-    echo "$SERVICE active; samples → $ROOT/logs/resources/ (HTML: fgpc host ram report)."
+    echo "$SERVICE active; JSONL snapshots → $ROOT/logs/resources/YYYYMMDD.jsonl"
     exit 0
   fi
   sleep 0.2

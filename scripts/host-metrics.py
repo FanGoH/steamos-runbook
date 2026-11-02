@@ -44,6 +44,13 @@ def sa_file(when: float | None = None) -> Path:
     return SA_DIR / f"sa{day}"
 
 
+def sa_files() -> list[Path]:
+    if not SA_DIR.is_dir():
+        return []
+    found = sorted(SA_DIR.glob("sa[0-9][0-9]"))
+    return [path for path in found if path.is_file()]
+
+
 def atop_file(when: float | None = None) -> Path:
     stamp = time.strftime("%Y%m%d", time.localtime(when or time.time()))
     return ATOP_DIR / f"atop_{stamp}"
@@ -130,26 +137,83 @@ def series_from_sadf(data: dict) -> dict:
     }
 
 
-def series_payload() -> dict:
-    sa = sa_file()
-    if not sa.is_file():
-        return {
-            "ok": False,
-            "message": f"no {sa} yet (sysstat-collect.timer every 60s)",
-        }
-    got = _run(["sadf", "-j", str(sa), "--", "-r", "-S", "-W"], timeout=60)
+def merge_series(parts: list[dict]) -> dict:
+    points: list[dict[str, object]] = []
+    seen: set[str] = set()
+    host = ""
+    interval = 60
+    files: list[str] = []
+    for part in parts:
+        host = str(part.get("host") or host)
+        try:
+            interval = int(part.get("interval_s") or interval)
+        except (TypeError, ValueError):
+            pass
+        sa = part.get("sa_file")
+        if sa:
+            files.append(str(sa))
+        for point in part.get("points") or []:
+            if not isinstance(point, dict):
+                continue
+            stamp = str(point.get("t") or "")
+            if not stamp or stamp in seen:
+                continue
+            seen.add(stamp)
+            points.append(point)
+    points.sort(key=lambda item: str(item.get("t") or ""))
+    return {
+        "ok": True,
+        "host": host or "steammachine",
+        "unit": "kB",
+        "interval_s": interval,
+        "sa_files": files,
+        "points": points,
+    }
+
+
+def _sadf_file(path: Path) -> dict:
+    got = _run(["sadf", "-j", str(path), "--", "-r", "-S", "-W"], timeout=60)
     if got.returncode != 0:
         return {
             "ok": False,
             "message": (got.stderr or got.stdout or "sadf failed").strip(),
-            "rc": got.returncode,
+            "sa_file": str(path),
         }
     try:
         data = json.loads(got.stdout or "{}")
     except json.JSONDecodeError as exc:
-        return {"ok": False, "message": f"sadf JSON: {exc}"}
+        return {"ok": False, "message": f"sadf JSON: {exc}", "sa_file": str(path)}
     out = series_from_sadf(data if isinstance(data, dict) else {})
-    out["sa_file"] = str(sa)
+    out["sa_file"] = str(path)
+    return out
+
+
+def series_payload() -> dict:
+    files = sa_files()
+    today = sa_file()
+    if today.is_file() and today not in files:
+        files.append(today)
+    if not files:
+        return {
+            "ok": False,
+            "message": f"no {today} yet (sysstat-collect.timer every 60s)",
+        }
+    parts: list[dict] = []
+    errors: list[str] = []
+    for path in files:
+        part = _sadf_file(path)
+        if part.get("ok"):
+            parts.append(part)
+        else:
+            errors.append(f"{path.name}: {part.get('message')}")
+    if not parts:
+        return {
+            "ok": False,
+            "message": "; ".join(errors) or "sadf failed",
+        }
+    out = merge_series(parts)
+    if errors:
+        out["warnings"] = errors
     return out
 
 

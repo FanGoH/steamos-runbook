@@ -24,7 +24,8 @@ ssh -o BatchMode=yes "$HOST" bash -s <<EOF
 set -euo pipefail
 sudo cp '$DEST/gpc-metrics.service' /etc/systemd/system/gpc-metrics.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now gpc-metrics.service
+sudo systemctl enable gpc-metrics.service
+sudo systemctl restart gpc-metrics.service
 sleep 1
 curl -sf --max-time 3 http://127.0.0.1:8020/healthz >/dev/null \
   || curl -sS --max-time 3 http://127.0.0.1:8020/healthz || true

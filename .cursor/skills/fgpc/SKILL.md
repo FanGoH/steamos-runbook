@@ -21,6 +21,7 @@ fgpc pad list
 fgpc hide list
 fgpc stream gamemode start-kms
 fgpc complete install
+fgpc host ram start    # then play; fgpc host ram stop writes HTML
 ```
 
 Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
@@ -30,7 +31,7 @@ Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
 
 | Group | Scripts |
 |---|---|
-| `host` | `health-check.sh`, `post-update.sh`, `bootstrap.sh` |
+| `host` | `health-check.sh`, `post-update.sh`, `bootstrap.sh`, `watch-resources.py` |
 | `mode` | `ensure-sunshine-ds.sh`, `switch-to-game-mode.sh` |
 | `stream` | desktop `:48100`, kms `:48200`, `sunshine-app-stop.sh` |
 | `screen` | `second-screen-windows.py` |

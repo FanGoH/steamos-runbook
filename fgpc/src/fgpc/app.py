@@ -183,6 +183,7 @@ def self_test() -> None:
     """Offline CLI checks (no kernel hide, no Steam)."""
     root = playbook_root()
     assert (root / "scripts" / "bind-gamepad.py").is_file()
+    assert (root / "scripts" / "watch-resources.py").is_file()
     from typer.testing import CliRunner
 
     runner = CliRunner()
@@ -191,6 +192,8 @@ def self_test() -> None:
     for group in ("host", "mode", "stream", "screen", "pad", "hide", "emu", "decky", "saves"):
         got = runner.invoke(app, [group, "--help"])
         assert got.exit_code == 0, f"{group}: {got.output}"
+    ram_help = runner.invoke(app, ["host", "ram", "--help"])
+    assert ram_help.exit_code == 0, ram_help.output
     hide = scripts() / "hide-controllers.py"
     if hide.is_file():
         result = run("hide-controllers.py", ["self-test"], json_out=False, timeout=20)
@@ -246,6 +249,30 @@ def host_bootstrap() -> None:
     """./bootstrap.sh on a fresh box."""
     result = run_root("bootstrap.sh", stream=True, timeout=600)
     raise typer.Exit(result.rc)
+
+
+@host_app.command("ram")
+def host_ram(
+    action: str = typer.Argument(
+        "status", help="status | start | stop | report | sample"
+    ),
+    interval: float = typer.Option(2.0, "--interval", help="Seconds between samples."),
+    duration: float = typer.Option(
+        0.0, "--duration", help="Auto-stop seconds (start only)."
+    ),
+) -> None:
+    """RAM / swap / PSI session watcher → self-contained HTML."""
+    known = ("status", "start", "stop", "report", "sample")
+    if action not in known:
+        err("action is status | start | stop | report | sample")
+        raise typer.Exit(2)
+    args = [action]
+    if action == "start":
+        args.extend(["--interval", str(interval)])
+        if duration > 0:
+            args.extend(["--duration", str(duration)])
+    result = run("watch-resources.py", args, timeout=45)
+    _emit(result, ok_msg="" if action != "stop" else "HTML written.")
 
 
 # --- mode ---

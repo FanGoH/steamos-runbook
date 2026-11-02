@@ -806,14 +806,13 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-emupads-mux.sh
 EOF
 fi
-if systemctl --user is-enabled steamos-watch-resources.service >/dev/null 2>&1 \
-  && systemctl --user is-active steamos-watch-resources.service >/dev/null 2>&1; then
-  ok "steamos-watch-resources.service sampling RAM"
+if systemctl is-enabled sysstat-collect.timer >/dev/null 2>&1 \
+  && systemctl is-active atop.service >/dev/null 2>&1; then
+  ok "sysstat + atop collecting host metrics (60s)"
 else
-  warn "steamos-watch-resources.service not active"
-  record_manual "Enable RAM watcher" <<EOF
-export XDG_RUNTIME_DIR=/run/user/\$(id -u)
-./scripts/ensure-watch-resources.sh
+  warn "sysstat/atop not collecting"
+  record_manual "Install sysstat + atop" <<EOF
+./scripts/ensure-host-metrics.sh
 EOF
 fi
 if playbook_emupads_off; then

@@ -21,8 +21,7 @@ fgpc pad list
 fgpc hide list
 fgpc stream gamemode start-kms
 fgpc complete install
-fgpc host ram start    # always-on user service
-fgpc host ram report   # HTML; service keeps running
+fgpc host metrics json # sysstat sadf -j memory/swap
 ```
 
 Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
@@ -32,7 +31,7 @@ Install: `scripts/ensure-fgpc.sh` → `~/.local/bin/fgpc` (uv venv in
 
 | Group | Scripts |
 |---|---|
-| `host` | `health-check.sh`, `post-update.sh`, `bootstrap.sh`, `watch-resources.py` |
+| `host` | `health-check.sh`, `post-update.sh`, `bootstrap.sh`, `host-metrics.py` |
 | `mode` | `ensure-sunshine-ds.sh`, `switch-to-game-mode.sh` |
 | `stream` | desktop `:48100`, kms `:48200`, `sunshine-app-stop.sh` |
 | `screen` | `second-screen-windows.py` |

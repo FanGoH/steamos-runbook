@@ -27,7 +27,7 @@ app = typer.Typer(
     add_completion=True,
 )
 
-host_app = typer.Typer(help="Bootstrap, post-update, health.")
+host_app = typer.Typer(help="Bootstrap, post-update, health, sysstat/atop.")
 mode_app = typer.Typer(help="Plasma Desktop DS vs Game Mode.")
 stream_app = typer.Typer(help="Moonlight sunshine-ds :48100 / :48200.")
 screen_app = typer.Typer(help="Second screen, windows, idle clock.")
@@ -183,7 +183,7 @@ def self_test() -> None:
     """Offline CLI checks (no kernel hide, no Steam)."""
     root = playbook_root()
     assert (root / "scripts" / "bind-gamepad.py").is_file()
-    assert (root / "scripts" / "watch-resources.py").is_file()
+    assert (root / "scripts" / "host-metrics.py").is_file()
     from typer.testing import CliRunner
 
     runner = CliRunner()
@@ -192,7 +192,7 @@ def self_test() -> None:
     for group in ("host", "mode", "stream", "screen", "pad", "hide", "emu", "decky", "saves"):
         got = runner.invoke(app, [group, "--help"])
         assert got.exit_code == 0, f"{group}: {got.output}"
-    ram_help = runner.invoke(app, ["host", "ram", "--help"])
+    ram_help = runner.invoke(app, ["host", "metrics", "--help"])
     assert ram_help.exit_code == 0, ram_help.output
     hide = scripts() / "hide-controllers.py"
     if hide.is_file():
@@ -251,26 +251,19 @@ def host_bootstrap() -> None:
     raise typer.Exit(result.rc)
 
 
-@host_app.command("ram")
-def host_ram(
-    action: str = typer.Argument(
-        "status", help="status | start | stop | report | sample"
-    ),
-    hours: float = typer.Option(24.0, "--hours", help="Chart window for report."),
+@host_app.command("metrics")
+def host_metrics(
+    action: str = typer.Argument("status", help="status | json | ensure"),
 ) -> None:
-    """Always-on RAM / swap / PSI sampler → HTML (does not stop the service)."""
-    known = ("status", "start", "stop", "report", "sample")
-    if action not in known:
-        err("action is status | start | stop | report | sample")
-        raise typer.Exit(2)
-    if action == "start":
-        result = run("ensure-watch-resources.sh", json_out=False, timeout=40, stream=True)
+    """sysstat + atop host history. JSON: sadf -j memory/swap."""
+    if action == "ensure":
+        result = run("ensure-host-metrics.sh", json_out=False, timeout=180, stream=True)
         raise typer.Exit(result.rc)
-    args = [action]
-    if action == "report":
-        args.extend(["--hours", str(hours)])
-    result = run("watch-resources.py", args, timeout=45)
-    _emit(result, ok_msg="HTML written." if action in ("report", "stop") else "")
+    if action not in ("status", "json"):
+        err("action is status | json | ensure")
+        raise typer.Exit(2)
+    result = run("host-metrics.py", [action], json_out=True, timeout=60)
+    _emit(result)
 
 
 # --- mode ---

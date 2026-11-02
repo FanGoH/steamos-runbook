@@ -13,8 +13,8 @@ fgpc hide list
 fgpc stream status
 fgpc --help
 fgpc pad --help
-fgpc host ram start
-fgpc host ram report
+fgpc host metrics status
+fgpc host metrics json
 ```
 
 Install: `scripts/ensure-fgpc.sh` (uv venv + `~/.local/bin/fgpc`).

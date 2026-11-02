@@ -806,6 +806,15 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 ./scripts/ensure-emupads-mux.sh
 EOF
 fi
+if systemctl is-enabled sysstat-collect.timer >/dev/null 2>&1 \
+  && systemctl is-active atop.service >/dev/null 2>&1; then
+  ok "sysstat + atop collecting host metrics (60s)"
+else
+  warn "sysstat/atop not collecting"
+  record_manual "Install sysstat + atop" <<EOF
+./scripts/ensure-host-metrics.sh
+EOF
+fi
 if playbook_emupads_off; then
   ok "EmuPads Off (P1/P2 unplugged)"
 elif grep -qxs "EmuPads P1" /sys/class/input/js*/device/name 2>/dev/null; then

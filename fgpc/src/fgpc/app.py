@@ -27,7 +27,7 @@ app = typer.Typer(
     add_completion=True,
 )
 
-host_app = typer.Typer(help="Bootstrap, post-update, health.")
+host_app = typer.Typer(help="Bootstrap, post-update, health, sysstat/atop.")
 mode_app = typer.Typer(help="Plasma Desktop DS vs Game Mode.")
 stream_app = typer.Typer(help="Moonlight sunshine-ds :48100 / :48200.")
 screen_app = typer.Typer(help="Second screen, windows, idle clock.")
@@ -183,6 +183,7 @@ def self_test() -> None:
     """Offline CLI checks (no kernel hide, no Steam)."""
     root = playbook_root()
     assert (root / "scripts" / "bind-gamepad.py").is_file()
+    assert (root / "scripts" / "host-metrics.py").is_file()
     from typer.testing import CliRunner
 
     runner = CliRunner()
@@ -191,6 +192,8 @@ def self_test() -> None:
     for group in ("host", "mode", "stream", "screen", "pad", "hide", "emu", "decky", "saves"):
         got = runner.invoke(app, [group, "--help"])
         assert got.exit_code == 0, f"{group}: {got.output}"
+    ram_help = runner.invoke(app, ["host", "metrics", "--help"])
+    assert ram_help.exit_code == 0, ram_help.output
     hide = scripts() / "hide-controllers.py"
     if hide.is_file():
         result = run("hide-controllers.py", ["self-test"], json_out=False, timeout=20)
@@ -246,6 +249,21 @@ def host_bootstrap() -> None:
     """./bootstrap.sh on a fresh box."""
     result = run_root("bootstrap.sh", stream=True, timeout=600)
     raise typer.Exit(result.rc)
+
+
+@host_app.command("metrics")
+def host_metrics(
+    action: str = typer.Argument("status", help="status | json | ensure"),
+) -> None:
+    """sysstat + atop host history. JSON: sadf -j memory/swap."""
+    if action == "ensure":
+        result = run("ensure-host-metrics.sh", json_out=False, timeout=180, stream=True)
+        raise typer.Exit(result.rc)
+    if action not in ("status", "json"):
+        err("action is status | json | ensure")
+        raise typer.Exit(2)
+    result = run("host-metrics.py", [action], json_out=True, timeout=60)
+    _emit(result)
 
 
 # --- mode ---

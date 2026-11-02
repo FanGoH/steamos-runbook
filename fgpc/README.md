@@ -13,6 +13,8 @@ fgpc hide list
 fgpc stream status
 fgpc --help
 fgpc pad --help
+fgpc host metrics status
+fgpc host metrics json
 ```
 
 Install: `scripts/ensure-fgpc.sh` (uv venv + `~/.local/bin/fgpc`).

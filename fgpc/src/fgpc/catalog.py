@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 GROUPS = [
-    ("host", "Bootstrap, post-update, health"),
+    ("host", "Bootstrap, post-update, health, sysstat/atop"),
     ("mode", "Plasma Desktop DS vs Game Mode"),
     ("stream", "Moonlight / sunshine-ds :48100 and :48200"),
     ("screen", "Second screen / GamePad clock / windows"),
@@ -25,6 +25,8 @@ EXAMPLES = [
     ("fgpc screen list", "gamescope windows on :0/:1/:2"),
     ("fgpc screen clock", "Idle clock on Thor bottom"),
     ("fgpc mode game", "Leave Plasma, stop desktop DS"),
+    ("fgpc host metrics status", "sysstat + atop collectors"),
+    ("fgpc host metrics json", "sadf -j memory/swap JSON"),
     ("fgpc emu status --emu eden", "Emu Quick rows"),
     ("fgpc decky reload 'Pad Hide'", "QAM after a plugin edit"),
     ("fgpc decky install playbook", "QAM Run post-update plugin"),
@@ -52,6 +54,7 @@ TIPS = [
     "EmuPads sinks 1209:e301/e302 are the bind target, not Sunshine pads.",
     "FOCUSED_APP=769 is Home/Library (mute), not Exit. Exit is SIGTERM only.",
     "TAILSCALE_HOSTNAME is steammachine. Never --reset / --ssh on this node.",
+    "Host RAM history is sysstat+atop (60s), not a playbook JSONL service. fgpc host metrics json.",
 ]
 
 TOPIC_HELP = {
@@ -62,6 +65,9 @@ TOPIC_HELP = {
   fgpc host post-update  ./post-update.sh (includes Tender zip + wrap)
                          Do not sudo. PLAYBOOK_SKIP / SKIP_ENSURE_* skip steps.
   fgpc host bootstrap    ./bootstrap.sh
+  fgpc host metrics status  sysstat + atop (60s history)
+  fgpc host metrics json    sadf -j memory/swap/paging
+  fgpc host metrics ensure  pacman sysstat+atop (needs sudo / QAM password)
 
 QAM Playbook is the same post-update.sh (background oneshot), plus
 Update Tender + wrap (`ensure-tender.sh`) without the full recovery.

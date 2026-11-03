@@ -82,6 +82,8 @@ DEFAULT_AZAHAR_INIS = (
 )
 DEFAULT_EDEN_INI = Path.home() / ".config/eden/qt-config.ini"
 EMUS = ("cemu", "azahar", "eden")
+SDL_EXCEPT_EMUPADS = "0x1209/0xE301,0x1209/0xE302"
+SDL_EXCEPT_SUNSHINE = "0x045e/0x028e"
 
 _CRC16_TABLE = []
 for _i in range(256):
@@ -300,6 +302,64 @@ def mux_config_path() -> Path:
     if cfg:
         return Path(cfg) / "emupads" / "mux.json"
     return Path.home() / ".config" / "emupads" / "mux.json"
+
+
+def eden_bind_path() -> Path:
+    env = os.environ.get("EMUPADS_EDEN_BIND")
+    if env:
+        return Path(env)
+    cfg = os.environ.get("XDG_CONFIG_HOME")
+    if cfg:
+        return Path(cfg) / "emupads" / "eden-bind"
+    return Path.home() / ".config" / "emupads" / "eden-bind"
+
+
+def load_eden_bind() -> str:
+    """Eden-only: ``mux`` (EmuPads P1) or ``sunshine`` (Moonlight pad)."""
+    env = (os.environ.get("EDEN_BIND") or "").strip().lower()
+    if env in ("sunshine", "direct", "host"):
+        return "sunshine"
+    if env in ("mux", "emupads"):
+        return "mux"
+    try:
+        raw = eden_bind_path().read_text().strip().splitlines()[0].strip().lower()
+    except (OSError, IndexError):
+        return "mux"
+    if raw in ("sunshine", "direct", "host"):
+        return "sunshine"
+    return "mux"
+
+
+def sdl_except_for_eden() -> str:
+    if load_eden_bind() == "sunshine":
+        return SDL_EXCEPT_SUNSHINE
+    return SDL_EXCEPT_EMUPADS
+
+
+def sunshine_pads_for_eden(root: Path) -> list[dict[str, str]]:
+    pads = [
+        p
+        for p in list_joysticks(root)
+        if p.get("sunshine") == "true" and "mouse" not in (p.get("name") or "").lower()
+    ]
+
+    def rank(pad: dict[str, str]) -> tuple[int, str]:
+        name = (pad.get("name") or "").lower()
+        if "odin" in name:
+            return (0, name)
+        if "thor" in name:
+            return (1, name)
+        return (2, name)
+
+    pads.sort(key=rank)
+    return pads
+
+
+def eden_ordered_pads(mode: str, root: Path) -> list[dict[str, str]]:
+    if load_eden_bind() == "sunshine":
+        pads = sunshine_pads_for_eden(root)
+        return pads[:2] if mode == "multi" else pads[:1]
+    return bind_sinks_for_mode(mode, root)
 
 
 def mux_pid_path() -> Path:
@@ -1777,8 +1837,10 @@ def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
                         f"engine:sdl,guid:{guid},",
                     )
             pad = pads[index]
-            if pad.get("product") in SINK_PRODUCTS or str(pad.get("name", "")).startswith(
-                "EmuPads"
+            if (
+                pad.get("product") in SINK_PRODUCTS
+                or str(pad.get("name", "")).startswith("EmuPads")
+                or pad.get("sunshine") == "true"
             ):
                 stripped = _rewrite_eden_x360_15(stripped, prefix)
             stripped = _ensure_eden_stick_deadzone(stripped, prefix)
@@ -2326,7 +2388,12 @@ def cmd_apply(args: argparse.Namespace) -> int:
         messages_route = [f"Mux routing {mode}: {names or 'all'}"]
         picked_out = picked
     sinks = bind_sinks_for_mode(mode, sysfs)
-    if not skip_mux and not any(s.get("js") for s in list_sink_joysticks(sysfs)):
+    need_sinks = not (emu == "eden" and load_eden_bind() == "sunshine")
+    if (
+        need_sinks
+        and not skip_mux
+        and not any(s.get("js") for s in list_sink_joysticks(sysfs))
+    ):
         return _emit_apply(
             rc=1,
             emu=emu,
@@ -2362,7 +2429,14 @@ def cmd_apply(args: argparse.Namespace) -> int:
         else:
             ini = getattr(args, "ini", None) if emu == "eden" else None
             path = Path(ini) if ini else DEFAULT_EDEN_INI
-            msgs, code, changed = apply_eden_pads(path, sinks, force=force)
+            eden_pads = eden_ordered_pads(mode, sysfs)
+            if load_eden_bind() == "sunshine" and not eden_pads:
+                messages.append(
+                    "Eden is set to Sunshine bind but no Sunshine pad is connected."
+                )
+                rc = max(rc, 1)
+                continue
+            msgs, code, changed = apply_eden_pads(path, eden_pads, force=force)
         messages.extend(msgs)
         rc = max(rc, code)
         changed_any = changed_any or changed
@@ -2372,12 +2446,17 @@ def cmd_apply(args: argparse.Namespace) -> int:
     return _emit_apply(
         rc=rc,
         emu=emu,
-        ordered=sinks,
+        ordered=eden_ordered_pads(mode, sysfs) if emu == "eden" else sinks,
         messages=messages,
         changed=changed_any,
         mode=mode,
         cemu_p1=cemu_p1,
     )
+
+
+def cmd_eden_except(_args: argparse.Namespace) -> int:
+    sys.stdout.write(sdl_except_for_eden() + "\n")
+    return 0
 
 
 def cmd_restart(args: argparse.Namespace) -> int:
@@ -2810,6 +2889,24 @@ def _self_test() -> int:
             'player_0_button_minus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:6"\n'
             'player_0_button_plus="engine:sdl,port:0,guid:03000000de280000ff11000001000000,button:7"\n'
         )
+        eden_sun = patch_eden_ini(eden_11, [thor])
+        assert eden_guid_for_player(eden_sun, 0) == thor["eden_guid"]
+        assert "button:6" in eden_sun.split("player_0_button_l=", 1)[1].split("\n", 1)[0]
+        bind_file = Path("/tmp/emupads-eden-bind-self-test")
+        try:
+            bind_file.write_text("sunshine\n")
+            os.environ["EMUPADS_EDEN_BIND"] = str(bind_file)
+            os.environ.pop("EDEN_BIND", None)
+            assert load_eden_bind() == "sunshine"
+            assert sdl_except_for_eden() == SDL_EXCEPT_SUNSHINE
+            bind_file.write_text("mux\n")
+            assert load_eden_bind() == "mux"
+            os.environ["EDEN_BIND"] = "sunshine"
+            assert load_eden_bind() == "sunshine"
+        finally:
+            os.environ.pop("EMUPADS_EDEN_BIND", None)
+            os.environ.pop("EDEN_BIND", None)
+            bind_file.unlink(missing_ok=True)
         eden_15 = patch_eden_ini(eden_11, [sink_p1])
         assert eden_guid_for_player(eden_15, 0) == sink_p1["eden_guid"]
         assert "button:1" in eden_15.split("player_0_button_a=", 1)[1].split("\n", 1)[0]
@@ -3218,6 +3315,12 @@ def main(argv: list[str] | None = None) -> int:
     p_azahar.add_argument("--ini", default=str(DEFAULT_AZAHAR_INI))
     p_azahar.add_argument("--force", action="store_true", help="Do not warn if Azahar is running")
     p_azahar.set_defaults(func=cmd_azahar)
+
+    p_except = sub.add_parser(
+        "eden-except",
+        help="Print SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT for the Eden wrap",
+    )
+    p_except.set_defaults(func=cmd_eden_except)
 
     p_eden = sub.add_parser("eden", help="Bind Eden to EmuPads P1 (and P2 in multi)")
     p_eden.add_argument("--match", help="Substring or comma-separated names (Thor,Odin)")

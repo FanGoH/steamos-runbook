@@ -26,15 +26,25 @@ export MALLOC_ARENA_MAX=2
 # Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
 # injects an Xbox-like pad on those IDs after it tears down Steam's
 # virtual controller — inheriting the list leaves Eden with nothing.
-# Do not keep Steam's list. With the mux up, only EmuPads P1/P2.
+# Do not keep Steam's list. Default is only EmuPads P1/P2. ``eden-bind``
+# sunshine switches EXCEPT + mapping to the Moonlight pad.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
-export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+_bind_py="${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py"
+EDEN_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+_sdl_match="EmuPads"
+if [ -f "$_bind_py" ]; then
+  EDEN_EXCEPT="$(python3 "$_bind_py" eden-except 2>/dev/null || echo "$EDEN_EXCEPT")"
+  if [ "$EDEN_EXCEPT" = "0x045e/0x028e" ]; then
+    _sdl_match="Sunshine"
+  fi
+fi
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$EDEN_EXCEPT"
+export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$EDEN_EXCEPT"
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
-cfg="$(python3 "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py" sdl-mapping --match EmuPads 2>/dev/null || true)"
+cfg="$(python3 "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py" sdl-mapping --match "$_sdl_match" 2>/dev/null || true)"
 if [ -n "$cfg" ]; then
   export SDL_GAMECONTROLLERCONFIG="$cfg"
   map_file="${XDG_RUNTIME_DIR:-/tmp}/eden-emupads-gamecontrollerdb.txt"

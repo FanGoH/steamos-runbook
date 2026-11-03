@@ -99,8 +99,12 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_JOYSTICK_HIDAPI=0
     export SDL_HIDAPI_JOYSTICK=0
     unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
-    export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    EDEN_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+    if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
+      EDEN_EXCEPT="$(python3 "$PLAYBOOK/scripts/bind-gamepad.py" eden-except 2>/dev/null || echo "$EDEN_EXCEPT")"
+    fi
+    export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="$EDEN_EXCEPT"
+    export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="$EDEN_EXCEPT"
     export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
     if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then

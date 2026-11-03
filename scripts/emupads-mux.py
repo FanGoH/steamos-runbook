@@ -118,6 +118,15 @@ def scale_axis(value: int, src_min: int, src_max: int, dst_min: int, dst_max: in
     return int(round(max(dst_min, min(dst_max, out))))
 
 
+def clamp_hat(value: int) -> int:
+    """Hats must stay -1/0/1. Scaling a ±1 sample through a stick range zeros it."""
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0
+
+
 def trigger_source_range(rng: tuple[int, int] | None) -> tuple[int, int]:
     """ABS_Z is often advertised as a stick (±32767) while xpad/Sunshine emit 0–255.
 
@@ -319,12 +328,15 @@ def is_activity(ev) -> bool:
     return abs(ev.value) > 4096
 
 
-def zero_sink(ui: UInput) -> None:
+def zero_sink(ui: UInput, hat: dict | None = None) -> None:
     for code in _BTN:
         ui.write(ecodes.EV_KEY, code, 0)
     for code in _ABS:
         ui.write(ecodes.EV_ABS, code, 0)
     ui.syn()
+    if hat is not None:
+        hat["x"] = 0
+        hat["y"] = 0
 
 
 _ABS_RANGE_CACHE: dict[tuple[str, int], tuple[int, int] | None] = {}
@@ -348,7 +360,7 @@ def source_abs_range(dev, code: int) -> tuple[int, int] | None:
     return rng
 
 
-def forward_event(ui: UInput, ev, src=None) -> None:
+def forward_event(ui: UInput, ev, src=None, hat: dict | None = None) -> None:
     if ev.type == ecodes.EV_SYN:
         ui.syn()
         return
@@ -356,6 +368,25 @@ def forward_event(ui: UInput, ev, src=None) -> None:
         ui.write(ev.type, ev.code, ev.value)
         return
     if ev.type == ecodes.EV_ABS and ev.code in _ABS:
+        if ev.code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+            value = clamp_hat(ev.value)
+            if hat is not None:
+                key = "x" if ev.code == ecodes.ABS_HAT0X else "y"
+                if hat.get(key) == value:
+                    return
+                hat[key] = value
+                # Moonlight often also deflects the left stick on D-pad.
+                # Eden menus treat analog as a second cursor, so hat+stick
+                # skips tiles ("lots of spaces") or eats the press.
+                ui.write(ecodes.EV_ABS, ecodes.ABS_X, 0)
+                ui.write(ecodes.EV_ABS, ecodes.ABS_Y, 0)
+            ui.write(ev.type, ev.code, value)
+            return
+        if hat is not None and (hat.get("x") or hat.get("y")) and ev.code in (
+            ecodes.ABS_X,
+            ecodes.ABS_Y,
+        ):
+            return
         dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
         if ev.code in (ecodes.ABS_Z, ecodes.ABS_RZ):
@@ -667,6 +698,7 @@ def loop() -> int:
     last_cfg_mtime = 0.0
     last_house = 0.0
     active: list[str | None] = [None, None]
+    hats: list[dict] = [{"x": 0, "y": 0}, {"x": 0, "y": 0}]
     muted = False
     selected: list[InputDevice] = []
     fds: dict[int, InputDevice] = {}
@@ -704,8 +736,8 @@ def loop() -> int:
         grab_sinks(sink_readers, hide, sink_grabbed)
         want_mute = mute_path().is_file() or hide
         if want_mute and not muted:
-            for ui in sinks:
-                zero_sink(ui)
+            for i, ui in enumerate(sinks):
+                zero_sink(ui, hats[i] if i < len(hats) else None)
             muted = True
             log("muted (no emulator / Steam UI)")
         elif not want_mute and muted:
@@ -753,20 +785,20 @@ def loop() -> int:
                         ui = sinks[slot]
                         if any(is_activity(ev) for ev in events):
                             if active[slot] not in (None, dev.path):
-                                zero_sink(ui)
+                                zero_sink(ui, hats[slot])
                             active[slot] = dev.path
                         if active[slot] == dev.path:
                             for ev in events:
-                                forward_event(ui, ev, src=dev)
+                                forward_event(ui, ev, src=dev, hat=hats[slot])
                         continue
                     ui = sinks[0]
                     if any(is_activity(ev) for ev in events):
                         if active[0] not in (None, dev.path):
-                            zero_sink(ui)
+                            zero_sink(ui, hats[0])
                         active[0] = dev.path
                     if active[0] == dev.path:
                         for ev in events:
-                            forward_event(ui, ev, src=dev)
+                            forward_event(ui, ev, src=dev, hat=hats[0])
             now = time.monotonic()
             if not ready or now - last_house >= 0.25:
                 housekeep(now)
@@ -837,6 +869,13 @@ def self_test() -> int:
     steam_only = [Fake("Microsoft X-Box 360 pad 0", "/dev/input/event14", 0x28DE, 0x11FF)]
     steam_got = selected_sources(cfg, steam_only)  # type: ignore[arg-type]
     assert [d.name for d in steam_got] == ["Microsoft X-Box 360 pad 0"]
+    assert clamp_hat(0) == 0
+    assert clamp_hat(1) == 1
+    assert clamp_hat(-1) == -1
+    assert clamp_hat(32767) == 1
+    assert clamp_hat(-32768) == -1
+    # A ±1 hat through a stick absinfo used to scale to 0.
+    assert scale_axis(1, -32768, 32767, -1, 1) == 0
     assert scale_axis(0, -32768, 32767, -32768, 32767) == 0
     assert scale_axis(32767, -32768, 32767, -32768, 32767) == 32767
     assert scale_axis(-32768, -32768, 32767, -32768, 32767) == -32768
@@ -941,6 +980,38 @@ def self_test() -> int:
         assert dead not in out
     finally:
         Path(kept_path).unlink(missing_ok=True)
+
+    class FakeUI:
+        def __init__(self) -> None:
+            self.writes: list[tuple[int, int, int]] = []
+
+        def write(self, typ: int, code: int, value: int) -> None:
+            self.writes.append((typ, code, value))
+
+        def syn(self) -> None:
+            self.writes.append((ecodes.EV_SYN, 0, 0))
+
+    class Ev:
+        def __init__(self, typ: int, code: int, value: int) -> None:
+            self.type = typ
+            self.code = code
+            self.value = value
+
+    hat = {"x": 0, "y": 0}
+    ui = FakeUI()
+    forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat)
+    assert hat["x"] == 1
+    assert (ecodes.EV_ABS, ecodes.ABS_HAT0X, 1) in ui.writes
+    assert (ecodes.EV_ABS, ecodes.ABS_X, 0) in ui.writes
+    n = len(ui.writes)
+    forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat)
+    assert len(ui.writes) == n
+    forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat)
+    assert (ecodes.EV_ABS, ecodes.ABS_X, 20000) not in ui.writes
+    forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 0), hat=hat)
+    assert hat["x"] == 0
+    forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat)
+    assert (ecodes.EV_ABS, ecodes.ABS_X, 20000) in ui.writes
 
     print("emupads-mux self-test ok")
     return 0

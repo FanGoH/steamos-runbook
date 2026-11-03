@@ -1730,6 +1730,27 @@ def _rewrite_eden_x360_15(line: str, prefix: str) -> str:
     return re.sub(r"button:\d+", mapped, line)
 
 
+_EDEN_STICK_DEADZONE = "0.150000"
+
+
+def _ensure_eden_stick_deadzone(line: str, prefix: str) -> str:
+    """P1 sticks were rewritten without deadzone; P2 still had Eden's 0.15.
+
+    FE3H / other menus treat a raw stick as D-pad. No deadzone skips rows
+    and makes the hat fight residual analog.
+    """
+    key = line.split("=", 1)[0]
+    if key not in (f"{prefix}lstick", f"{prefix}rstick"):
+        return line
+    if "deadzone:" in line:
+        return line
+    if "invert_y:+" in line:
+        return line.replace("invert_y:+", f"invert_y:+,deadzone:{_EDEN_STICK_DEADZONE}", 1)
+    if "engine:sdl," in line:
+        return line.replace("engine:sdl,", f"engine:sdl,deadzone:{_EDEN_STICK_DEADZONE},", 1)
+    return line
+
+
 def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
     """Rewrite Eden ``player_N_`` SDL bindings for the ordered pads."""
     guids = [eden_guid(pad) for pad in pads]
@@ -1760,6 +1781,7 @@ def patch_eden_ini(text: str, pads: list[dict[str, str]]) -> str:
                 "EmuPads"
             ):
                 stripped = _rewrite_eden_x360_15(stripped, prefix)
+            stripped = _ensure_eden_stick_deadzone(stripped, prefix)
             line = stripped
             handled = True
             break
@@ -2798,6 +2820,14 @@ def _self_test() -> int:
         assert "button:7" in eden_15.split("player_0_button_r=", 1)[1].split("\n", 1)[0]
         assert "button:10" in eden_15.split("player_0_button_minus=", 1)[1].split("\n", 1)[0]
         assert "button:11" in eden_15.split("player_0_button_plus=", 1)[1].split("\n", 1)[0]
+
+        eden_stick = (
+            'player_0_lstick="engine:sdl,guid:03000000de280000ff11000001000000,axis_x:0,offset_x:-0.000000,invert_y:+,port:0,axis_y:1,offset_y:0.000000,invert_x:+"\n'
+            'player_0_rstick="engine:sdl,guid:03000000de280000ff11000001000000,axis_x:3,offset_x:-0.000000,invert_y:+,deadzone:0.150000,port:0,axis_y:4,offset_y:0.000000,invert_x:+"\n'
+        )
+        eden_stick_out = patch_eden_ini(eden_stick, [sink_p1])
+        assert "deadzone:0.150000" in eden_stick_out.split("player_0_lstick=", 1)[1].split("\n", 1)[0]
+        assert eden_stick_out.count("deadzone:0.150000") == 2
         cemu_dir = Path(tmp) / "cemu-apply"
         cemu_dir.mkdir()
         xml_path = cemu_dir / "controller0.xml"

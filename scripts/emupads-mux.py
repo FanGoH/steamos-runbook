@@ -362,6 +362,21 @@ def source_abs_range(dev, code: int) -> tuple[int, int] | None:
     return rng
 
 
+def hat_held(hat: dict | None) -> bool:
+    return bool(hat and (hat.get("x") or hat.get("y")))
+
+
+def write_hat_pair(ui: UInput, hat: dict, last_abs: dict | None = None) -> None:
+    """SDL hats need both axes in one report or the direction looks stuck."""
+    hx = clamp_hat(int(hat.get("x") or 0))
+    hy = clamp_hat(int(hat.get("y") or 0))
+    ui.write(ecodes.EV_ABS, ecodes.ABS_HAT0X, hx)
+    ui.write(ecodes.EV_ABS, ecodes.ABS_HAT0Y, hy)
+    if last_abs is not None:
+        last_abs[ecodes.ABS_HAT0X] = hx
+        last_abs[ecodes.ABS_HAT0Y] = hy
+
+
 def forward_event(
     ui: UInput,
     ev,
@@ -383,20 +398,16 @@ def forward_event(
                 if hat.get(key) == value:
                     return False
                 hat[key] = value
-                # Moonlight often also deflects the left stick on D-pad.
-                # Eden menus treat analog as a second cursor, so hat+stick
-                # skips tiles ("lots of spaces") or eats the press.
                 ui.write(ecodes.EV_ABS, ecodes.ABS_X, 0)
                 ui.write(ecodes.EV_ABS, ecodes.ABS_Y, 0)
                 if last_abs is not None:
                     last_abs[ecodes.ABS_X] = 0
                     last_abs[ecodes.ABS_Y] = 0
+                write_hat_pair(ui, hat, last_abs)
+                return True
             ui.write(ev.type, ev.code, value)
             return True
-        if hat is not None and (hat.get("x") or hat.get("y")) and ev.code in (
-            ecodes.ABS_X,
-            ecodes.ABS_Y,
-        ):
+        if hat is not None and hat_held(hat) and ev.code in (ecodes.ABS_X, ecodes.ABS_Y):
             return False
         dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
@@ -417,12 +428,46 @@ def forward_event(
 
 
 def forward_batch(ui: UInput, events, src=None, hat=None, last_abs=None) -> None:
-    wrote = False
+    """Hats first. Moonlight often sends stick, then hat, in one report.
+
+    Forwarding that stick spike makes Eden menus skip before the hat lands.
+    """
+    events = list(events)
+    hat_changed = False
+    if hat is not None:
+        for ev in events:
+            if ev.type != ecodes.EV_ABS or ev.code not in (
+                ecodes.ABS_HAT0X,
+                ecodes.ABS_HAT0Y,
+            ):
+                continue
+            key = "x" if ev.code == ecodes.ABS_HAT0X else "y"
+            value = clamp_hat(ev.value)
+            if hat.get(key) == value:
+                continue
+            hat[key] = value
+            hat_changed = True
+        if hat_changed:
+            ui.write(ecodes.EV_ABS, ecodes.ABS_X, 0)
+            ui.write(ecodes.EV_ABS, ecodes.ABS_Y, 0)
+            if last_abs is not None:
+                last_abs[ecodes.ABS_X] = 0
+                last_abs[ecodes.ABS_Y] = 0
+            write_hat_pair(ui, hat, last_abs)
+    suppress_stick = hat_held(hat) or hat_changed
+    wrote = hat_changed
     for ev in events:
         if ev.type == ecodes.EV_SYN:
             if wrote:
                 ui.syn()
                 wrote = False
+            continue
+        if ev.type == ecodes.EV_ABS and ev.code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+            continue
+        if suppress_stick and ev.type == ecodes.EV_ABS and ev.code in (
+            ecodes.ABS_X,
+            ecodes.ABS_Y,
+        ):
             continue
         if forward_event(ui, ev, src=src, hat=hat, last_abs=last_abs):
             wrote = True
@@ -1055,6 +1100,7 @@ def self_test() -> int:
     assert forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last)
     assert hat["x"] == 1
     assert (ecodes.EV_ABS, ecodes.ABS_HAT0X, 1) in ui.writes
+    assert (ecodes.EV_ABS, ecodes.ABS_HAT0Y, 0) in ui.writes
     assert (ecodes.EV_ABS, ecodes.ABS_X, 0) in ui.writes
     n = len(ui.writes)
     assert not forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last)
@@ -1068,6 +1114,23 @@ def self_test() -> int:
     n = len(ui.writes)
     assert not forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last)
     assert len(ui.writes) == n
+    ui = FakeUI()
+    hat = {"x": 0, "y": 0}
+    last = {}
+    forward_batch(
+        ui,
+        [
+            Ev(ecodes.EV_ABS, ecodes.ABS_Y, -30000),
+            Ev(ecodes.EV_ABS, ecodes.ABS_HAT0Y, -1),
+            Ev(ecodes.EV_SYN, 0, 0),
+        ],
+        hat=hat,
+        last_abs=last,
+    )
+    assert hat["y"] == -1
+    assert (ecodes.EV_ABS, ecodes.ABS_Y, -30000) not in ui.writes
+    assert (ecodes.EV_ABS, ecodes.ABS_HAT0Y, -1) in ui.writes
+    assert (ecodes.EV_ABS, ecodes.ABS_HAT0X, 0) in ui.writes
 
     print("emupads-mux self-test ok")
     return 0

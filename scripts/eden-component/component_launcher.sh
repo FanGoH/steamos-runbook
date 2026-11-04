@@ -23,16 +23,15 @@ export DISABLE_AUTO_UPDATES=1
 # Flatpak + a 15G dump otherwise grows glibc arenas until earlyoom.
 export MALLOC_ARENA_MAX=2
 
-# Steam's IGNORE_DEVICES list hides every Xbox ID. Moonlight/Sunshine
-# injects an Xbox-like pad on those IDs after it tears down Steam's
-# virtual controller — inheriting the list leaves Eden with nothing.
-# Do not keep Steam's list. With the mux up, only EmuPads P1/P2.
+# Steam's IGNORE_DEVICES list hides every Xbox ID, including Sunshine.
+# Do not keep that list. Do not EXCEPT-only EmuPads — that hid the real
+# Moonlight pad from Eden. Mouse 1209:0003 stays blacklisted.
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 export SDL_JOYSTICK_HIDAPI=0
 export SDL_HIDAPI_JOYSTICK=0
 unset SDL_GAMECONTROLLER_IGNORE_DEVICES
-export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
-export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
+unset SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT
+unset SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
 # shellcheck disable=SC1091
 . "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/eden-emupads-sdl.sh"
@@ -137,8 +136,8 @@ host_exec_eden() {
     DISPLAY XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME \
     DISABLE_AUTO_UPDATES MALLOC_ARENA_MAX \
     SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD SDL_JOYSTICK_HIDAPI \
-    SDL_HIDAPI_JOYSTICK SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT \
-    SDL_JOYSTICK_BLACKLIST_DEVICES SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT \
+    SDL_HIDAPI_JOYSTICK \
+    SDL_JOYSTICK_BLACKLIST_DEVICES \
     SDL_GAMECONTROLLERCONFIG SDL_GAMECONTROLLERCONFIG_FILE \
     SteamAppId SteamGameId STEAM_OVERLAY GAMESCOPE_WAYLAND_DISPLAY
   do
@@ -147,6 +146,8 @@ host_exec_eden() {
     fi
   done
   spawn+=(--env=SDL_GAMECONTROLLER_IGNORE_DEVICES=)
+  spawn+=(--env=SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=)
+  spawn+=(--env=SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT=)
   exec "${spawn[@]}" "$img" "$@"
 }
 

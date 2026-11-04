@@ -76,6 +76,10 @@ _ABS = [
     ecodes.ABS_HAT0Y,
 ]
 _STICK_ABS = {ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY}
+# After a hat press, Moonlight often keeps a leftover left-stick deflection
+# for several packets. FE3H menus treat that as D-pad and skip. Lock the
+# stick out until both axes recenter (below ~0.19 / Eden's 0.15 deadzone).
+_STICK_CENTER = 6144
 _RELOAD = False
 
 
@@ -328,7 +332,12 @@ def is_activity(ev) -> bool:
     return abs(ev.value) > 4096
 
 
-def zero_sink(ui: UInput, hat: dict | None = None, last_abs: dict | None = None) -> None:
+def zero_sink(
+    ui: UInput,
+    hat: dict | None = None,
+    last_abs: dict | None = None,
+    gate: dict | None = None,
+) -> None:
     for code in _BTN:
         ui.write(ecodes.EV_KEY, code, 0)
     for code in _ABS:
@@ -339,6 +348,8 @@ def zero_sink(ui: UInput, hat: dict | None = None, last_abs: dict | None = None)
         hat["y"] = 0
     if last_abs is not None:
         last_abs.clear()
+    if gate is not None:
+        gate.update(new_stick_gate())
 
 
 _ABS_RANGE_CACHE: dict[tuple[str, int], tuple[int, int] | None] = {}
@@ -366,6 +377,39 @@ def hat_held(hat: dict | None) -> bool:
     return bool(hat and (hat.get("x") or hat.get("y")))
 
 
+def new_stick_gate() -> dict:
+    return {"lock": False, "x": 0, "y": 0}
+
+
+def stick_near_center(gate: dict | None) -> bool:
+    if gate is None:
+        return True
+    x = gate.get("x")
+    y = gate.get("y")
+    if x is None or y is None:
+        return False
+    return abs(int(x)) <= _STICK_CENTER and abs(int(y)) <= _STICK_CENTER
+
+
+def note_stick_axis(gate: dict | None, code: int, value: int) -> None:
+    if gate is None:
+        return
+    if code == ecodes.ABS_X:
+        gate["x"] = value
+    elif code == ecodes.ABS_Y:
+        gate["y"] = value
+    if gate.get("lock") and stick_near_center(gate):
+        gate["lock"] = False
+
+
+def lock_stick_gate(gate: dict | None) -> None:
+    if gate is None:
+        return
+    gate["lock"] = True
+    gate["x"] = None
+    gate["y"] = None
+
+
 def write_hat_pair(ui: UInput, hat: dict, last_abs: dict | None = None) -> None:
     """SDL hats need both axes in one report or the direction looks stuck."""
     hx = clamp_hat(int(hat.get("x") or 0))
@@ -383,6 +427,7 @@ def forward_event(
     src=None,
     hat: dict | None = None,
     last_abs: dict | None = None,
+    gate: dict | None = None,
 ) -> bool:
     """Copy one event. False = dropped (duplicate / suppressed). Caller SYNs."""
     if ev.type == ecodes.EV_SYN:
@@ -403,12 +448,11 @@ def forward_event(
                 if last_abs is not None:
                     last_abs[ecodes.ABS_X] = 0
                     last_abs[ecodes.ABS_Y] = 0
+                lock_stick_gate(gate)
                 write_hat_pair(ui, hat, last_abs)
                 return True
             ui.write(ev.type, ev.code, value)
             return True
-        if hat is not None and hat_held(hat) and ev.code in (ecodes.ABS_X, ecodes.ABS_Y):
-            return False
         dst = _ABS_DST[ev.code]
         src_range = source_abs_range(src, ev.code) if src is not None else None
         if ev.code in (ecodes.ABS_Z, ecodes.ABS_RZ):
@@ -418,6 +462,13 @@ def forward_event(
             value = scale_axis(ev.value, src_range[0], src_range[1], dst.min, dst.max)
         else:
             value = max(dst.min, min(dst.max, ev.value))
+        if ev.code in (ecodes.ABS_X, ecodes.ABS_Y):
+            if hat is not None and hat_held(hat):
+                lock_stick_gate(gate)
+                return False
+            note_stick_axis(gate, ev.code, value)
+            if gate is not None and gate.get("lock"):
+                return False
         if last_abs is not None and last_abs.get(ev.code) == value:
             return False
         if last_abs is not None:
@@ -427,10 +478,11 @@ def forward_event(
     return False
 
 
-def forward_batch(ui: UInput, events, src=None, hat=None, last_abs=None) -> None:
+def forward_batch(ui: UInput, events, src=None, hat=None, last_abs=None, gate=None) -> None:
     """Hats first. Moonlight often sends stick, then hat, in one report.
 
     Forwarding that stick spike makes Eden menus skip before the hat lands.
+    After a hat, keep the stick locked until both axes recenter.
     """
     events = list(events)
     hat_changed = False
@@ -453,6 +505,7 @@ def forward_batch(ui: UInput, events, src=None, hat=None, last_abs=None) -> None
             if last_abs is not None:
                 last_abs[ecodes.ABS_X] = 0
                 last_abs[ecodes.ABS_Y] = 0
+            lock_stick_gate(gate)
             write_hat_pair(ui, hat, last_abs)
     suppress_stick = hat_held(hat) or hat_changed
     wrote = hat_changed
@@ -469,7 +522,7 @@ def forward_batch(ui: UInput, events, src=None, hat=None, last_abs=None) -> None
             ecodes.ABS_Y,
         ):
             continue
-        if forward_event(ui, ev, src=src, hat=hat, last_abs=last_abs):
+        if forward_event(ui, ev, src=src, hat=hat, last_abs=last_abs, gate=gate):
             wrote = True
     if wrote:
         ui.syn()
@@ -788,6 +841,7 @@ def loop() -> int:
     active: list[str | None] = [None, None]
     hats: list[dict] = [{"x": 0, "y": 0}, {"x": 0, "y": 0}]
     last_abs: list[dict] = [{}, {}]
+    gates: list[dict] = [new_stick_gate(), new_stick_gate()]
     muted = False
     selected: list[InputDevice] = []
     fds: dict[int, InputDevice] = {}
@@ -830,6 +884,7 @@ def loop() -> int:
                     ui,
                     hats[i] if i < len(hats) else None,
                     last_abs[i] if i < len(last_abs) else None,
+                    gates[i] if i < len(gates) else None,
                 )
             muted = True
             log("muted (no emulator / Steam UI)")
@@ -882,20 +937,32 @@ def loop() -> int:
                         ui = sinks[slot]
                         if any(is_activity(ev) for ev in events):
                             if active[slot] not in (None, dev.path):
-                                zero_sink(ui, hats[slot], last_abs[slot])
+                                zero_sink(ui, hats[slot], last_abs[slot], gates[slot])
                             active[slot] = dev.path
                         if active[slot] == dev.path:
                             forward_batch(
-                                ui, events, src=dev, hat=hats[slot], last_abs=last_abs[slot]
+                                ui,
+                                events,
+                                src=dev,
+                                hat=hats[slot],
+                                last_abs=last_abs[slot],
+                                gate=gates[slot],
                             )
                         continue
                     ui = sinks[0]
                     if any(is_activity(ev) for ev in events):
                         if active[0] not in (None, dev.path):
-                            zero_sink(ui, hats[0], last_abs[0])
+                            zero_sink(ui, hats[0], last_abs[0], gates[0])
                         active[0] = dev.path
                     if active[0] == dev.path:
-                        forward_batch(ui, events, src=dev, hat=hats[0], last_abs=last_abs[0])
+                        forward_batch(
+                            ui,
+                            events,
+                            src=dev,
+                            hat=hats[0],
+                            last_abs=last_abs[0],
+                            gate=gates[0],
+                        )
             now = time.monotonic()
             if now - last_house >= 0.25:
                 housekeep(now)
@@ -1096,27 +1163,55 @@ def self_test() -> int:
 
     hat = {"x": 0, "y": 0}
     last = {}
+    gate = new_stick_gate()
     ui = FakeUI()
-    assert forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last)
+    assert forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last, gate=gate
+    )
     assert hat["x"] == 1
+    assert gate["lock"] is True
     assert (ecodes.EV_ABS, ecodes.ABS_HAT0X, 1) in ui.writes
     assert (ecodes.EV_ABS, ecodes.ABS_HAT0Y, 0) in ui.writes
     assert (ecodes.EV_ABS, ecodes.ABS_X, 0) in ui.writes
     n = len(ui.writes)
-    assert not forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last)
+    assert not forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 1), hat=hat, last_abs=last, gate=gate
+    )
     assert len(ui.writes) == n
-    assert not forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last)
+    assert not forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last, gate=gate
+    )
     assert (ecodes.EV_ABS, ecodes.ABS_X, 20000) not in ui.writes
-    assert forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 0), hat=hat, last_abs=last)
+    assert forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_HAT0X, 0), hat=hat, last_abs=last, gate=gate
+    )
     assert hat["x"] == 0
-    assert forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last)
+    # Leftover analog after hat release stays dropped until recenter.
+    assert not forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last, gate=gate
+    )
+    assert (ecodes.EV_ABS, ecodes.ABS_X, 20000) not in ui.writes
+    assert not forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_Y, 0), hat=hat, last_abs=last, gate=gate
+    )
+    assert gate["lock"] is True
+    forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 0), hat=hat, last_abs=last, gate=gate
+    )
+    assert gate["lock"] is False
+    assert forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last, gate=gate
+    )
     assert (ecodes.EV_ABS, ecodes.ABS_X, 20000) in ui.writes
     n = len(ui.writes)
-    assert not forward_event(ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last)
+    assert not forward_event(
+        ui, Ev(ecodes.EV_ABS, ecodes.ABS_X, 20000), hat=hat, last_abs=last, gate=gate
+    )
     assert len(ui.writes) == n
     ui = FakeUI()
     hat = {"x": 0, "y": 0}
     last = {}
+    gate = new_stick_gate()
     forward_batch(
         ui,
         [
@@ -1126,11 +1221,52 @@ def self_test() -> int:
         ],
         hat=hat,
         last_abs=last,
+        gate=gate,
     )
     assert hat["y"] == -1
+    assert gate["lock"] is True
     assert (ecodes.EV_ABS, ecodes.ABS_Y, -30000) not in ui.writes
     assert (ecodes.EV_ABS, ecodes.ABS_HAT0Y, -1) in ui.writes
     assert (ecodes.EV_ABS, ecodes.ABS_HAT0X, 0) in ui.writes
+    ui = FakeUI()
+    forward_batch(
+        ui,
+        [
+            Ev(ecodes.EV_ABS, ecodes.ABS_HAT0Y, 0),
+            Ev(ecodes.EV_ABS, ecodes.ABS_Y, -28000),
+            Ev(ecodes.EV_SYN, 0, 0),
+        ],
+        hat=hat,
+        last_abs=last,
+        gate=gate,
+    )
+    assert hat["y"] == 0
+    assert (ecodes.EV_ABS, ecodes.ABS_Y, -28000) not in ui.writes
+    ui = FakeUI()
+    forward_batch(
+        ui,
+        [
+            Ev(ecodes.EV_ABS, ecodes.ABS_X, 0),
+            Ev(ecodes.EV_ABS, ecodes.ABS_Y, 0),
+            Ev(ecodes.EV_SYN, 0, 0),
+        ],
+        hat=hat,
+        last_abs=last,
+        gate=gate,
+    )
+    assert gate["lock"] is False
+    ui = FakeUI()
+    forward_batch(
+        ui,
+        [
+            Ev(ecodes.EV_ABS, ecodes.ABS_Y, -28000),
+            Ev(ecodes.EV_SYN, 0, 0),
+        ],
+        hat=hat,
+        last_abs=last,
+        gate=gate,
+    )
+    assert (ecodes.EV_ABS, ecodes.ABS_Y, -28000) in ui.writes
 
     print("emupads-mux self-test ok")
     return 0

@@ -140,7 +140,8 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `.cursor/skills/decky-plugins/SKILL.md` | Reload Decky after every plugin edit (copy is not enough) |
 | `decky/EmuPads/` | Emu Pads plugin source + README (mux P1/P2, GamePad/Pro is Cemu-only) |
 | `scripts/ensure-host-metrics.sh` | pacman **sysstat** + **atop** (60s samples; SteamOS updates wipe `/`). From `post-update.sh` / `bootstrap.sh`. Needs sudo. |
-| `scripts/host-metrics.py` | Status + `sadf -j` JSON dump (`fgpc host metrics json`). |
+| `scripts/host-metrics.py` | Status + `sadf -j` JSON dump (`fgpc host metrics json`). Compact series for the Pi webapp (`series` / `GET /api/host-metrics`). |
+| `lab/gpc-metrics/` | lab Pi dashboard: poll tailnet fgpc-web, store 14 days, Caddy `https://lab.tailnet.fangoh.dev/`. Deploy: `scripts/deploy-gpc-metrics-lab.sh`. |
 | `scripts/emu-quick-settings.py` | Eden / Azahar / Cemu quick graphics (global or per-game). Called by Decky **Emu Quick** |
 | `scripts/ensure-emu-quick-decky.sh` | Install Decky **Emu Quick**. `~/homebrew/plugins` may need sudo |
 | `decky/EmuQuick/` | Emu Quick plugin source (live docked/handheld + restart-only resolution) |

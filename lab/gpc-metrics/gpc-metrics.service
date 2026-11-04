@@ -1,0 +1,21 @@
+[Unit]
+Description=GPC RAM metrics dashboard (sysstat via Tailscale)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fan
+Group=fan
+WorkingDirectory=/home/fan/Projects/gpc-metrics
+Environment=GPC_METRICS_BIND=127.0.0.1
+Environment=GPC_METRICS_PORT=8020
+Environment=GPC_METRICS_SOURCE=http://100.64.0.8:8484/api/host-metrics
+Environment=GPC_METRICS_POLL_S=7200
+Environment=HOME=/home/fan
+ExecStart=/usr/bin/python3 /home/fan/Projects/gpc-metrics/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

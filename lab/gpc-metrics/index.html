@@ -68,7 +68,7 @@
       <span><span class="swatch" style="background:var(--warn)"></span>Offline / unreachable</span>
     </div>
     <ul class="outages" id="outages"></ul>
-    <p class="cap" id="cap">Source: sysstat on steammachine (60s samples, lab polls every 2h). Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.</p>
+    <p class="cap" id="cap">Source: sysstat on steammachine (60s samples, lab polls every 2h and on visit if that pull is older). Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.</p>
   </main>
   <script>
     const TZ = "America/Mexico_City";
@@ -112,7 +112,7 @@
       const n = (meta.points || []).length;
       const off = (meta.outages || []).length;
       document.getElementById("cap").textContent =
-        `sysstat on ${meta.host || "steammachine"} (60s samples) · lab polls every 2h · ${n} samples in window · ${off} offline/unreachable span${off === 1 ? "" : "s"} · last poll ${meta.last_fetch ? when(meta.last_fetch) : "—"} Mexico City. Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.`;
+        `sysstat on ${meta.host || "steammachine"} (60s samples) · lab polls every 2h, and on visit if the last successful pull is older · ${n} samples in window · ${off} offline/unreachable span${off === 1 ? "" : "s"} · last poll ${meta.last_fetch ? when(meta.last_fetch) : "—"} Mexico City. Dual-channel 16 GB; extra DIMMs add capacity, not four-channel bandwidth.`;
     }
 
     function outageList(outages) {

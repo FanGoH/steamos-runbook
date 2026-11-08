@@ -5,8 +5,11 @@ Binds 127.0.0.1 only. Caddy on Tailscale is the public entry
 (https://lab.tailnet.fangoh.dev). SteamOS updates wipe /var/log/sa;
 this process keeps a 14-day copy on the Pi.
 
-Poll every 2 hours (full sa history each time). Gaps in the 60s sysstat
-series, or a failed poll, are reported as offline / unreachable.
+Poll every 2 hours (full sa history each time), and again when someone
+opens the dashboard if that last *successful* pull (cron or visit) is
+older than 2 hours. A failed poll does not start the cooldown. Gaps in
+the 60s sysstat series, or a failed poll, are reported as offline /
+unreachable.
 """
 from __future__ import annotations
 
@@ -39,13 +42,16 @@ DATA_DIR = Path(
 DB_PATH = DATA_DIR / "points.sqlite"
 
 _lock = threading.Lock()
+_fetch_lock = threading.Lock()
 _state: dict[str, object] = {
     "ok": False,
     "last_fetch": None,
+    "last_ok_fetch": None,
     "last_error": None,
     "source": SOURCE,
     "poll_s": POLL_S,
     "points_stored": 0,
+    "pull": None,
 }
 
 
@@ -63,6 +69,19 @@ def iso_to_epoch(stamp: str) -> float | None:
 
 def epoch_to_iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def should_fetch(
+    last_ok: float | None,
+    now: float | None = None,
+    poll_s: int | None = None,
+) -> bool:
+    """True unless a successful cron/visit pull is still inside the cooldown."""
+    now = time.time() if now is None else now
+    wait = POLL_S if poll_s is None else poll_s
+    if last_ok is None:
+        return True
+    return (now - last_ok) >= wait
 
 
 def sample_outages(
@@ -326,11 +345,13 @@ def _fetch() -> None:
         stored = _upsert(points)
         last_sample = str(points[-1]["t"]) if points and points[-1].get("t") else None
         _record_poll(ok=True, error=None, last_sample=last_sample)
+        stamp = epoch_to_iso(time.time())
         with _lock:
             _state.update(
                 {
                     "ok": True,
-                    "last_fetch": epoch_to_iso(time.time()),
+                    "last_fetch": stamp,
+                    "last_ok_fetch": stamp,
                     "last_error": None,
                     "host": raw.get("host"),
                     "interval_s": raw.get("interval_s") or SAMPLE_INTERVAL_S,
@@ -351,10 +372,54 @@ def _fetch() -> None:
             _state["last_fetch"] = epoch_to_iso(time.time())
 
 
+def last_ok_fetch_epoch() -> float | None:
+    with _lock:
+        stamp = _state.get("last_ok_fetch")
+    ts = iso_to_epoch(str(stamp or ""))
+    if ts is not None:
+        return ts
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT t FROM polls WHERE ok = 1 ORDER BY t DESC LIMIT 1"
+        ).fetchone()
+    ts = iso_to_epoch(row[0]) if row else None
+    if ts is not None:
+        with _lock:
+            if _state.get("last_ok_fetch") is None:
+                _state["last_ok_fetch"] = epoch_to_iso(ts)
+    return ts
+
+
+def maybe_fetch(*, now: float | None = None) -> str:
+    """Pull unless a successful cron/visit fetch is still inside POLL_S."""
+    now = time.time() if now is None else now
+    with _fetch_lock:
+        last = last_ok_fetch_epoch()
+        if not should_fetch(last, now=now):
+            with _lock:
+                _state["pull"] = "skipped"
+            return "skipped"
+        _fetch()
+        with _lock:
+            ok = bool(_state.get("ok"))
+            _state["pull"] = "fetched" if ok else "failed"
+        return "fetched" if ok else "failed"
+
+
+def _poll_sleep() -> None:
+    last = last_ok_fetch_epoch()
+    now = time.time()
+    if last is None:
+        time.sleep(max(15, POLL_S))
+        return
+    remain = POLL_S - (now - last)
+    time.sleep(max(15, remain if remain > 0 else POLL_S))
+
+
 def _poller() -> None:
     while True:
-        _fetch()
-        time.sleep(max(15, POLL_S))
+        maybe_fetch()
+        _poll_sleep()
 
 
 def _load_window(since: str) -> tuple[list[dict], list[dict], int, float | None, str | None]:
@@ -477,6 +542,7 @@ def handle(method: str, path: str) -> tuple[int, bytes, str]:
         except ValueError:
             hours = 24.0
         hours = min(max(hours, 0.25), KEEP_DAYS * 24)
+        maybe_fetch()
         return _json(_series(hours))
     if method in ("GET", "HEAD") and route in ("/", "/index.html"):
         html = (HERE / "index.html").read_bytes()

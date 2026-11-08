@@ -52,7 +52,7 @@ NMH3 / native games that freak out with two controllers: **Pad Hide**, not mux r
 - **Azahar** player 1 = `profiles\1\` → P1. Player 2 = saved `profiles\2\` in multi (one active profile per instance). Shared P1 is the default even though Azahar barely does MP.
 - **Eden** player 1 = `player_0_` CRC-less USB GUID of P1 (`1209:e301`). Player 2 = P2 (`1209:e302`) so GUIDs differ. Steam virtual (`28de:11ff`) stays a source, not a bind target.
 
-Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Default **x360**. `ds5`/`ds4`/`switch` enable Thor/Odin gyro but change VID/PID; after a switch, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, then re-bind. Do not switch the profile unless the user asks to experiment with gyro.
+Pad type is `GAMESTREAM_PAD_PROFILE` in `.env` (`scripts/pad_profile.py`). Default **x360**. `ds5`/`ds4`/`switch` enable Thor/Odin gyro but change VID/PID; after a switch, run `ensure-sunshine-ds-apps.sh`, restart sunshine-ds, reconnect Moonlight, then re-bind. `switch` needs Distrobox write access to `/dev/uhid` (`scripts/ensure-sunshine-ds-uhid.sh`) or Lichii **Raw Gamepad** sees no Nintendo HID. Do not switch the profile unless the user asks to experiment with gyro.
 
 Standalone Cemu XML: `~/.var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml`.
 RetroDECK Cemu XML: `~/.var/app/net.retrodeck.retrodeck/config/Cemu/controllerProfiles/controller0.xml`.

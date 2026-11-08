@@ -349,6 +349,17 @@ else
 ./scripts/ensure-sunshine-ds-decky.sh
 EOF
 fi
+ds_on_desktop="${SUNSHINE_DS_ON_DESKTOP_SERVICE:-steamos-sunshine-ds-on-desktop.service}"
+if systemctl --user is-enabled "$ds_on_desktop" >/dev/null 2>&1; then
+  ok "$ds_on_desktop enabled (Plasma starts :48100)"
+else
+  warn "$ds_on_desktop not enabled — Steam Switch to Desktop leaves Moonlight DS down"
+  record_manual "Enable Plasma sunshine-ds oneshot" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+./scripts/ensure-sunshine-ds.sh --install-shortcut
+systemctl --user is-enabled $ds_on_desktop
+EOF
+fi
 echo
 
 echo "[sunshine-ds-kms / Game Mode]"

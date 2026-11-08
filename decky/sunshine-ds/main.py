@@ -114,7 +114,7 @@ class Plugin:
         ds = _ds_state()
         if gamescope:
             headline = "Game Mode"
-            detail = "Start Dual-Stream Desktop to switch to Plasma and boot sunshine-ds on :48100. Cemu/Azahar stay Moonlight apps."
+            detail = "Start Dual-Stream Desktop, or Steam Switch to Desktop — both boot sunshine-ds on :48100. Cemu/Azahar stay Moonlight apps."
         elif ds in ("FREE", "BUSY"):
             headline = f"sunshine-ds {ds}"
             detail = "Moonlight → host :48100. Return via the Sunshine app Return to Game Mode."

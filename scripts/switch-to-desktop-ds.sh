@@ -3,6 +3,8 @@
 # Does not launch Cemu/Azahar — those are Moonlight apps on :48100.
 # Does not change the default login mode (reboot still Game Mode).
 # Requires --yes when gamescope is active (kills Game Mode).
+# Steam's own Switch to Desktop also starts :48100 once the Plasma
+# oneshot is enabled (WantedBy=plasma-plasmashell.service).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

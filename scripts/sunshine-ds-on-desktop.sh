@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Wait for Plasma Wayland after a Game Mode → Desktop switch, then start
 # proven sunshine-ds (:48100, capture=kwin). Does not switch sessions.
-# Started on demand by the Sunshine DS Decky plugin / switch-to-desktop-ds.sh.
+# WantedBy=plasma-plasmashell.service so Steam Switch to Desktop also brings
+# DS up. RemainAfterExit keeps Distrobox sunshine-ds out of the oneshot
+# cgroup teardown. Decky SunshineDS / switch-to-desktop-ds.sh can start it early.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

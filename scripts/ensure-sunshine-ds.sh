@@ -6,7 +6,7 @@
 #   scripts/ensure-sunshine-ds.sh           # start if down
 #   scripts/ensure-sunshine-ds.sh --status  # print pid/state only
 #   scripts/ensure-sunshine-ds.sh --stop    # stop DS + virtual helper (Game Mode teardown)
-#   scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop icon + on-desktop oneshot
+#   scripts/ensure-sunshine-ds.sh --install-shortcut  # Desktop icon + enable Plasma oneshot
 #   scripts/ensure-sunshine-ds.sh --restart # idle restart (refuses BUSY)
 #   scripts/ensure-sunshine-ds.sh --restart --force  # restart even if BUSY
 set -uo pipefail
@@ -129,24 +129,36 @@ install_on_desktop_unit() {
     "$ROOT/scripts/sunshine-app-game-mode.sh" "$ROOT/scripts/switch-to-game-mode.sh" 2>/dev/null || true
   desired="$(cat <<EOS
 [Unit]
-Description=Start proven sunshine-ds after Plasma (armed by Decky)
+Description=Start proven sunshine-ds after Plasma
 After=plasma-plasmashell.service
+PartOf=plasma-plasmashell.service
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
+KillMode=mixed
 Nice=5
-TimeoutStartSec=120
+TimeoutStartSec=180
+TimeoutStopSec=40
 Environment=XDG_RUNTIME_DIR=/run/user/%U
 ExecStart=$ON_DESKTOP_SCRIPT
+ExecStop=$ROOT/scripts/ensure-sunshine-ds.sh --stop
 StandardOutput=append:$ON_DESKTOP_LOG
 StandardError=append:$ON_DESKTOP_LOG
+
+[Install]
+WantedBy=plasma-plasmashell.service
 EOS
 )"
   unit_path="$USER_UNIT_DIR/$ON_DESKTOP_SERVICE"
   if [ ! -f "$unit_path" ] || [ "$(cat "$unit_path")" != "$desired" ]; then
     printf '%s\n' "$desired" >"$unit_path"
     systemctl --user daemon-reload
-    echo "Updated $ON_DESKTOP_SERVICE (start on demand; not enabled at login)."
+    echo "Updated $ON_DESKTOP_SERVICE (Plasma starts :48100)."
+  fi
+  if ! systemctl --user is-enabled "$ON_DESKTOP_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$ON_DESKTOP_SERVICE"
+    echo "Enabled $ON_DESKTOP_SERVICE for plasma-plasmashell.service."
   fi
 }
 
@@ -333,13 +345,6 @@ if [ "$DO_STATUS" -eq 1 ]; then
   esac
 fi
 
-if [ "$DO_INSTALL_SHORTCUT" -eq 1 ] && [ "$DO_STOP" -eq 0 ] && [ "$DO_RESTART" -eq 0 ]; then
-  ensure_game_mode_shortcut
-  exit 0
-fi
-
-ensure_game_mode_shortcut
-
 if [ "$DO_STOP" -eq 1 ]; then
   DO_FORCE=1
   stop_ds_if_idle || true
@@ -348,6 +353,13 @@ if [ "$DO_STOP" -eq 1 ]; then
   print_status
   exit 0
 fi
+
+if [ "$DO_INSTALL_SHORTCUT" -eq 1 ] && [ "$DO_RESTART" -eq 0 ]; then
+  ensure_game_mode_shortcut
+  exit 0
+fi
+
+ensure_game_mode_shortcut
 
 if playbook_in_game_mode; then
   echo "Game Mode: desktop sunshine-ds (:48100 / kwin) stays down."

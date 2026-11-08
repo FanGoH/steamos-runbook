@@ -133,8 +133,8 @@ if [ "${1:-}" = "--write-conf" ]; then
 fi
 
 if [ -n "$(pgrep -x sunshine-ds || true)" ]; then
-  echo "Desktop sunshine-ds is running. Stop it with ensure-sunshine-ds.sh --stop before Game Mode KMS." >&2
-  exit 2
+  echo "Stopping desktop sunshine-ds so Game Mode kms can bind." >&2
+  bash "$ROOT/scripts/ensure-sunshine-ds.sh" --stop || true
 fi
 
 if [ ! -x "$KMS_BIN" ]; then

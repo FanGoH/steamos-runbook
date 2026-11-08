@@ -153,9 +153,9 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
 | `scripts/sunshine-app-stop.sh` | Kill leftover Cemu/Azahar after Moonlight Quit game (`azahar` or `cemu`) |
 | `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) and copy Cemu/Azahar Flatpak icons |
-| `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
+| `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` and enables the Plasma oneshot. `--restart` if idle. Not Decky `:47989`. |
 | `scripts/ensure-sunshine-ds-decky.sh` | Install Decky **SunshineDS** (Game Mode → Plasma + proven `:48100`). `~/homebrew/plugins` may need sudo |
-| `scripts/sunshine-ds-on-desktop.sh` | Called by that plugin: start desktop dual-stream DS and switch to Plasma |
+| `scripts/sunshine-ds-on-desktop.sh` | Wait for Plasma Wayland, then start `:48100`. `WantedBy=plasma-plasmashell.service` so Steam Switch to Desktop also brings DS up. |
 | `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
 | `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
 | `scripts/ensure-mangohud-presets.sh` | Steam QAM performance overlay preset 2: horizontal bar stretched to HDMI (`horizontal_stretch=1`). Headless `:2` gamescope uses a separate mangoapp ftok cwd so 1080p frames do not 1/4-flash the HUD. Other presets stay stock. |

@@ -77,6 +77,9 @@ Update Tender + wrap (`ensure-tender.sh`) without the full recovery.
   fgpc mode status
   fgpc mode desktop      sunshine-ds :48100 + Virtual-sunshine-ds
   fgpc mode game         --stop desktop DS, then steamosctl
+
+Steam Switch to Desktop also starts :48100 (WantedBy=plasma-plasmashell).
+Game Mode kms stops desktop DS before binding :48200.
 """,
     "stream": """Two playbook servers (Decky :47989 stays).
 

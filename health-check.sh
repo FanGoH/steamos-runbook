@@ -349,6 +349,17 @@ else
 ./scripts/ensure-sunshine-ds-decky.sh
 EOF
 fi
+if [ -w /dev/uhid ]; then
+  ok "/dev/uhid writable (Switch / Lichii raw pad)"
+else
+  warn "/dev/uhid not writable — sunshine-ds gamepad=switch cannot create libvirtualhid"
+  record_manual "udev uaccess for /dev/uhid" <<EOF
+./scripts/ensure-sunshine-ds-uhid.sh
+# or:
+# sudo install -m 644 $ROOT/udev/99-sunshine-uhid.rules /etc/udev/rules.d/
+# sudo udevadm control --reload && sudo udevadm trigger --name-match=uhid
+EOF
+fi
 echo
 
 echo "[sunshine-ds-kms / Game Mode]"

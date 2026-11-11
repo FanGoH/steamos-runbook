@@ -762,6 +762,22 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 EOF
 fi
 echo
+echo "[Kimochi]"
+KIMOCHI_ROOT="${KIMOCHI_GAMING_MODE_ROOT:-/home/$STEAMOS_USER/.local/share/kimochi/gaming-mode}"
+KIMOCHI_APP="${KIMOCHI_APPIMAGE:-/home/$STEAMOS_USER/.local/share/kimochi/Kimochi.AppImage}"
+if [ -e "$KIMOCHI_APP" ] || [ -e "$KIMOCHI_ROOT/current/Kimochi.AppImage" ]; then
+  if grep -q 'steamos-playbook kimochi-gaming-mode wrap' "$KIMOCHI_ROOT/launch.sh" 2>/dev/null; then
+    ok "Kimochi Game Mode launcher wrapped (fusermount on Steam PATH)"
+  else
+    warn "Kimochi Game Mode launcher is not wrapped (Steam AppImage FUSE crash)"
+    record_manual "Wrap Kimochi Game Mode launcher" <<'EOF'
+./scripts/ensure-kimochi.sh
+EOF
+  fi
+else
+  ok "Kimochi not installed (optional)"
+fi
+echo
 
 echo "[Decky]"
 HOMEBREW_DIR="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}"

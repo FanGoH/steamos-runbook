@@ -81,6 +81,36 @@ stop_stray_kimochi() {
   done
 }
 
+# Put an already-running Steam game (Trails, …) back on HDMI after the tile
+# launch. Without MANAGED=1 Kimochi will not steal it back.
+yield_to_running_game() {
+  own="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"
+  [ -n "$own" ] || return 0
+  (
+    export DISPLAY="${DISPLAY:-:0}"
+    i=0
+    while [ "$i" -lt 40 ]; do
+      i=$((i + 1))
+      sleep 0.25
+      pgrep -x kimochi >/dev/null 2>&1 || continue
+      ids=$(xprop -root GAMESCOPE_FOCUSABLE_APPS 2>/dev/null) || continue
+      game=
+      for id in $(printf '%s' "$ids" | tr -c '0-9' ' '); do
+        [ -n "$id" ] || continue
+        [ "$id" = "769" ] && continue
+        [ "$id" = "$own" ] && continue
+        game=$id
+        break
+      done
+      [ -n "$game" ] || continue
+      xprop -root -f GAMESCOPECTRL_BASELAYER_APPID 32c -set GAMESCOPECTRL_BASELAYER_APPID "$game" 2>/dev/null || true
+      xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$game" 2>/dev/null || true
+      xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$game" 2>/dev/null || true
+      exit 0
+    done
+  ) &
+}
+
 ensure_patched_appdir() {
   if [ -x "$extracted/usr/bin/kimochi" ] && [ -f "$extracted/AppRun" ]; then
     return 0
@@ -110,8 +140,13 @@ if [ -f "$patcher" ] && ensure_patched_appdir; then
     export KIMOCHI_GAMESCOPE_SCALE="${KIMOCHI_GAMESCOPE_SCALE:-1}"
     export KIMOCHI_GAMESCOPE_UI_SCALE="${KIMOCHI_GAMESCOPE_UI_SCALE:-1.5}"
     export KIMOCHI_STEAM_APP_ID="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"
-    export KIMOCHI_STEAM_MANAGED=1
+    # Vendor launch-from-steam.sh sets MANAGED=1 (Kimochi is the Steam app).
+    # On this machine it is a sidecar over Trails: MANAGED=1 steals HDMI and
+    # turns LS+RS into return-to-game (controller-nav-cancel) instead of the
+    # radial menu. Keep SteamAppId so the reaper tracks the process.
+    unset KIMOCHI_STEAM_MANAGED
     stop_stray_kimochi
+    yield_to_running_game
     if [ -f "$gaming_launcher" ]; then
       exec /bin/sh "$gaming_launcher" "$extracted/AppRun" "$@"
     fi

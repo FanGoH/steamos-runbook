@@ -21,6 +21,8 @@ grep -q 'extracted/AppRun' "$LAUNCHER" || fail "launcher must exec patched AppDi
 grep -q -- '--elf' "$LAUNCHER" || fail "launcher must patch the on-disk ELF"
 grep -q -- '--prefer-pad' "$LAUNCHER" || fail "launcher must pin the Sunshine/Steam pad"
 grep -q 'export DISPLAY=:0' "$LAUNCHER" || fail "patched launch must force DISPLAY=:0 like launch-from-steam.sh"
+grep -q 'unset KIMOCHI_STEAM_MANAGED' "$LAUNCHER" || fail "sidecar launch must unset KIMOCHI_STEAM_MANAGED so the chord opens the menu"
+grep -q 'yield_to_running_game' "$LAUNCHER" || fail "launcher must yield HDMI to the already-running game"
 grep -q 'stop_stray_kimochi' "$LAUNCHER" || fail "launcher must replace a leftover kimochi so Steam does not see an instant exit"
 grep -q 'pgrep -x kimochi' "$LAUNCHER" || fail "stray stop must use pgrep -x kimochi"
 grep -q 'xor eax,eax' "$PATCHER" || fail "patcher must document xor eax,eax"

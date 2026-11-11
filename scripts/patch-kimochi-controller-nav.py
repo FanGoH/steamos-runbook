@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.util
+import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -171,6 +173,67 @@ def patch_file(path: Path) -> str:
     return f"{path}: patched controller-nav cancel at {off + PATCH_AT:#x}"
 
 
+def udev_joysticks() -> list[str]:
+    """Joystick names in sysfs event order (gilrs udev enumerate is the same set)."""
+    names: list[str] = []
+    events = sorted(
+        Path("/sys/class/input").glob("event*"),
+        key=lambda path: int(path.name[5:]) if path.name[5:].isdigit() else 0,
+    )
+    for event in events:
+        try:
+            props = subprocess.check_output(
+                ["udevadm", "info", "--query=property", str(event)],
+                text=True,
+                errors="replace",
+            )
+        except OSError:
+            continue
+        if "ID_INPUT_JOYSTICK=1" not in props:
+            continue
+        name_path = event / "device" / "name"
+        names.append(name_path.read_text().strip() if name_path.exists() else event.name)
+    return names
+
+
+def prefer_stream_pad_index(names: list[str]) -> int | None:
+    lowered = [name.lower() for name in names]
+    for needle in (
+        "sunshine",
+        "odin",
+        "thor",
+        "libvirtualhid",
+        "microsoft x-box 360 pad 0",
+    ):
+        for index, name in enumerate(lowered):
+            if needle in name:
+                return index
+    return None
+
+
+def write_preferred_pad(settings_path: Path, index: int) -> str:
+    data = json.loads(settings_path.read_text())
+    pads = data.setdefault("gamepadSettings", {})
+    if not isinstance(pads, dict):
+        pads = {}
+        data["gamepadSettings"] = pads
+    if pads.get("preferredGamepadIndex") == index:
+        return f"{settings_path}: preferredGamepadIndex already {index}"
+    pads["preferredGamepadIndex"] = index
+    pads["enabled"] = pads.get("enabled", True)
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    return f"{settings_path}: preferredGamepadIndex={index}"
+
+
+def prefer_pad(settings_path: Path) -> str:
+    names = udev_joysticks()
+    index = prefer_stream_pad_index(names)
+    listing = ", ".join(f"{i}:{name}" for i, name in enumerate(names)) or "(none)"
+    if index is None:
+        return f"no Sunshine/Steam pad 0 among joysticks: {listing}"
+    return write_preferred_pad(settings_path, index) + f" ({listing})"
+
+
 def watch(timeout: float) -> int:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -194,8 +257,21 @@ def main() -> int:
         help="wait for a kimochi process, then patch it (needs ptrace)",
     )
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--prefer-pad",
+        action="store_true",
+        help="point Kimochi at Steam pad 0 / Sunshine so the radial chord is heard",
+    )
+    parser.add_argument(
+        "--settings",
+        type=Path,
+        default=Path.home() / ".local/share/dev.kimochi.app/settings.json",
+    )
     args = parser.parse_args()
     try:
+        if args.prefer_pad:
+            print(prefer_pad(args.settings))
+            return 0
         if args.elf:
             message = patch_file(args.elf)
             print(message)

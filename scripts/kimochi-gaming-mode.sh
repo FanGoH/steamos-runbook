@@ -74,6 +74,7 @@ ensure_patched_appdir() {
 
 if [ -f "$patcher" ] && ensure_patched_appdir; then
   if /usr/bin/python3 "$patcher" --elf "$extracted/usr/bin/kimochi"; then
+    /usr/bin/python3 "$patcher" --prefer-pad || true
     unset LD_PRELOAD
     export DISPLAY="${DISPLAY:-:0}"
     export KIMOCHI_GAMESCOPE_SCALE="${KIMOCHI_GAMESCOPE_SCALE:-1}"

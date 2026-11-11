@@ -19,6 +19,7 @@ grep -q 'launch-from-steam.sh' "$LAUNCHER" || fail "launcher must exec Kimochi's
 grep -q 'patch-kimochi-controller-nav.py' "$LAUNCHER" || fail "launcher must run controller-nav patcher"
 grep -q 'extracted/AppRun' "$LAUNCHER" || fail "launcher must exec patched AppDir AppRun"
 grep -q -- '--elf' "$LAUNCHER" || fail "launcher must patch the on-disk ELF"
+grep -q -- '--prefer-pad' "$LAUNCHER" || fail "launcher must pin the Sunshine/Steam pad"
 grep -q 'xor eax,eax' "$PATCHER" || fail "patcher must document xor eax,eax"
 grep -q '0fb6057bc59b01' "$PATCHER" || fail "patcher must pin Kimochi 0.8.1 opcode bytes"
 if grep -qE 'pgrep -f|pkill -f' "$LAUNCHER" "$ENSURE" "$PATCHER"; then
@@ -60,6 +61,10 @@ rc = subprocess.call(["python3", patcher, "--elf", fake])
 out = Path(fake).read_bytes()
 assert rc == 0, rc
 assert out.find(mod.PATCHED) == 3 + mod.PATCH_AT
+assert mod.prefer_stream_pad_index(["EmuPads P1", "Microsoft X-Box 360 pad 0"]) == 1
+assert mod.prefer_stream_pad_index(
+    ["EmuPads P1", "Sunshine (libvirtualhid) Odin2_Portal", "Microsoft X-Box 360 pad 0"]
+) == 1
 print("patcher --elf ok")
 PY
 

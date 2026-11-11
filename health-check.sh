@@ -767,18 +767,16 @@ KIMOCHI_ROOT="${KIMOCHI_GAMING_MODE_ROOT:-/home/$STEAMOS_USER/.local/share/kimoc
 KIMOCHI_APP="${KIMOCHI_APPIMAGE:-/home/$STEAMOS_USER/.local/share/kimochi/Kimochi.AppImage}"
 if [ -e "$KIMOCHI_APP" ] || [ -e "$KIMOCHI_ROOT/current/Kimochi.AppImage" ]; then
   if grep -q 'steamos-playbook kimochi-gaming-mode wrap' "$KIMOCHI_ROOT/launch.sh" 2>/dev/null; then
-    ok "Kimochi Game Mode launcher wrapped (tile kicks overlay sidecar)"
-  else
-    warn "Kimochi Game Mode launcher is not wrapped (Steam AppImage FUSE crash)"
-    record_manual "Wrap Kimochi Game Mode launcher" <<'EOF'
+    warn "Kimochi Game Mode launcher is still a playbook wrap"
+    record_manual "Unwrap Kimochi Game Mode launcher" <<'EOF'
 ./scripts/ensure-kimochi.sh
 EOF
+  else
+    ok "Kimochi Game Mode launcher is vendor launch-from-steam.sh"
   fi
   if [ -f "/home/$STEAMOS_USER/.config/systemd/user/steamos-kimochi-overlay.service" ]; then
-    ok "Kimochi overlay sidecar unit installed (Steam tile starts it)"
-  else
-    warn "Kimochi overlay sidecar unit is missing"
-    record_manual "Install Kimochi overlay sidecar" <<'EOF'
+    warn "Leftover Kimochi overlay sidecar unit is still installed"
+    record_manual "Remove leftover Kimochi overlay unit" <<'EOF'
 ./scripts/ensure-kimochi.sh
 EOF
   fi

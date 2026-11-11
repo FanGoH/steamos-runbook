@@ -82,7 +82,8 @@ stop_stray_kimochi() {
 }
 
 # Put an already-running Steam game (Trails, …) back on HDMI after the tile
-# launch. Without MANAGED=1 Kimochi will not steal it back.
+# launch. Never write a one-id BASELAYER: dropping 769 makes Guide/QAM/Home
+# unable to raise Steam. Skip if Steam's own UI (769) is already in front.
 yield_to_running_game() {
   own="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"
   [ -n "$own" ] || return 0
@@ -93,6 +94,10 @@ yield_to_running_game() {
       i=$((i + 1))
       sleep 0.25
       pgrep -x kimochi >/dev/null 2>&1 || continue
+      front=$(xprop -root GAMESCOPE_FOCUSED_APP 2>/dev/null) || continue
+      case "$front" in
+        *' = 769'*) exit 0 ;;
+      esac
       ids=$(xprop -root GAMESCOPE_FOCUSABLE_APPS 2>/dev/null) || continue
       game=
       for id in $(printf '%s' "$ids" | tr -c '0-9' ' '); do
@@ -103,7 +108,9 @@ yield_to_running_game() {
         break
       done
       [ -n "$game" ] || continue
-      xprop -root -f GAMESCOPECTRL_BASELAYER_APPID 32c -set GAMESCOPECTRL_BASELAYER_APPID "$game" 2>/dev/null || true
+      # Keep Steam (769) on the stack. A lone game id is what killed the Steam menu.
+      xprop -root -f GAMESCOPECTRL_BASELAYER_APPID 32c \
+        -set GAMESCOPECTRL_BASELAYER_APPID "$game, 769" 2>/dev/null || true
       xprop -root -f GAMESCOPE_FOCUSED_APP 32c -set GAMESCOPE_FOCUSED_APP "$game" 2>/dev/null || true
       xprop -root -f GAMESCOPE_FOCUSED_APP_GFX 32c -set GAMESCOPE_FOCUSED_APP_GFX "$game" 2>/dev/null || true
       exit 0

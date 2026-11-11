@@ -76,7 +76,9 @@ if [ -f "$patcher" ] && ensure_patched_appdir; then
   if /usr/bin/python3 "$patcher" --elf "$extracted/usr/bin/kimochi"; then
     /usr/bin/python3 "$patcher" --prefer-pad || true
     unset LD_PRELOAD
-    export DISPLAY="${DISPLAY:-:0}"
+    # Same as vendor launch-from-steam.sh. Steam's game Xwayland is often :1;
+    # Kimochi's overlay must be on :0 (HDMI / GAMESCOPE_FOCUSED_* atoms).
+    export DISPLAY=:0
     export KIMOCHI_GAMESCOPE_SCALE="${KIMOCHI_GAMESCOPE_SCALE:-1}"
     export KIMOCHI_GAMESCOPE_UI_SCALE="${KIMOCHI_GAMESCOPE_UI_SCALE:-1.5}"
     export KIMOCHI_STEAM_APP_ID="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"

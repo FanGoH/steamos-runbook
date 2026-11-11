@@ -20,6 +20,7 @@ grep -q 'patch-kimochi-controller-nav.py' "$LAUNCHER" || fail "launcher must run
 grep -q 'extracted/AppRun' "$LAUNCHER" || fail "launcher must exec patched AppDir AppRun"
 grep -q -- '--elf' "$LAUNCHER" || fail "launcher must patch the on-disk ELF"
 grep -q -- '--prefer-pad' "$LAUNCHER" || fail "launcher must pin the Sunshine/Steam pad"
+grep -q 'export DISPLAY=:0' "$LAUNCHER" || fail "patched launch must force DISPLAY=:0 like launch-from-steam.sh"
 grep -q 'xor eax,eax' "$PATCHER" || fail "patcher must document xor eax,eax"
 grep -q '0fb6057bc59b01' "$PATCHER" || fail "patcher must pin Kimochi 0.8.1 opcode bytes"
 if grep -qE 'pgrep -f|pkill -f' "$LAUNCHER" "$ENSURE" "$PATCHER"; then

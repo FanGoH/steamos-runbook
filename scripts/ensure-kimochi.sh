@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Wrap Kimochi's Steam Game Mode launcher so the AppImage can find
-# fusermount. Steam's existing shortcut stays pointed at
-# ~/.local/share/kimochi/gaming-mode/launch.sh — do not rewrite
-# shortcuts.vdf while Game Mode is running. Kimochi updates restore
-# launch.sh; re-run this (also from post-update.sh).
+# Kimochi Game Mode overlay sidecar. Steam's existing shortcut stays pointed
+# at ~/.local/share/kimochi/gaming-mode/launch.sh — do not rewrite
+# shortcuts.vdf while Game Mode is running. The tile only restarts
+# steamos-kimochi-overlay.service (Kimochi is not a Steam-managed game).
+# Kimochi updates restore launch.sh; re-run this (also from post-update.sh).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,14 +13,20 @@ load_env "$ROOT"
 if ! require_playbook_user; then
   exit 2
 fi
+setup_user_dbus
 
 LAUNCHER="$ROOT/scripts/kimochi-gaming-mode.sh"
+OVERLAY="$ROOT/scripts/kimochi-overlay.sh"
 KIMOCHI_ROOT="${KIMOCHI_GAMING_MODE_ROOT:-/home/${STEAMOS_USER}/.local/share/kimochi/gaming-mode}"
 WRAP="$KIMOCHI_ROOT/launch.sh"
 APPIMAGE="${KIMOCHI_APPIMAGE:-/home/${STEAMOS_USER}/.local/share/kimochi/Kimochi.AppImage}"
 MARK="steamos-playbook kimochi-gaming-mode wrap"
+SERVICE="${KIMOCHI_OVERLAY_SERVICE:-steamos-kimochi-overlay.service}"
+UNIT_PATH="/home/${STEAMOS_USER}/.config/systemd/user/$SERVICE"
+LOG="$ROOT/logs/kimochi-overlay.log"
+UID_NUM="$(id -u "$STEAMOS_USER")"
 
-chmod +x "$LAUNCHER" 2>/dev/null || true
+chmod +x "$LAUNCHER" "$OVERLAY" 2>/dev/null || true
 
 if [ ! -e "$APPIMAGE" ] && [ ! -e "$KIMOCHI_ROOT/current/Kimochi.AppImage" ]; then
   echo "Kimochi AppImage not installed; skip Game Mode wrap."
@@ -36,20 +42,20 @@ EOF
   exit 2
 fi
 
-if [ ! -x "$LAUNCHER" ]; then
-  echo "Missing $LAUNCHER"
+if [ ! -x "$LAUNCHER" ] || [ ! -x "$OVERLAY" ]; then
+  echo "Missing $LAUNCHER or $OVERLAY"
   exit 1
 fi
 
 desired=$(cat <<EOF
 #!/bin/sh
 # $MARK
-# Steam Game Mode PATH has no fusermount. Restore via $ROOT/scripts/ensure-kimochi.sh.
+# Steam tile kicks the overlay sidecar. Restore via $ROOT/scripts/ensure-kimochi.sh.
 exec /bin/sh '$LAUNCHER' "\$@"
 EOF
 )
 
-mkdir -p "$KIMOCHI_ROOT"
+mkdir -p "$KIMOCHI_ROOT" "/home/${STEAMOS_USER}/.config/systemd/user" "$ROOT/logs"
 if [ -f "$WRAP" ] && [ "$(cat "$WRAP")" = "$desired" ]; then
   echo "Kimochi Game Mode wrap already in place ($WRAP)."
 else
@@ -87,5 +93,71 @@ if [ -f "$PATCHER" ] && [ "${app_size:-0}" -gt 1000000 ]; then
   if [ -x "$EXTRACT/usr/bin/kimochi" ]; then
     /usr/bin/python3 "$PATCHER" --elf "$EXTRACT/usr/bin/kimochi" || true
   fi
+fi
+
+# Placeholder AppImages (ensure tests) skip the user unit.
+if [ "${app_size:-0}" -le 1000000 ]; then
+  echo "Kimochi AppImage is a placeholder; skip overlay unit."
+  exit 0
+fi
+
+desired_unit="$(cat <<EOS
+[Unit]
+Description=Kimochi Game Mode overlay sidecar
+Documentation=file://$ROOT/scripts/ensure-kimochi.sh
+After=gamescope-session.service
+PartOf=gamescope-session.service
+ConditionPathExists=$OVERLAY
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=$OVERLAY
+Restart=on-failure
+RestartSec=3
+RestartPreventExitStatus=1 2
+TimeoutStopSec=15
+KillMode=mixed
+Environment=HOME=/home/$STEAMOS_USER
+Environment=USER=$STEAMOS_USER
+Environment=XDG_RUNTIME_DIR=/run/user/$UID_NUM
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_NUM/bus
+Environment=DISPLAY=:0
+Environment=PATH=/usr/bin:/bin
+Environment=KIMOCHI_GAMING_MODE_ROOT=$KIMOCHI_ROOT
+UnsetEnvironment=SteamAppId SteamGameId SteamOverlayGameId LD_PRELOAD KIMOCHI_STEAM_MANAGED KIMOCHI_STEAM_APP_ID
+StandardOutput=append:$LOG
+StandardError=append:$LOG
+
+[Install]
+WantedBy=gamescope-session.target
+EOS
+)"
+
+unit_changed=0
+if [ ! -f "$UNIT_PATH" ] || [ "$(cat "$UNIT_PATH")" != "$desired_unit" ]; then
+  printf '%s\n' "$desired_unit" >"$UNIT_PATH"
+  systemctl --user daemon-reload
+  unit_changed=1
+  echo "Updated $SERVICE unit."
+fi
+
+if ! systemctl --user is-enabled "$SERVICE" >/dev/null 2>&1; then
+  systemctl --user enable "$SERVICE"
+  echo "Enabled $SERVICE (starts with Game Mode)."
+else
+  echo "$SERVICE already enabled."
+fi
+
+if systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
+  if [ "$unit_changed" -eq 1 ] || ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+    systemctl --user restart "$SERVICE" || systemctl --user start "$SERVICE"
+    echo "Started $SERVICE."
+  else
+    echo "$SERVICE already active."
+  fi
+else
+  echo "$SERVICE enabled; starts with gamescope-session."
 fi
 exit 0

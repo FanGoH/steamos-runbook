@@ -712,6 +712,33 @@ else
 EOF
 fi
 echo
+echo "[Anki]"
+ANKI_ID="${ANKI_FLATPAK_ID:-net.ankiweb.Anki}"
+ANKI_ADDON_ID="${ANKICONNECT_ADDON_ID:-2055492159}"
+ANKI_ADDON="${ANKI_ADDONS_DIR:-/home/$STEAMOS_USER/.var/app/${ANKI_ID}/data/Anki2/addons21}/${ANKI_ADDON_ID}/__init__.py"
+if flatpak info --user "$ANKI_ID" >/dev/null 2>&1 || flatpak info "$ANKI_ID" >/dev/null 2>&1; then
+  ok "Anki installed ($ANKI_ID)"
+else
+  fail "Anki not installed"
+  record_manual "Install Anki Flatpak + AnkiConnect" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+if [ -f "$ANKI_ADDON" ]; then
+  ok "AnkiConnect add-on present ($ANKI_ADDON_ID)"
+else
+  warn "AnkiConnect add-on missing"
+  record_manual "Install AnkiConnect" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+if curl -sf --max-time 1 -X POST -H 'Content-Type: application/json' \
+  --data '{"action":"version","version":6}' http://127.0.0.1:8765 >/dev/null; then
+  ok "AnkiConnect answering http://127.0.0.1:8765"
+else
+  warn "AnkiConnect not answering (start Anki on Desktop; API is only up while Anki runs)"
+fi
+echo
 
 echo "[Decky]"
 HOMEBREW_DIR="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}"

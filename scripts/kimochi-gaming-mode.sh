@@ -53,6 +53,34 @@ patcher="$self_dir/patch-kimochi-controller-nav.py"
 extracted="$root/extracted"
 gaming_launcher="$release_dir/scripts/launch-gaming-mode.sh"
 
+# Kimochi is single-instance. A leftover process (debug wrap, previous
+# tile) makes Steam's reaper exec AppRun, hand off, and exit in the same
+# second — Game Mode shows a crash. Only when this is the Steam shortcut.
+stop_stray_kimochi() {
+  [ -n "${SteamAppId:-}" ] || return 0
+  for pid in $(pgrep -x kimochi 2>/dev/null || true); do
+    echo "Kimochi Gaming Mode: replacing leftover pid $pid so Steam can keep the process" >&2
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  n=0
+  while pgrep -x kimochi >/dev/null 2>&1 && [ "$n" -lt 25 ]; do
+    n=$((n + 1))
+    sleep 0.1
+  done
+  for pid in $(pgrep -x kimochi 2>/dev/null || true); do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+  # hookd is a Wine helper; comm is truncated. Match the exe path only.
+  for dir in /proc/[0-9]*; do
+    [ -r "$dir/cmdline" ] || continue
+    pid=${dir#/proc/}
+    cmd=$(tr '\0' ' ' <"$dir/cmdline" 2>/dev/null || true)
+    case "$cmd" in
+      *kimochi-hookd*) kill -TERM "$pid" 2>/dev/null || true ;;
+    esac
+  done
+}
+
 ensure_patched_appdir() {
   if [ -x "$extracted/usr/bin/kimochi" ] && [ -f "$extracted/AppRun" ]; then
     return 0
@@ -83,6 +111,7 @@ if [ -f "$patcher" ] && ensure_patched_appdir; then
     export KIMOCHI_GAMESCOPE_UI_SCALE="${KIMOCHI_GAMESCOPE_UI_SCALE:-1.5}"
     export KIMOCHI_STEAM_APP_ID="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"
     export KIMOCHI_STEAM_MANAGED=1
+    stop_stray_kimochi
     if [ -f "$gaming_launcher" ]; then
       exec /bin/sh "$gaming_launcher" "$extracted/AppRun" "$@"
     fi
@@ -90,4 +119,5 @@ if [ -f "$patcher" ] && ensure_patched_appdir; then
   fi
 fi
 
+stop_stray_kimochi
 exec /bin/sh "$launcher" "$appimage" "$@"

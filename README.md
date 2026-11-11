@@ -166,6 +166,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
 | `scripts/ensure-anki.sh` | User Flatpak Anki + AnkiConnect add-on `2055492159` + headless `anki-connect.service` (`127.0.0.1:18765`; `8765` is Decky Clipboard). Desktop: `scripts/anki-gui.sh` |
+| `scripts/ensure-kimochi.sh` | Restore Kimochi's vendor Game Mode `launch.sh` (unwrap a leftover playbook overlay wrap that SIGSTOP'd steam). Does not rewrite `shortcuts.vdf`. |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` **THE standard** `checkpoint-2026-09-18-gamepad-xtest` (HUD subset `checkpoint-2026-09-17-hdmi-hud`; fill+Exit `checkpoint-2026-09-14-gamemode-fill-exit`) |

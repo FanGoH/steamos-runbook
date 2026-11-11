@@ -774,11 +774,11 @@ if [ -e "$KIMOCHI_APP" ] || [ -e "$KIMOCHI_ROOT/current/Kimochi.AppImage" ]; the
 ./scripts/ensure-kimochi.sh
 EOF
   fi
-  if systemctl --user is-enabled steamos-kimochi-overlay.service >/dev/null 2>&1; then
-    ok "Kimochi overlay sidecar enabled (gamescope-session)"
+  if [ -f "/home/$STEAMOS_USER/.config/systemd/user/steamos-kimochi-overlay.service" ]; then
+    ok "Kimochi overlay sidecar unit installed (Steam tile starts it)"
   else
-    warn "Kimochi overlay sidecar is not enabled"
-    record_manual "Enable Kimochi overlay sidecar" <<'EOF'
+    warn "Kimochi overlay sidecar unit is missing"
+    record_manual "Install Kimochi overlay sidecar" <<'EOF'
 ./scripts/ensure-kimochi.sh
 EOF
   fi

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Kimochi Game Mode overlay sidecar. Steam's existing shortcut stays pointed
 # at ~/.local/share/kimochi/gaming-mode/launch.sh — do not rewrite
-# shortcuts.vdf while Game Mode is running. The tile only restarts
-# steamos-kimochi-overlay.service (Kimochi is not a Steam-managed game).
+# shortcuts.vdf while Game Mode is running. The tile starts
+# steamos-kimochi-overlay.service (Kimochi is not a Steam-managed game and
+# does not auto-start with Game Mode — that SIGSTOP'd steam).
 # Kimochi updates restore launch.sh; re-run this (also from post-update.sh).
 set -uo pipefail
 
@@ -114,6 +115,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=$OVERLAY
+ExecStopPost=$ROOT/scripts/kimochi-cont-steam.sh
 Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=1 2
@@ -129,9 +131,6 @@ Environment=KIMOCHI_GAMING_MODE_ROOT=$KIMOCHI_ROOT
 UnsetEnvironment=SteamAppId SteamGameId SteamOverlayGameId LD_PRELOAD KIMOCHI_STEAM_MANAGED KIMOCHI_STEAM_APP_ID
 StandardOutput=append:$LOG
 StandardError=append:$LOG
-
-[Install]
-WantedBy=gamescope-session.target
 EOS
 )"
 
@@ -143,21 +142,16 @@ if [ ! -f "$UNIT_PATH" ] || [ "$(cat "$UNIT_PATH")" != "$desired_unit" ]; then
   echo "Updated $SERVICE unit."
 fi
 
-if ! systemctl --user is-enabled "$SERVICE" >/dev/null 2>&1; then
-  systemctl --user enable "$SERVICE"
-  echo "Enabled $SERVICE (starts with Game Mode)."
-else
-  echo "$SERVICE already enabled."
+# Drop a leftover gamescope-session.target.wants symlink. Auto-start
+# SIGSTOP'd steam and left Guide/QAM dead when the overlay exited mid-pause.
+if systemctl --user is-enabled "$SERVICE" >/dev/null 2>&1; then
+  systemctl --user disable "$SERVICE" || true
+  echo "Disabled $SERVICE auto-start (Steam tile starts it; Guide/QAM stay alive)."
 fi
-
-if systemctl --user is-active gamescope-session.service >/dev/null 2>&1; then
-  if [ "$unit_changed" -eq 1 ] || ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
-    systemctl --user restart "$SERVICE" || systemctl --user start "$SERVICE"
-    echo "Started $SERVICE."
-  else
-    echo "$SERVICE already active."
-  fi
-else
-  echo "$SERVICE enabled; starts with gamescope-session."
+if systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+  systemctl --user stop "$SERVICE" || true
+  echo "Stopped $SERVICE so steam is not left SIGSTOP'd."
 fi
+/bin/sh "$ROOT/scripts/kimochi-cont-steam.sh" || true
+echo "$SERVICE installed. Steam tile restarts it; it does not start with Game Mode."
 exit 0

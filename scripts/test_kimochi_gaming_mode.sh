@@ -45,7 +45,11 @@ grep -q 'shortcuts.vdf' "$ENSURE" || fail "ensure-kimochi.sh must document no sh
 grep -q 'kimochi-gaming-mode.sh' "$ENSURE" || fail "ensure-kimochi.sh must wrap via kimochi-gaming-mode.sh"
 grep -q 'kimochi-overlay.sh' "$ENSURE" || fail "ensure-kimochi.sh must install kimochi-overlay.sh"
 grep -q 'KIMOCHI_GAMING_MODE_ROOT' "$ENSURE" || fail "ensure-kimochi.sh must honor KIMOCHI_GAMING_MODE_ROOT"
-grep -q 'WantedBy=gamescope-session.target' "$ENSURE" || fail "overlay unit must start with Game Mode"
+if grep -qE 'WantedBy=gamescope-session.target' "$ENSURE"; then
+  fail "overlay must not auto-start with Game Mode (that SIGSTOPs steam)"
+fi
+grep -q 'ExecStopPost' "$ENSURE" || fail "overlay unit must SIGCONT steam on stop"
+grep -q 'kimochi-cont-steam.sh' "$ENSURE" "$OVERLAY" || fail "overlay must resume steam via kimochi-cont-steam.sh"
 grep -q 'PartOf=gamescope-session.service' "$ENSURE" || fail "overlay unit must stop with Game Mode"
 grep -q 'UnsetEnvironment=SteamAppId' "$ENSURE" || fail "overlay unit must drop SteamAppId"
 

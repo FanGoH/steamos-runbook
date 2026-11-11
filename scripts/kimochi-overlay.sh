@@ -116,6 +116,8 @@ release_steam() {
       done
       sleep 0.5
     done
+    # Last pause often happens as kimochi exits; the loop above would skip it.
+    /bin/sh "$self_dir/kimochi-cont-steam.sh" || true
   ) &
 }
 

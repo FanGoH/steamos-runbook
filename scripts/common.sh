@@ -82,6 +82,10 @@ load_env() {
   ANKI_FLATPAK_ID="${ANKI_FLATPAK_ID:-net.ankiweb.Anki}"
   ANKICONNECT_ADDON_ID="${ANKICONNECT_ADDON_ID:-2055492159}"
   ANKICONNECT_VERSION="${ANKICONNECT_VERSION:-26.10.14.0}"
+  # 8765 is Decky Clipboard; 8766 is also taken on this box.
+  ANKICONNECT_PORT="${ANKICONNECT_PORT:-18765}"
+  ANKI_CONNECT_SERVICE="${ANKI_CONNECT_SERVICE:-anki-connect.service}"
+  ANKI_PROFILE="${ANKI_PROFILE:-User 1}"
   FLATPAK_REMOTE="${FLATPAK_REMOTE:-flathub}"
   SWITCH2_CONTROLLERS_DIR="${SWITCH2_CONTROLLERS_DIR:-/home/${STEAMOS_USER}/code/switch2-controllers-linux}"
   SWITCH2_CONTROLLERS_REPO="${SWITCH2_CONTROLLERS_REPO:-https://github.com/trevlars/switch2-controllers-linux.git}"

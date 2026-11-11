@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Ensure Anki (user Flatpak) and the AnkiConnect add-on.
+# Ensure Anki (user Flatpak), the AnkiConnect add-on, and a headless user
+# service so the API stays up in Plasma and Game Mode.
 # Uses /home, so it fits SteamOS's tiny root partition. Do not pacman anki.
 #
-# AnkiConnect serves http://127.0.0.1:8765 only while Anki is running.
+# AnkiConnect listens on 127.0.0.1:${ANKICONNECT_PORT:-18765} (8765 is
+# Decky Clipboard). Desktop window: scripts/anki-gui.sh
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,6 +23,13 @@ URL="${ANKICONNECT_URL:-https://git.sr.ht/~foosoft/anki-connect/archive/${VERSIO
 ADDONS_DIR="${ANKI_ADDONS_DIR:-/home/${STEAMOS_USER}/.var/app/${FLATPAK_ID}/data/Anki2/addons21}"
 DEST="${ADDONS_DIR}/${ADDON_ID}"
 STAMP="${DEST}/.playbook-ankiconnect-version"
+SERVICE="${ANKI_CONNECT_SERVICE:-anki-connect.service}"
+UNIT_PATH="/home/${STEAMOS_USER}/.config/systemd/user/${SERVICE}"
+DAEMON="$ROOT/scripts/anki-connect-daemon.sh"
+PORT="${ANKICONNECT_PORT:-18765}"
+PROFILE="${ANKI_PROFILE:-User 1}"
+LOG="$ROOT/logs/anki-connect.log"
+UID_NUM="$(id -u "$STEAMOS_USER")"
 
 flatpak_installed() {
   flatpak info --user "$FLATPAK_ID" >/dev/null 2>&1 \
@@ -84,7 +93,9 @@ if path.is_file():
 if not isinstance(data, dict):
     data = {}
 data.setdefault("name", "Anki-Connect")
-data.setdefault("disabled", False)
+data["disabled"] = False
+# 0 = no cap. A stale 260800 cap hides the add-on on Anki 26.09.
+data["max_point_version"] = 0
 data.setdefault("mod", int(time.time()))
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
@@ -148,11 +159,175 @@ EOF
   write_meta
   printf '%s\n' "$VERSION" >"$STAMP"
   echo "AnkiConnect $VERSION installed in $DEST"
-  if pgrep -x anki >/dev/null 2>&1; then
-    echo "Anki is running; restart it to load AnkiConnect."
-  else
-    echo "Start Anki (Desktop) so AnkiConnect can listen on 127.0.0.1:8765."
+}
+
+merge_ankiconnect_config() {
+  local cfg="$DEST/config.json"
+  mkdir -p "$DEST"
+  python3 - "$cfg" "$PORT" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+port = int(sys.argv[2])
+data = {}
+if path.is_file():
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except (OSError, json.JSONDecodeError):
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+data.setdefault("apiKey", None)
+data.setdefault("apiLogPath", None)
+data["webBindAddress"] = "127.0.0.1"
+data["webBindPort"] = port
+cors = list(data.get("webCorsOriginList") or [])
+if "*" not in cors:
+    cors.append("*")
+data["webCorsOriginList"] = cors
+ignore = list(data.get("ignoreOriginList") or [])
+if "*" not in ignore:
+    ignore.append("*")
+data["ignoreOriginList"] = ignore
+path.write_text(json.dumps(data, indent=4) + "\n")
+PY
+  write_meta
+  echo "AnkiConnect config: 127.0.0.1:${PORT} (8765 is Decky Clipboard)."
+}
+
+anki_connect_up() {
+  local out
+  out="$(curl -sS --max-time 2 -H 'Content-Type: application/json' \
+    --data '{"action":"version","version":6}' \
+    "http://127.0.0.1:${PORT}/" 2>/dev/null || true)"
+  printf '%s' "$out" | grep -q '"result"' && return 0
+  out="$(curl -sS --max-time 2 -H 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"api.describe","params":{}}' \
+    "http://127.0.0.1:${PORT}/api/v1" 2>/dev/null || true)"
+  printf '%s' "$out" | grep -qE '"result"|"jsonrpc"' && return 0
+  return 1
+}
+
+install_anki_connect_service() {
+  if [ ! -x "$DAEMON" ]; then
+    chmod +x "$DAEMON" "$ROOT/scripts/anki-gui.sh" 2>/dev/null || true
   fi
+  if [ ! -x "$DAEMON" ]; then
+    echo "Missing $DAEMON"
+    return 1
+  fi
+  mkdir -p "/home/${STEAMOS_USER}/.config/systemd/user" "$ROOT/logs"
+
+  local profile_dir="/home/${STEAMOS_USER}/.var/app/${FLATPAK_ID}/data/Anki2/${PROFILE}"
+  if [ ! -d "$profile_dir" ]; then
+    echo "Anki profile '$PROFILE' is missing; open Anki once on Desktop first."
+    record_manual "Create Anki profile, then start AnkiConnect" <<EOF
+flatpak run --user $FLATPAK_ID
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+$ROOT/scripts/ensure-anki.sh
+EOF
+    return 2
+  fi
+
+  local desired_unit
+  desired_unit="$(cat <<EOS
+[Unit]
+Description=AnkiConnect (headless Anki)
+Documentation=file://$ROOT/scripts/ensure-anki.sh
+After=default.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=$DAEMON
+ExecStop=/usr/bin/flatpak kill $FLATPAK_ID
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+Environment=HOME=/home/$STEAMOS_USER
+Environment=USER=$STEAMOS_USER
+Environment=XDG_RUNTIME_DIR=/run/user/$UID_NUM
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_NUM/bus
+Environment=ANKI_FLATPAK_ID=$FLATPAK_ID
+UnsetEnvironment=DISPLAY WAYLAND_DISPLAY
+StandardOutput=append:$LOG
+StandardError=append:$LOG
+
+[Install]
+WantedBy=default.target
+WantedBy=gamescope-session.target
+EOS
+)"
+
+  local unit_changed=0
+  if [ ! -f "$UNIT_PATH" ] || [ "$(cat "$UNIT_PATH")" != "$desired_unit" ]; then
+    printf '%s\n' "$desired_unit" >"$UNIT_PATH"
+    systemctl --user daemon-reload
+    unit_changed=1
+    echo "Updated $SERVICE unit."
+  fi
+
+  if ! systemctl --user is-enabled "$SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$SERVICE"
+    echo "Enabled $SERVICE."
+  else
+    echo "$SERVICE already enabled."
+  fi
+
+  if [ "$(loginctl show-user "$STEAMOS_USER" -p Linger --value 2>/dev/null || true)" != "yes" ]; then
+    if loginctl enable-linger "$STEAMOS_USER" 2>/dev/null; then
+      echo "Enabled linger for $STEAMOS_USER."
+    else
+      record_manual "Enable linger so AnkiConnect survives logout / Game Mode" <<EOF
+loginctl enable-linger $STEAMOS_USER
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+systemctl --user restart $SERVICE
+EOF
+    fi
+  fi
+
+  local need_start=0
+  if [ "$unit_changed" -eq 1 ]; then
+    need_start=1
+  elif ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+    need_start=1
+  elif ! anki_connect_up; then
+    need_start=1
+  fi
+
+  if [ "$need_start" -eq 1 ]; then
+    if pgrep -x anki >/dev/null 2>&1 && ! systemctl --user is-active "$SERVICE" >/dev/null 2>&1; then
+      echo "Stopping Desktop Anki so $SERVICE can own the collection."
+      /usr/bin/flatpak kill "$FLATPAK_ID" >/dev/null 2>&1 || true
+      sleep 1
+    fi
+    systemctl --user restart "$SERVICE" || systemctl --user start "$SERVICE"
+    echo "Started $SERVICE."
+  else
+    echo "$SERVICE already active."
+  fi
+
+  local i=0
+  while [ "$i" -lt 45 ]; do
+    if anki_connect_up; then
+      echo "AnkiConnect answering http://127.0.0.1:${PORT}/ (legacy version 6)."
+      echo "Desktop window: $ROOT/scripts/anki-gui.sh (stops the daemon, then starts it again)."
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+
+  echo "AnkiConnect did not answer http://127.0.0.1:${PORT}/"
+  echo "See $LOG and: journalctl --user -u $SERVICE -n 40 --no-pager"
+  record_manual "Start AnkiConnect daemon" <<EOF
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+systemctl --user status $SERVICE --no-pager
+journalctl --user -u $SERVICE -n 40 --no-pager
+tail -40 $LOG
+EOF
+  return 1
 }
 
 if ! install_anki; then
@@ -166,6 +341,14 @@ if command -v flatpak >/dev/null 2>&1 && flatpak_installed; then
 fi
 
 if ! install_ankiconnect; then
+  exit 1
+fi
+
+if ! merge_ankiconnect_config; then
+  exit 1
+fi
+
+if ! install_anki_connect_service; then
   exit 1
 fi
 

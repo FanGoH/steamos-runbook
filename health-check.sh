@@ -732,11 +732,34 @@ else
 ./scripts/ensure-anki.sh
 EOF
 fi
-if curl -sf --max-time 1 -X POST -H 'Content-Type: application/json' \
-  --data '{"action":"version","version":6}' http://127.0.0.1:8765 >/dev/null; then
-  ok "AnkiConnect answering http://127.0.0.1:8765"
+ANKI_SVC="${ANKI_CONNECT_SERVICE:-anki-connect.service}"
+ANKI_PORT="${ANKICONNECT_PORT:-18765}"
+if systemctl --user is-enabled "$ANKI_SVC" >/dev/null 2>&1; then
+  ok "AnkiConnect unit enabled ($ANKI_SVC)"
 else
-  warn "AnkiConnect not answering (start Anki on Desktop; API is only up while Anki runs)"
+  warn "AnkiConnect unit not enabled"
+  record_manual "Enable AnkiConnect daemon" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+if systemctl --user is-active "$ANKI_SVC" >/dev/null 2>&1; then
+  ok "AnkiConnect unit active ($ANKI_SVC)"
+else
+  warn "AnkiConnect unit not active"
+  record_manual "Start AnkiConnect daemon" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-anki.sh
+EOF
+fi
+if curl -sf --max-time 1 -H 'Content-Type: application/json' \
+  --data '{"action":"version","version":6}' "http://127.0.0.1:${ANKI_PORT}/" | grep -q '"result"'; then
+  ok "AnkiConnect answering http://127.0.0.1:${ANKI_PORT}/"
+else
+  warn "AnkiConnect not answering http://127.0.0.1:${ANKI_PORT}/ (8765 is Decky Clipboard)"
+  record_manual "Start AnkiConnect daemon" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-anki.sh
+EOF
 fi
 echo
 

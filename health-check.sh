@@ -712,6 +712,56 @@ else
 EOF
 fi
 echo
+echo "[Anki]"
+ANKI_ID="${ANKI_FLATPAK_ID:-net.ankiweb.Anki}"
+ANKI_ADDON_ID="${ANKICONNECT_ADDON_ID:-2055492159}"
+ANKI_ADDON="${ANKI_ADDONS_DIR:-/home/$STEAMOS_USER/.var/app/${ANKI_ID}/data/Anki2/addons21}/${ANKI_ADDON_ID}/__init__.py"
+if flatpak info --user "$ANKI_ID" >/dev/null 2>&1 || flatpak info "$ANKI_ID" >/dev/null 2>&1; then
+  ok "Anki installed ($ANKI_ID)"
+else
+  fail "Anki not installed"
+  record_manual "Install Anki Flatpak + AnkiConnect" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+if [ -f "$ANKI_ADDON" ]; then
+  ok "AnkiConnect add-on present ($ANKI_ADDON_ID)"
+else
+  warn "AnkiConnect add-on missing"
+  record_manual "Install AnkiConnect" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+ANKI_SVC="${ANKI_CONNECT_SERVICE:-anki-connect.service}"
+ANKI_PORT="${ANKICONNECT_PORT:-18765}"
+if systemctl --user is-enabled "$ANKI_SVC" >/dev/null 2>&1; then
+  ok "AnkiConnect unit enabled ($ANKI_SVC)"
+else
+  warn "AnkiConnect unit not enabled"
+  record_manual "Enable AnkiConnect daemon" <<'EOF'
+./scripts/ensure-anki.sh
+EOF
+fi
+if systemctl --user is-active "$ANKI_SVC" >/dev/null 2>&1; then
+  ok "AnkiConnect unit active ($ANKI_SVC)"
+else
+  warn "AnkiConnect unit not active"
+  record_manual "Start AnkiConnect daemon" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-anki.sh
+EOF
+fi
+if curl -sf --max-time 1 -H 'Content-Type: application/json' \
+  --data '{"action":"version","version":6}' "http://127.0.0.1:${ANKI_PORT}/" | grep -q '"result"'; then
+  ok "AnkiConnect answering http://127.0.0.1:${ANKI_PORT}/"
+else
+  warn "AnkiConnect not answering http://127.0.0.1:${ANKI_PORT}/ (8765 is Decky Clipboard)"
+  record_manual "Start AnkiConnect daemon" <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+./scripts/ensure-anki.sh
+EOF
+fi
+echo
 
 echo "[Decky]"
 HOMEBREW_DIR="${DECKY_HOMEBREW_DIR:-/home/$STEAMOS_USER/homebrew}"

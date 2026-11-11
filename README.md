@@ -56,7 +56,7 @@ Moonlight host is still `:48200` uniqueid `1075C8EF…`, Desktop app `958645192`
 - Game Mode `:48200` boot unit (`--install-service`) + EmuPads mux
 - pacman keyrings (`archlinux` + `holo`), `sshd`, WOL, OpenRGB udev
 - Decky Sunshine (Pulse chmod, watch/after-gamescope; not the Flatpak user unit)
-- Gear Lever, Cursor Agent worker (Switch 2 BLE bridge is skipped by default)
+- Gear Lever, Anki + AnkiConnect, Cursor Agent worker (Switch 2 BLE bridge is skipped by default)
 - Eden/Tender wrap, official Tender zip if behind, Cemu/RPCS3 input wrappers, PS2 BIOS pin
 - Official Syncthing v2 user daemon + Eden/Azahar save folders (`ensure-syncthing.sh`; linger + `~/.local/bin/syncthing`, not GTK/pacman). Azahar mesh is RetroDECK `~/retrodeck/saves/n3ds/azahar/sdmc` so Game Mode writes sync (`.cursor/skills/emu-save-mesh/`)
 - Decky **Pad Hide** (`ensure-pad-hide-decky.sh`) so extra USB/BT pads can look unplugged for NMH3 / Moonlight (`.cursor/skills/pad-hide/`)
@@ -165,6 +165,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/ensure-rpcs3-input.sh` | RPCS3 player 1 → current pad; Uncharted `--config` + `<iso>.yml` 1080p / flicker settings (01.10 Unlock FPS when that update is present) |
 | `scripts/ensure-pcsx2-bios.sh` | PS2 BIOS via Tender `download_all_firmware` + pin USA 230 in `PCSX2.ini` |
 | `scripts/eden-component/` | Eden launcher + ES-DE custom_systems templates |
+| `scripts/ensure-anki.sh` | User Flatpak Anki + AnkiConnect add-on `2055492159` + headless `anki-connect.service` (`127.0.0.1:18765`; `8765` is Decky Clipboard). Desktop: `scripts/anki-gui.sh` |
 | `scripts/ensure-*.sh` | Idempotent restore tasks |
 | `scripts/check-*.sh` | Status / manual-action helpers |
 | `.cursor/skills/sunshine-ds-gamemode/SKILL.md` | Game Mode `:48200` **THE standard** `checkpoint-2026-09-18-gamepad-xtest` (HUD subset `checkpoint-2026-09-17-hdmi-hud`; fill+Exit `checkpoint-2026-09-14-gamemode-fill-exit`) |
@@ -188,6 +189,10 @@ Copy `.env.example` to `.env`. Important variables:
 | `SUNSHINE_AFTER_GAMESCOPE_SERVICE` | Restarts Sunshine via Decky after `gamescope-session` (KMS rebind) |
 | `SUNSHINE_DS_KMS_SERVICE` | Game Mode `:48200` user unit (`WantedBy=gamescope-session.target`) |
 | `GEARLEVER_FLATPAK_ID` | Gear Lever Flatpak id |
+| `ANKI_FLATPAK_ID` | Anki Flatpak id (`net.ankiweb.Anki`) |
+| `ANKICONNECT_VERSION` | AnkiConnect sourcehut tag (add-on `2055492159`) |
+| `ANKICONNECT_PORT` | AnkiConnect listen port (default `18765`; `8765` is Decky Clipboard) |
+| `ANKI_CONNECT_SERVICE` | Headless Anki user unit (`anki-connect.service`) |
 | `CURSOR_WORKER_DIR` | Folder the Cursor worker registers as its My Machines identity (default: this playbook). Must be a checkout of the repo you want to launch agents against. |
 | `CURSOR_WORKER_EXTRA_DIRS` | Extra workspace roots, **space-separated** (paths with spaces are not supported). These are additional folders on the same worker, not extra repo registrations. |
 | `CURSOR_WORKER_MGMT_ADDR` | Worker healthz listen address (default `127.0.0.1:18789`) |

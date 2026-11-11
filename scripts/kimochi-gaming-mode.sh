@@ -44,4 +44,47 @@ if [ ! -f "$launcher" ]; then
   exit 1
 fi
 
+# Kimochi 0.8.1 closes the radial menu on this Steam Machine: no Deck hidraw
+# makes !deck.connected() true, so every openControllerMenu is cancelled.
+# Run a patched copy of the AppDir (ptrace of the live AppImage is blocked).
+# Do not rewrite shortcuts.vdf.
+self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+patcher="$self_dir/patch-kimochi-controller-nav.py"
+extracted="$root/extracted"
+gaming_launcher="$release_dir/scripts/launch-gaming-mode.sh"
+
+ensure_patched_appdir() {
+  if [ -x "$extracted/usr/bin/kimochi" ] && [ -f "$extracted/AppRun" ]; then
+    return 0
+  fi
+  if [ ! -e "$appimage" ]; then
+    return 1
+  fi
+  tmp=$(mktemp -d)
+  # --appimage-extract writes ./squashfs-root in cwd.
+  if ! (CDPATH= cd -- "$tmp" && "$appimage" --appimage-extract); then
+    rm -rf "$tmp"
+    return 1
+  fi
+  rm -rf "$extracted"
+  mv "$tmp/squashfs-root" "$extracted"
+  rmdir "$tmp" 2>/dev/null || rm -rf "$tmp"
+  chmod -R u+w "$extracted" 2>/dev/null || true
+}
+
+if [ -f "$patcher" ] && ensure_patched_appdir; then
+  if /usr/bin/python3 "$patcher" --elf "$extracted/usr/bin/kimochi"; then
+    unset LD_PRELOAD
+    export DISPLAY="${DISPLAY:-:0}"
+    export KIMOCHI_GAMESCOPE_SCALE="${KIMOCHI_GAMESCOPE_SCALE:-1}"
+    export KIMOCHI_GAMESCOPE_UI_SCALE="${KIMOCHI_GAMESCOPE_UI_SCALE:-1.5}"
+    export KIMOCHI_STEAM_APP_ID="${KIMOCHI_STEAM_APP_ID:-${SteamAppId:-}}"
+    export KIMOCHI_STEAM_MANAGED=1
+    if [ -f "$gaming_launcher" ]; then
+      exec /bin/sh "$gaming_launcher" "$extracted/AppRun" "$@"
+    fi
+    exec /bin/sh "$extracted/AppRun" "$@"
+  fi
+fi
+
 exec /bin/sh "$launcher" "$appimage" "$@"

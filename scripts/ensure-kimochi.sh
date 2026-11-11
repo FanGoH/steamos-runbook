@@ -52,11 +52,40 @@ EOF
 mkdir -p "$KIMOCHI_ROOT"
 if [ -f "$WRAP" ] && [ "$(cat "$WRAP")" = "$desired" ]; then
   echo "Kimochi Game Mode wrap already in place ($WRAP)."
-  exit 0
+else
+  printf '%s\n' "$desired" >"$WRAP"
+  chmod +x "$WRAP"
+  echo "Wrapped Kimochi Steam launcher: $WRAP -> $LAUNCHER"
+  echo "Existing Steam tile keeps LaunchOptions=$WRAP (no shortcuts.vdf rewrite)."
 fi
 
-printf '%s\n' "$desired" >"$WRAP"
-chmod +x "$WRAP"
-echo "Wrapped Kimochi Steam launcher: $WRAP -> $LAUNCHER"
-echo "Existing Steam tile keeps LaunchOptions=$WRAP (no shortcuts.vdf rewrite)."
+# 0.8.1 radial menu: extract AppDir and patch !deck.connected() cancel.
+# Empty/placeholder AppImages (offline tests) are skipped.
+PATCHER="$ROOT/scripts/patch-kimochi-controller-nav.py"
+EXTRACT="$KIMOCHI_ROOT/extracted"
+real_app="$APPIMAGE"
+if [ ! -e "$real_app" ]; then
+  real_app="$KIMOCHI_ROOT/current/Kimochi.AppImage"
+fi
+app_size=0
+if [ -e "$real_app" ]; then
+  app_size=$(stat -c%s "$real_app" 2>/dev/null || echo 0)
+fi
+if [ -f "$PATCHER" ] && [ "${app_size:-0}" -gt 1000000 ]; then
+  if [ ! -x "$EXTRACT/usr/bin/kimochi" ] || [ "$real_app" -nt "$EXTRACT/usr/bin/kimochi" ]; then
+    tmp=$(mktemp -d)
+    if (CDPATH= cd -- "$tmp" && PATH="/usr/bin:/bin:${PATH:-}" "$real_app" --appimage-extract); then
+      rm -rf "$EXTRACT"
+      mv "$tmp/squashfs-root" "$EXTRACT"
+      chmod -R u+w "$EXTRACT" 2>/dev/null || true
+      echo "Extracted Kimochi AppDir for controller-nav patch: $EXTRACT"
+    else
+      echo "Could not extract Kimochi AppImage for controller-nav patch."
+    fi
+    rm -rf "$tmp"
+  fi
+  if [ -x "$EXTRACT/usr/bin/kimochi" ]; then
+    /usr/bin/python3 "$PATCHER" --elf "$EXTRACT/usr/bin/kimochi" || true
+  fi
+fi
 exit 0

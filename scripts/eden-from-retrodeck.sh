@@ -41,6 +41,8 @@ unset SDL_GAMECONTROLLER_IGNORE_DEVICES
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
+# shellcheck disable=SC1091
+. "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/eden-emupads-sdl.sh"
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gamescope-0" ]; then
   export WAYLAND_DISPLAY=gamescope-0
   export GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}"

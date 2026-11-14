@@ -102,6 +102,8 @@ if [ "$is_retrodeck" -eq 1 ] \
     export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
     export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
     export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
+    # shellcheck disable=SC1091
+    . "$PLAYBOOK/scripts/eden-emupads-sdl.sh"
     ini="${XDG_CONFIG_HOME}/eden/qt-config.ini"
     if [ -f "$PLAYBOOK/scripts/bind-gamepad.py" ]; then
       python3 "$PLAYBOOK/scripts/bind-gamepad.py" apply --emu eden --force >/dev/null 2>&1 || true

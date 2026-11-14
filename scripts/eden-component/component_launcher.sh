@@ -34,15 +34,8 @@ unset SDL_GAMECONTROLLER_IGNORE_DEVICES
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES_EXCEPT="0x1209/0xE301,0x1209/0xE302"
 export SDL_JOYSTICK_BLACKLIST_DEVICES="0x1209/0x0003"
-cfg="$(python3 "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/bind-gamepad.py" sdl-mapping --match EmuPads 2>/dev/null || true)"
-if [ -n "$cfg" ]; then
-  export SDL_GAMECONTROLLERCONFIG="$cfg"
-  map_file="${XDG_RUNTIME_DIR:-/tmp}/eden-emupads-gamecontrollerdb.txt"
-  printf '%s\n' "$cfg" >"$map_file" || true
-  if [ -s "$map_file" ]; then
-    export SDL_GAMECONTROLLERCONFIG_FILE="$map_file"
-  fi
-fi
+# shellcheck disable=SC1091
+. "${STEAMOS_PLAYBOOK:-${HOME}/steamos-playbook}/scripts/eden-emupads-sdl.sh"
 
 # Bind player 0 to EmuPads P1 (mux sink). If the mux is down, start it
 # — do not fall back to physical Xbox / Steam virtual / Sunshine.

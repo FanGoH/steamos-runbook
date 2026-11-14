@@ -14,7 +14,7 @@ sys.path.insert(0, str(SRC))
 
 from fgpc.api import self_test  # noqa: E402
 from fgpc.catalog import WEB_GROUPS  # noqa: E402
-from fgpc.web import handle_request, static_root  # noqa: E402
+from fgpc.web import handle_request, listen_hosts, static_root  # noqa: E402
 
 
 def _json(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
@@ -102,6 +102,25 @@ def test_moonlight_pad_profile() -> None:
 
 
 
+def test_listen_hosts_lan() -> None:
+    os.environ["FGPC_WEB_BIND"] = "127.0.0.1,192.0.2.8"
+    try:
+        assert listen_hosts() == ["127.0.0.1", "192.0.2.8"]
+    finally:
+        os.environ.pop("FGPC_WEB_BIND", None)
+    os.environ.pop("FGPC_WEB_BIND", None)
+    os.environ["FGPC_WEB_TAILNET_IP"] = "100.64.0.8"
+    os.environ["FGPC_WEB_LAN_IP"] = "192.0.2.65"
+    try:
+        hosts = listen_hosts()
+        assert hosts[0] == "127.0.0.1"
+        assert "100.64.0.8" in hosts
+        assert "192.0.2.65" in hosts
+    finally:
+        os.environ.pop("FGPC_WEB_TAILNET_IP", None)
+        os.environ.pop("FGPC_WEB_LAN_IP", None)
+
+
 def test_unknown_route() -> None:
     status, data = _json("GET", "/api/nope")
     assert status == 404
@@ -118,6 +137,7 @@ def main() -> int:
         test_static_files,
         test_refuse_host_mode_force,
         test_moonlight_pad_profile,
+        test_listen_hosts_lan,
         test_unknown_route,
     ]
     failed = 0

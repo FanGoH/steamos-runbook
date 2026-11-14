@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phone WebGUI for the fgpc catalog, hosted on this Steam Machine.
-# Listens on localhost + tailnet IPv4. Extra MagicDNS name is Headscale-only.
+# Listens on localhost + tailnet IPv4 + LAN NIC. Extra MagicDNS name is Headscale-only.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,6 +36,7 @@ fi
 mkdir -p "/home/${STEAMOS_USER}/.config/systemd/user" "$ROOT/logs"
 
 UID_NUM="$(id -u "$STEAMOS_USER")"
+LAN_IP="$(ip -4 -o addr show dev "${STEAMOS_NIC_INTERFACE:-enp8s0}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1 || true)"
 desired_unit="$(cat <<EOS
 [Unit]
 Description=FGPC phone WebGUI (tailnet)
@@ -57,6 +58,8 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_NUM/bus
 Environment=PATH=/home/$STEAMOS_USER/.local/bin:/usr/bin:/bin
 Environment=FGPC_WEB_PORT=$PORT
 Environment=FGPC_WEB_HOSTNAME=$HOSTNAME_LABEL
+Environment=STEAMOS_NIC_INTERFACE=${STEAMOS_NIC_INTERFACE:-enp8s0}
+Environment=FGPC_WEB_LAN_IP=${LAN_IP}
 Environment=TAILSCALE_BIN=${TAILSCALE_BIN:-/opt/tailscale/tailscale}
 StandardOutput=append:$LOG
 StandardError=append:$LOG

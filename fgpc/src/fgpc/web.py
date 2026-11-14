@@ -64,6 +64,33 @@ def tailnet_ipv4() -> str:
     return (proc.stdout or "").splitlines()[0].strip()
 
 
+def lan_ipv4() -> str:
+    """Ethernet IPv4 Moonlight uses for GameStream (not Tailscale, not loopback)."""
+    env = (os.environ.get("FGPC_WEB_LAN_IP") or "").strip()
+    if env:
+        return env
+    nic = (os.environ.get("STEAMOS_NIC_INTERFACE") or "").strip()
+    if not nic:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show", "dev", nic],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    for part in (proc.stdout or "").split():
+        if "/" in part and "." in part:
+            ip = part.split("/", 1)[0]
+            if ip and not ip.startswith("127."):
+                return ip
+    return ""
+
+
 def listen_hosts() -> list[str]:
     raw = (os.environ.get("FGPC_WEB_BIND") or "").strip()
     if raw:
@@ -72,6 +99,9 @@ def listen_hosts() -> list[str]:
     ip = tailnet_ipv4()
     if ip and ip not in hosts:
         hosts.append(ip)
+    lan = lan_ipv4()
+    if lan and lan not in hosts:
+        hosts.append(lan)
     return hosts
 
 

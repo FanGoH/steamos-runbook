@@ -50,8 +50,10 @@ post-update only.
 
 Phone **WebGUI** (`ensure-fgpc-web.sh`, user unit `fgpc-web.service`) is the
 same catalog on this Steam Machine. Tabs: Stream / Screen / Pad / Hide / More.
-Buttons only (no free-text commands). Binds `127.0.0.1` plus the tailnet IPv4
-on `FGPC_WEB_PORT` (default 8484). Extra name `fgpc.tailnet.fangoh.dev` →
+Buttons only (no free-text commands). Binds `127.0.0.1`, the tailnet IPv4, and
+the LAN NIC IPv4 on `FGPC_WEB_PORT` (default 8484). Moonlight DS pad-profile
+uses the GameStream host IP (often LAN, not Tailscale); without the LAN bind
+that fetch fails and mouse falls back to Game Mode. Extra name `fgpc.tailnet.fangoh.dev` →
 `100.64.0.8` is Headscale `/etc/headscale/extra_records.json` on the VPS
 (`dns.extra_records_path`, no restart). Do **not** change `--hostname=steammachine`.
 Browsers that upgrade to `https://` hit HTTP 400 (TLS ClientHello). Use

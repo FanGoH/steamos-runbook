@@ -6,6 +6,7 @@ playbook scripts via ``fgpc.invoke`` — do not reimplement hide/bind/stream.
 
 from __future__ import annotations
 
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -98,6 +99,56 @@ def _live_status() -> dict[str, Any]:
         out["pad"] = f_pad.result()
         out["hide"] = f_hide.result()
         out["emu"] = f_emu.result()
+    return out
+
+
+def _pgrep_exact(name: str) -> bool:
+    """True if an exact process name is running. Never ``pgrep -f``."""
+    try:
+        proc = subprocess.run(
+            ["pgrep", "-x", name],
+            capture_output=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+_LI_CTYPE = {
+    "x360": 1,  # LI_CTYPE_XBOX
+    "ds5": 2,  # LI_CTYPE_PS
+    "ds4": 2,
+    "switch": 3,  # LI_CTYPE_NINTENDO
+}
+
+
+def moonlight_session() -> str:
+    """Game Mode kms vs Plasma desktop DS. ``pgrep -x`` only."""
+    if _pgrep_exact("sunshine-ds-kms"):
+        return "gamemode"
+    if _pgrep_exact("sunshine-ds"):
+        return "desktop"
+    return "unknown"
+
+
+def moonlight_pad_profile() -> dict[str, Any]:
+    """Moonlight DS reads this over HTTP :8484 for pad type and host session."""
+    profile = _script_json("pad_profile.py", ["json"], timeout=5)
+    name = str(profile.get("name") or "x360")
+    session = moonlight_session()
+    out: dict[str, Any] = {
+        "ok": True,
+        "profile": name,
+        "li_ctype": int(profile.get("li_ctype") or _LI_CTYPE.get(name, 1)),
+        "session": session,
+    }
+    for key in ("sunshine_gamepad", "vendor", "product", "vid_pid", "supports_motion"):
+        if key in profile:
+            out[key] = profile[key]
+    if profile.get("rc") not in (None, 0):
+        out["ok"] = False
+        out["message"] = profile.get("message") or "pad_profile failed"
     return out
 
 

@@ -73,6 +73,8 @@ Thin **Android APK** (`com.fangoh.fgpc`) is a WebView of that same HTTP URL. Tab
 
 Use `http://` (cleartext). Do not `adb kill-server`. Phone/Odin wireless ports change; set `FGPC_APK_ADB` in `.env` or `adb connect HOST:PORT`. Odin usually appears as mDNS `_adb-tls-connect._tcp`. The A54 needs Wireless debugging on (the LAN port changes).
 
+Moonlight DS `GET /api/moonlight/pad-profile` returns `{ok, profile, li_ctype, session}`. `session` is `gamemode` | `desktop` | `unknown` via `pgrep -x sunshine-ds-kms` then `sunshine-ds` (never `-f`). Used for per-mode mouse (direct vs trackpad) when Share mouse behavior is off.
+
 ## Do not
 
 - Put new hide/bind/stream code in `fgpc/` — extend the playbook script, then add a thin Typer command.

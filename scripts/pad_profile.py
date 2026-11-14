@@ -297,6 +297,15 @@ def apply_sunshine_conf(path: Path | None = None) -> bool:
     return True
 
 
+# Moonlight LI_CTYPE_* (Limelight.h): unknown=0 xbox=1 ps=2 nintendo=3 steam=4
+_LI_CTYPE = {
+    "x360": 1,
+    "ds5": 2,
+    "ds4": 2,
+    "switch": 3,
+}
+
+
 def profile_public_dict(profile: PadProfile) -> dict[str, object]:
     return {
         "name": profile.name,
@@ -306,6 +315,7 @@ def profile_public_dict(profile: PadProfile) -> dict[str, object]:
         "vid_pid": f"{profile.vendor}:{profile.product}",
         "supports_motion": profile.supports_motion,
         "steam_guide": profile.steam_guide,
+        "li_ctype": _LI_CTYPE.get(profile.name, 1),
         "sdl_except": sdl_except(profile),
         "sdl_except_sinks": sdl_except_sinks(),
         "notes": profile.notes,
@@ -317,6 +327,8 @@ def _self_test() -> int:
     ds5 = load_profile("ds5")
     assert x360.vendor == "045e" and x360.product == "028e"
     assert not x360.supports_motion and x360.steam_guide
+    assert profile_public_dict(x360)["li_ctype"] == 1
+    assert profile_public_dict(ds5)["li_ctype"] == 2
     assert ds5.supports_motion and ds5.vendor == "054c"
     assert "button:6" in x360.azahar_map["button_l"]
     assert "button:10" in x360.azahar_map["button_select"]

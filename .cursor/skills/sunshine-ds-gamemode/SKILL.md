@@ -5,7 +5,7 @@ description: Restore and debug SteamOS Game Mode dual-stream on sunshine-ds-kms 
 
 # Game Mode dual-stream (`:48200`)
 
-Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen stays Plasma `:48100`. Do not merge kms into play / `:48100`. Do **not** merge leftover `cursor/*-f15e` Game Mode history onto `main` — current `main` already has 4K HDMI, XTest GamePad, recover/:2, and Pause. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
+Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Odin daily dual-screen is Plasma kwin on the **same `:48200` host** (shared uniqueid). Do not merge kms capture into play / sunshine-ds-dev. Do **not** merge leftover `cursor/*-f15e` Game Mode history onto `main` — current `main` already has 4K HDMI, XTest GamePad, recover/:2, and Pause. Stack/SHAs: [../sunshine-ds-gamestream/reference.md](../sunshine-ds-gamestream/reference.md). Host uniqueids: `~/.cursor/skills/sunshine-ds-gamestream/host.md`.
 
 **THE Game Mode `:48200` standard is `checkpoint-2026-09-18-gamepad-xtest`** (user: “CHECKPOINT, WE DID IT”). Thor bottom taps reach Cemu GamePad and line up under Stretch (XTest after briefly clearing overlay/opacity; `:0` FOCUS_DISPLAY flush; linear `x/width`). 4K HDMI + 1080p GamePad. Live packets `ref=1239x1079` — do **not** unletterbox Fit bars (that sheared Y; packet y=332 is unit≈0.308, not the image top). Host `4ca50111`. QAM **preset 2** bar spans the TV. After `:2` respawns, kms rebinds video/1. Subsets: fill+Exit `checkpoint-2026-09-14-gamemode-fill-exit`; tile grab `checkpoint-2026-09-11-gamemode-tender-ds`; Home/Library mute `checkpoint-2026-09-11-steam-menu-mute`; HDMI-hud mangoapp isolation `checkpoint-2026-09-17-hdmi-hud`. Steam **audio** menu clicks still **pending**. Do not “improve” GamePad tap math, XTest inject, or Stretch mapping unless it breaks.
 
@@ -36,7 +36,7 @@ Read this **before** changing capture, PipeWire, or Cemu launch. Desktop Thor/Od
 | Audio | Pulse default HDMI (Steam UI; `STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1`). Cemu Cubeb → **Virtual Surround Sound** → that HDMI | Moonlight captures the **HDMI** sink monitor (leaf), not VSS and not `sink-sunshine-stereo`. Cemu on that sink is proven. **PENDING:** Steam menu / BPM nav clicks still silent on Thor after HDMI capture + unsuspend. Not a Moonlight record-stream bug (`sunshine-record` links; Cemu is audible). Steam has no UI playback stream. Check TV speakers while clicking menus: silent on TV = host/Steam (Game Mode **Settings → Audio**). Do **not** unmute WirePlumber `Notification` or edit Steam settings unless asked. |
 | Thor pad | Sunshine x360 present after connect | Cemu binds **EmuPads P1** (mux copies Thor/Odin/phone). Uuid `{0}_{p1-guid}`. SDL map **15-button** (`LB=b6` `Back=b10`). WW first-person look is **L bumper**, not Select |
 
-Moonlight host is **`:48200`** uniqueid `1075C8EF…`. App **Desktop** is `958645192`. Do **not** `/launch` desktop-DS `881448767` (kms: `Couldn't find app with ID`). Not Decky `:47989`. Two De-FanGoH tiles: white = `:48200`, grey warning = `:48100`.
+Moonlight host is **`:48200`** uniqueid `1075C8EF…` (Plasma kwin uses the same host). App **Desktop** is `958645192`. Do **not** `/launch` leftover desktop-DS `881448767` (kms: `Couldn't find app with ID`). Not Decky `:47989`. Drop the old grey `:48100` tile.
 
 ## After reboot / SteamOS update
 

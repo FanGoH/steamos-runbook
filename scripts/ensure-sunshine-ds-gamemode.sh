@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Isolated Game Mode KMS experiment for sunshine-ds.
-# Does not touch Decky (:47989), desktop DS (:48100), or sunshine-ds-dev.
+# Shares Moonlight :48200 + uniqueid with desktop kwin DS. Does not touch
+# Decky (:47989) or merge kms capture into sunshine-ds-dev (kwin).
 #
 #   scripts/ensure-sunshine-ds-gamemode.sh --probe   # start, print capture log, stop
 #   scripts/ensure-sunshine-ds-gamemode.sh --status
@@ -61,6 +62,7 @@ WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
 KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
 KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
 KMS_RECOVER_SERVICE="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
+TEARDOWN_SERVICE="${SUNSHINE_DS_TEARDOWN_SERVICE:-steamos-sunshine-ds-teardown.service}"
 UNIT_DIR="/home/${STEAMOS_USER:-deck}/.config/systemd/user"
 RUNNER="$ROOT/scripts/run-sunshine-ds-gamemode.sh"
 VIRTUAL_SCRIPT="$ROOT/scripts/sunshine-ds-gamemode-virtual.sh"
@@ -130,6 +132,10 @@ kms_serverinfo() {
 
 kms_state() {
   local xml
+  if [ -z "$(kms_ds_pid)" ]; then
+    printf '%s\n' "DOWN"
+    return 1
+  fi
   xml="$(kms_serverinfo)"
   if [ -z "$xml" ]; then
     printf '%s\n' "DOWN"
@@ -151,8 +157,12 @@ print_status() {
   local pid state xml uid desk caps eff
   pid="$(kms_ds_pid)"
   state="$(kms_state 2>/dev/null || true)"; state="${state:-DOWN}"
-  xml="$(kms_serverinfo)"
-  uid="$(sunshine_xml_uniqueid "$xml")"
+  xml=""
+  uid=""
+  if [ -n "$pid" ]; then
+    xml="$(kms_serverinfo)"
+    uid="$(sunshine_xml_uniqueid "$xml")"
+  fi
   desk="$(desktop_ds_pid)"
   caps="$(getcap "$KMS_BIN" 2>/dev/null || true)"
   echo "sunshine-ds-kms pid: ${pid:-none}"
@@ -169,7 +179,7 @@ print_status() {
       echo "caps note: CapEff 0 after drop is expected if the log mapped HDMI-A-1."
     fi
   fi
-  echo "desktop sunshine-ds pid: ${desk:-none} (must stay on :48100 / kwin)"
+  echo "desktop sunshine-ds pid: ${desk:-none} (kwin; same :${KMS_PORT} when Plasma is up)"
   echo "desktop conf: $DEV_CONF"
   echo "unit: $KMS_SERVICE $(systemctl --user is-enabled "$KMS_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_SERVICE" 2>/dev/null || echo inactive)"
   echo "virtual unit: $KMS_VIRTUAL_SERVICE $(systemctl --user is-enabled "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo disabled) / $(systemctl --user is-active "$KMS_VIRTUAL_SERVICE" 2>/dev/null || echo inactive)"
@@ -456,10 +466,7 @@ EOF
 }
 
 start_kms_unit_only() {
-  if [ -n "$(desktop_ds_pid)" ]; then
-    echo "Desktop sunshine-ds is running. Stop it with ensure-sunshine-ds.sh --stop first."
-    return 2
-  fi
+  stop_desktop_ds_for_port
   if [ ! -x "$KMS_BIN" ]; then
     echo "Missing $KMS_BIN"
     return 1
@@ -491,9 +498,20 @@ gamescope_up() {
   systemctl --user is-active gamescope-session.service >/dev/null 2>&1
 }
 
+stop_desktop_ds_for_port() {
+  local pid
+  pid="$(desktop_ds_pid)"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  echo "Stopping desktop sunshine-ds pid $pid so kms can bind :${KMS_PORT}."
+  bash "$ROOT/scripts/ensure-sunshine-ds.sh" --stop || true
+}
+
 install_gamemode_units() {
   mkdir -p "$UNIT_DIR" "$ROOT/logs"
   chmod +x "$RUNNER" "$VIRTUAL_SCRIPT" 2>/dev/null || true
+  bash "$ROOT/scripts/ensure-sunshine-ds.sh" --install-shortcut >/dev/null || true
 
   local virtual_unit kms_unit recover_unit changed=0
   virtual_unit="$(cat <<EOS
@@ -548,8 +566,8 @@ EOS
 
   kms_unit="$(cat <<EOS
 [Unit]
-Description=SteamOS playbook Game Mode sunshine-ds-kms (:48200)
-After=gamescope-session.service pipewire.service $KMS_VIRTUAL_SERVICE
+Description=SteamOS playbook Game Mode sunshine-ds-kms (:${KMS_PORT})
+After=gamescope-session.service pipewire.service $TEARDOWN_SERVICE $KMS_VIRTUAL_SERVICE
 Requires=$KMS_VIRTUAL_SERVICE
 PartOf=gamescope-session.service
 ConditionPathExists=$KMS_BIN
@@ -669,6 +687,7 @@ start_kms() {
   fi
   write_kms_conf
   install_gamemode_units
+  stop_desktop_ds_for_port
   systemctl --user reset-failed "$KMS_SERVICE" 2>/dev/null || true
   systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true
   stop_kms_process
@@ -777,7 +796,7 @@ fi
 if [ "$DO_INSTALL_SERVICE" -eq 1 ] && [ "$DO_START" -eq 0 ] && [ "$DO_PROBE" -eq 0 ]; then
   install_gamemode_units
   if ! gamescope_up && [ "$DO_FORCE_DESKTOP" -eq 0 ]; then
-    echo "Unit enabled for gamescope-session.target. Not starting on Plasma (desktop DS stays :48100)."
+    echo "Unit enabled for gamescope-session.target. Not starting on Plasma (desktop DS owns :${KMS_PORT} / kwin)."
     print_status
     assert_desktop_untouched "$BEFORE_HASH" || exit 1
     if ! kms_has_sys_admin; then
@@ -816,7 +835,7 @@ fi
 
 if [ "$DO_START" -eq 1 ] && [ "$DO_FORCE_DESKTOP" -eq 0 ] && ! gamescope_up; then
   echo "gamescope-session is not active. This experiment is for Game Mode."
-  echo "Desktop dual-stream stays on :48100 (capture=kwin). Pass --probe to try KMS on Plasma without keeping it, or --start --force-desktop-kms."
+  echo "Desktop dual-stream stays on :${KMS_PORT} (capture=kwin). Pass --probe to try KMS on Plasma without keeping it, or --start --force-desktop-kms."
   echo "To only enable the boot unit: $0 --install-service"
   exit 2
 fi

@@ -49,7 +49,7 @@ function Content() {
     setBusy(true);
     toaster.toast({
       title: "Dual-Stream Desktop",
-      body: "Leaving Game Mode. Moonlight stays on :48100.",
+      body: "Leaving Game Mode. Moonlight stays on :48200.",
       duration: 4000,
     });
     try {
@@ -92,7 +92,7 @@ function Content() {
                   children: status
                     ? `gamescope ${status.gamescope ? "up" : "down"} · plasma ${
                         status.plasma ? "up" : "down"
-                      } · :48100 ${status.ds}`
+                      } · :48200 ${status.ds}`
                     : "",
                 }),
               ],
@@ -114,7 +114,7 @@ function Content() {
           children: SP_JSX.jsx("div", {
             style: { opacity: 0.65, fontSize: "0.88em" },
             children:
-              "This plugin does not launch games. After Plasma is up, connect Thor/Odin to :48100 and use Desktop, Cemu Dual-Screen, or Azahar Dual-Screen. Return to Game Mode is a Sunshine app (teardown).",
+              "This plugin does not launch games. After Plasma is up, keep Thor/Odin on :48200 (same host as Game Mode) and use Desktop, Cemu Dual-Screen, or Azahar Dual-Screen. Return to Game Mode is a Sunshine app (teardown).",
           }),
         }),
       }),

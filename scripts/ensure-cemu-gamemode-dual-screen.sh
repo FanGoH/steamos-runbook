@@ -22,7 +22,7 @@
 # SIGTERM pending quits on the first tick. Home/Library (FOCUSED_APP=769)
 # only mutes EmuPads sinks — do not treat that as Exit.
 #
-# Does not touch sunshine-ds-dev (:48100), Decky, or gamescope-session.
+# Does not touch sunshine-ds-dev (kwin), Decky, or gamescope-session.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

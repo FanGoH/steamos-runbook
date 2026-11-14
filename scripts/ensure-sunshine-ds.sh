@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Bring up desktop GameStream sunshine-ds (:48100) in Distrobox.
-# Starts the Distrobox, exactly one Virtual-sunshine-ds helper, and sunshine-ds.
+# Bring up desktop GameStream sunshine-ds in Distrobox (capture=kwin).
+# Shares Moonlight port :48200 + uniqueid/certs with Game Mode kms.
+# Starts Distrobox, exactly one Virtual-sunshine-ds helper, and sunshine-ds.
 # Does not touch Decky Sunshine (:47989). Safe to re-run.
 #
 #   scripts/ensure-sunshine-ds.sh           # start if down
@@ -18,15 +19,28 @@ load_env "$ROOT"
 setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+if [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-}" ]; then
+  :
+elif [ -S "${XDG_RUNTIME_DIR}/wayland-0" ]; then
+  export WAYLAND_DISPLAY=wayland-0
+elif [ -S "${XDG_RUNTIME_DIR}/wayland-1" ]; then
+  export WAYLAND_DISPLAY=wayland-1
+else
+  export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+fi
 
 BOX_NAME="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
 DS_BIN="${SUNSHINE_DS_BIN:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds}"
 DS_HELPER="${SUNSHINE_DS_HELPER:-/home/${STEAMOS_USER:-deck}/.local/bin/sunshine-ds-virtual-output}"
 DS_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
 DS_CONFIG_DIR="${SUNSHINE_DS_CONFIG_DIR:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-dev}"
-DS_URL="${SUNSHINE_DS_URL:-http://127.0.0.1:48100}"
+DS_PORT="${SUNSHINE_DS_PORT:-${SUNSHINE_DS_KMS_PORT:-48200}}"
+DS_URL="${SUNSHINE_DS_URL:-http://127.0.0.1:${DS_PORT}}"
+KMS_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER:-deck}/.config/sunshine-ds-gamemode}"
+KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
+KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
+TEARDOWN_SERVICE="${SUNSHINE_DS_TEARDOWN_SERVICE:-steamos-sunshine-ds-teardown.service}"
 DS_LOG="${SUNSHINE_DS_LOG:-$ROOT/logs/sunshine-ds.log}"
 HELPER_LOG="${SUNSHINE_DS_HELPER_LOG:-$ROOT/logs/sunshine-ds-virtual-output.log}"
 WAIT_SECS="${SUNSHINE_DS_WAIT_SECS:-20}"
@@ -122,6 +136,43 @@ EOF
   install_on_desktop_unit
 }
 
+install_teardown_unit() {
+  local desired unit_path
+  mkdir -p "$USER_UNIT_DIR" "$ROOT/logs"
+  desired="$(cat <<EOS
+[Unit]
+Description=Stop Plasma sunshine-ds before Game Mode kms binds :${DS_PORT}
+After=gamescope-session.service
+Before=${KMS_SERVICE}
+Before=${KMS_VIRTUAL_SERVICE}
+PartOf=gamescope-session.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Nice=5
+TimeoutStartSec=30
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=$ROOT/scripts/ensure-sunshine-ds.sh --stop
+StandardOutput=append:$ROOT/logs/sunshine-ds-teardown.log
+StandardError=append:$ROOT/logs/sunshine-ds-teardown.log
+
+[Install]
+WantedBy=gamescope-session.target
+EOS
+)"
+  unit_path="$USER_UNIT_DIR/$TEARDOWN_SERVICE"
+  if [ ! -f "$unit_path" ] || [ "$(cat "$unit_path")" != "$desired" ]; then
+    printf '%s\n' "$desired" >"$unit_path"
+    systemctl --user daemon-reload
+    echo "Updated $TEARDOWN_SERVICE (frees :${DS_PORT} before kms)."
+  fi
+  if ! systemctl --user is-enabled "$TEARDOWN_SERVICE" >/dev/null 2>&1; then
+    systemctl --user enable "$TEARDOWN_SERVICE"
+    echo "Enabled $TEARDOWN_SERVICE for gamescope-session.target."
+  fi
+}
+
 install_on_desktop_unit() {
   local desired unit_path
   mkdir -p "$USER_UNIT_DIR" "$ROOT/logs"
@@ -148,11 +199,89 @@ EOS
     systemctl --user daemon-reload
     echo "Updated $ON_DESKTOP_SERVICE (start on demand; not enabled at login)."
   fi
+  install_teardown_unit
+}
+
+# Pin desktop DS to the Game Mode Moonlight port and pairing identity.
+# Capture/encoder/apps stay in sunshine-ds-dev (kwin vs kms).
+patch_desktop_ds_conf() {
+  local kms_state kms_cert kms_key
+  if [ ! -f "$DS_CONF" ]; then
+    echo "Missing $DS_CONF — start sunshine-ds once so it creates the conf."
+    return 2
+  fi
+  kms_state="$KMS_DIR/sunshine/sunshine_state.json"
+  kms_cert="$KMS_DIR/sunshine/credentials/cacert.pem"
+  kms_key="$KMS_DIR/sunshine/credentials/cakey.pem"
+  python3 - "$DS_CONF" "$DS_PORT" "$kms_state" "$kms_cert" "$kms_key" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+port, state, cert, key = sys.argv[2:6]
+wanted = {"port": port}
+if Path(state).is_file() and Path(cert).is_file() and Path(key).is_file():
+    wanted.update(
+        {
+            "file_state": state,
+            "credentials_file": state,
+            "cert": cert,
+            "pkey": key,
+        }
+    )
+orig = path.read_text()
+seen: set[str] = set()
+out: list[str] = []
+for line in orig.splitlines():
+    stripped = line.strip()
+    if stripped and not stripped.startswith("#") and "=" in stripped:
+        name = stripped.split("=", 1)[0].strip()
+        if name in wanted:
+            out.append(f"{name} = {wanted[name]}")
+            seen.add(name)
+            continue
+    out.append(line)
+for name, value in wanted.items():
+    if name not in seen:
+        out.append(f"{name} = {value}")
+new = "\n".join(out) + "\n"
+if new != orig:
+    path.write_text(new)
+    extra = " + shared Game Mode uniqueid/certs" if "file_state" in wanted else ""
+    print(f"Patched {path}: port={port}{extra}")
+PY
+}
+
+stop_leftover_kms() {
+  local pid i
+  pid="$(pgrep -x sunshine-ds-kms || true)"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  echo "Stopping leftover sunshine-ds-kms pid $pid so desktop DS can bind :${DS_PORT}."
+  systemctl --user stop "$KMS_SERVICE" 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 20 ]; do
+    [ -z "$(pgrep -x sunshine-ds-kms || true)" ] && return 0
+    sleep 0.2
+    i=$((i + 1))
+  done
+  pid="$(pgrep -x sunshine-ds-kms || true)"
+  if [ -n "$pid" ]; then
+    # shellcheck disable=SC2086
+    kill $pid 2>/dev/null || true
+    sleep 0.3
+    pid="$(pgrep -x sunshine-ds-kms || true)"
+    if [ -n "$pid" ]; then
+      # shellcheck disable=SC2086
+      kill -9 $pid 2>/dev/null || true
+    fi
+  fi
 }
 
 port_listener_pid() {
   local line
-  line="$(ss -ltnp 2>/dev/null | grep -E ':48100\b' | head -1 || true)"
+  line="$(ss -ltnp 2>/dev/null | grep -E ":${DS_PORT}\\b" | head -1 || true)"
   [ -n "$line" ] || return 0
   printf '%s' "$line" | sed -n 's/.*pid=\([0-9]*\).*/\1/p'
 }
@@ -172,8 +301,11 @@ EOF
   if ! podman inspect -f '{{.State.Running}}' "$BOX_NAME" 2>/dev/null | grep -qx true; then
     echo "Starting Distrobox $BOX_NAME."
     if ! podman start "$BOX_NAME" >/dev/null; then
-      echo "podman start $BOX_NAME failed."
-      return 1
+      echo "podman start $BOX_NAME failed; trying distrobox enter."
+      if ! distrobox enter "$BOX_NAME" -- true >/dev/null; then
+        echo "Could not start Distrobox $BOX_NAME."
+        return 1
+      fi
     fi
   else
     echo "Distrobox $BOX_NAME already running."
@@ -240,9 +372,9 @@ stop_ds_if_idle() {
   leftover="$(port_listener_pid)"
   if [ -n "$leftover" ] && [ -z "$(ds_pid)" ]; then
     case " $(helper_pids | tr '\n' ' ') " in
-      *" $leftover "*) echo "Port 48100 still listed on helper pid $leftover; leaving it." ;;
+      *" $leftover "*) echo "Port ${DS_PORT} still listed on helper pid $leftover; leaving it." ;;
       *)
-        echo "Clearing leftover pid $leftover on :48100."
+        echo "Clearing leftover pid $leftover on :${DS_PORT}."
         kill "$leftover" 2>/dev/null || true
         ;;
     esac
@@ -295,7 +427,7 @@ wait_for_ds() {
   local waited=0 state
   while [ "$waited" -lt "$WAIT_SECS" ]; do
     state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
-    if [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; then
+    if { [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; } && [ -n "$(ds_pid)" ]; then
       return 0
     fi
     sleep 1
@@ -318,9 +450,9 @@ report_ready() {
     return 2
   fi
   if [ -n "$uid" ]; then
-    echo "dev uniqueid $uid (not Decky :47989)"
+    echo "uniqueid $uid (shared with Game Mode kms; not Decky :47989)"
   fi
-  echo "Connect Moonlight to this host :48100, not Decky :47989."
+  echo "Connect Moonlight to this host :${DS_PORT}, not Decky :47989."
   return 0
 }
 
@@ -335,10 +467,12 @@ fi
 
 if [ "$DO_INSTALL_SHORTCUT" -eq 1 ] && [ "$DO_STOP" -eq 0 ] && [ "$DO_RESTART" -eq 0 ]; then
   ensure_game_mode_shortcut
+  patch_desktop_ds_conf || true
   exit 0
 fi
 
 ensure_game_mode_shortcut
+patch_desktop_ds_conf || true
 
 if [ "$DO_STOP" -eq 1 ]; then
   DO_FORCE=1
@@ -350,8 +484,8 @@ if [ "$DO_STOP" -eq 1 ]; then
 fi
 
 if playbook_in_game_mode; then
-  echo "Game Mode: desktop sunshine-ds (:48100 / kwin) stays down."
-  echo "Moonlight host is sunshine-ds-kms :48200 (already brought up by ensure-sunshine-ds-gamemode)."
+  echo "Game Mode: desktop sunshine-ds (kwin) stays down."
+  echo "Moonlight host is sunshine-ds-kms :${DS_PORT} (same port; kms capture)."
   print_status
   exit 0
 fi
@@ -364,6 +498,17 @@ EOF
   echo "Need a Plasma Wayland session (missing ${WAYLAND_DISPLAY} socket)."
   exit 2
 fi
+
+PATCH_MSG="$(patch_desktop_ds_conf)" || exit $?
+[ -n "$PATCH_MSG" ] && echo "$PATCH_MSG"
+if printf '%s' "$PATCH_MSG" | grep -q '^Patched '; then
+  if [ -n "$(ds_pid)" ]; then
+    echo "Desktop DS conf changed (shared :${DS_PORT} identity); restarting."
+    DO_RESTART=1
+    DO_FORCE=1
+  fi
+fi
+stop_leftover_kms || true
 
 if [ "$DO_RESTART" -eq 0 ] && [ -n "$(ds_pid)" ]; then
   state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"

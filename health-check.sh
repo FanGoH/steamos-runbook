@@ -318,14 +318,15 @@ echo
 echo "[sunshine-ds]"
 ds_state="$(sunshine_ds_serverinfo_state 2>/dev/null || echo DOWN)"
 ds_pid="$(pgrep -x sunshine-ds || true)"
-if [ "$ds_state" = "FREE" ]; then
-  ok "sunshine-ds SUNSHINE_SERVER_FREE (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
-elif [ "$ds_state" = "BUSY" ]; then
-  ok "sunshine-ds BUSY (in session) (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
-elif playbook_in_game_mode; then
-  ok "Game Mode: desktop sunshine-ds (:48100) stays down (kms is :48200)"
+ds_url="${SUNSHINE_DS_URL:-http://127.0.0.1:${SUNSHINE_DS_PORT:-48200}}"
+if playbook_in_game_mode; then
+  ok "Game Mode: desktop sunshine-ds (kwin) stays down (kms owns ${ds_url})"
+elif [ -n "$ds_pid" ] && [ "$ds_state" = "FREE" ]; then
+  ok "sunshine-ds SUNSHINE_SERVER_FREE (${ds_url})"
+elif [ -n "$ds_pid" ] && [ "$ds_state" = "BUSY" ]; then
+  ok "sunshine-ds BUSY (in session) (${ds_url})"
 else
-  warn "sunshine-ds not answering (${SUNSHINE_DS_URL:-http://127.0.0.1:48100})"
+  warn "sunshine-ds not answering (${ds_url})"
   record_manual "Start sunshine-ds (not Decky :47989)" <<EOF
 export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0
 ./scripts/ensure-sunshine-ds.sh
@@ -405,7 +406,7 @@ EOF
     warn "no sunshine-ds-kms process (pgrep -x sunshine-ds-kms)"
   fi
 else
-  ok "Plasma: $kms_unit stays down (desktop DS is :48100)"
+  ok "Plasma: $kms_unit stays down (desktop DS owns :${SUNSHINE_DS_PORT:-48200})"
 fi
 mango_presets="/home/$STEAMOS_USER/.config/MangoHud/presets.conf"
 if [ -f "$mango_presets" ] && grep -q 'horizontal_stretch=1' "$mango_presets"; then

@@ -5,7 +5,7 @@ description: Put standalone Azahar in desktop dual-stream layout (3DS top screen
 
 # Azahar dual-screen (desktop GameStream)
 
-Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read. Moonlight app **Azahar Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-azahar.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`). Open launches the Azahar library immediately — no pad wait, no extra sleep before the window is placed. Optional `.env` `AZAHAR_ROM` boots a dump instead of the library.
+Run `scripts/ensure-azahar-dual-screen.sh` unless the user only wants a status read. Moonlight app **Azahar Dual-Screen** on sunshine-ds `:48200` runs `scripts/sunshine-app-azahar.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`). Open launches the Azahar library immediately — no pad wait, no extra sleep before the window is placed. Optional `.env` `AZAHAR_ROM` boots a dump instead of the library.
 
 This is **not** RetroDECK Azahar (`azahar-launcher`, fullscreen, `layout_option=0`). Dual-stream needs standalone Flatpak `org.azahar_emu.Azahar`, **Separate Windows**, X11/xcb.
 
@@ -17,7 +17,7 @@ This is **not** RetroDECK Azahar (`azahar-launcher`, fullscreen, `layout_option=
 | 3DS bottom (touch) | `Secondary Window` | Virtual-sunshine-ds | that output’s live origin × size |
 | Azahar UI | `Azahar 2126` without Primary/Secondary | minimize | — |
 
-Read live sizes from KWin `workspace.screens` (do not block on `kscreen-doctor -j`; it can hang with duplicate virtual outputs). Same Thor checkpoint as Cemu: HDMI-A-1 **1920×1080** at `0,0` plus Virtual-sunshine-ds **1920×1080** at `1920,0`. Do **not** kill `sunshine-ds-virtual-output`. Moonlight must already be on sunshine-ds `:48100`.
+Read live sizes from KWin `workspace.screens` (do not block on `kscreen-doctor -j`; it can hang with duplicate virtual outputs). Same Thor checkpoint as Cemu: HDMI-A-1 **1920×1080** at `0,0` plus Virtual-sunshine-ds **1920×1080** at `1920,0`. Do **not** kill `sunshine-ds-virtual-output`. Moonlight must already be on sunshine-ds `:48200`.
 
 ## Bind + settings
 

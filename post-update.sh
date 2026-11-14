@@ -97,6 +97,7 @@ run_step "ensure-sunshine-ds-decky" "$ROOT/scripts/ensure-sunshine-ds-decky.sh" 
 run_step "ensure-sunshine-ds-gamemode" "$ROOT/scripts/ensure-sunshine-ds-gamemode.sh" warn --install-service
 run_step "ensure-mangohud-presets" "$ROOT/scripts/ensure-mangohud-presets.sh" warn
 run_step "ensure-sunshine-ds-kms-setcap" "$ROOT/scripts/ensure-sunshine-ds-kms-setcap.sh" warn
+run_step "ensure-sunshine-ds-uhid" "$ROOT/scripts/ensure-sunshine-ds-uhid.sh" warn
 run_step "ensure-switch2-controllers" "$ROOT/scripts/ensure-switch2-controllers.sh" warn
 run_step "ensure-emupads-mux" "$ROOT/scripts/ensure-emupads-mux.sh" warn
 run_step "ensure-host-metrics" "$ROOT/scripts/ensure-host-metrics.sh" warn

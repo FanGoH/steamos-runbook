@@ -510,6 +510,10 @@ if printf '%s' "$PATCH_MSG" | grep -q '^Patched '; then
 fi
 stop_leftover_kms || true
 
+# Switch / auto / xseries need /dev/uhid (libvirtualhid). x360 uses uinput.
+# Distrobox inherits the host uaccess ACL (same as /dev/uinput).
+"$ROOT/scripts/ensure-sunshine-ds-uhid.sh" || true
+
 if [ "$DO_RESTART" -eq 0 ] && [ -n "$(ds_pid)" ]; then
   state="$(sunshine_ds_serverinfo_state 2>/dev/null || true)"; state="${state:-DOWN}"
   if [ "$state" = "FREE" ] || [ "$state" = "BUSY" ]; then

@@ -132,6 +132,10 @@ Do **not** kill the long-lived helper. Kill extra helper PIDs by number. DS must
 
 `ControllerNumber already allocated [0] for <client>` means that client already has pad 0 (duplicate arrival or `/resume` of the same cert). The other device should get a new global slot. Azahar’s profile is one SDL GUID — bind `--match Odin` if that client should drive the game.
 
+### Lichii Raw Gamepad empty (no Nintendo HID)
+
+`GAMESTREAM_PAD_PROFILE=switch` uses libvirtualhid UHID (`057e:2009`). Distrobox sunshine-ds is uid `deck`; host `/dev/uhid` is 600 root. Log: `create libvirtualhid gamepad: failed to open /dev/uhid: Permission denied`. Mouse/keyboard still work (`/dev/uinput` already has `uaccess`). Distrobox does not map host group `input`, but it inherits uaccess ACLs. `scripts/ensure-sunshine-ds-uhid.sh` (udev `99-sunshine-uhid.rules`), then restart DS after the node is writable. Do not flip the pad profile. Do not `chmod 666 /dev/uhid`.
+
 ### Thor bumpers fire 3DS Start/Select
 
 libvirtualhid xbox_360 is a 15-button SDL joystick (reserved C/Z/TL2/TR2). Steam xpad is 11 buttons. Azahar uses packed joystick indices, so L/R at 4/5 and Select/Start at 6/7 maps shoulders onto Start/Select. Use `scripts/bind-gamepad.py azahar` (L/R=6/7, Select/Start=10/11). Cemu uses GameController labels and is not affected.
@@ -228,7 +232,7 @@ Do **not** hand-edit `controller0.xml`. `python3 scripts/bind-gamepad.py cemu --
 - Game Mode and desktop both bind **EmuPads P1** (`bind-gamepad.py apply --emu cemu`). Do not fall back to physical Xbox → Switch Pro → Steam virtual → Sunshine. Do not bind `libvirtualhid Mouse` (`1209:0003`).
 - Changing uuid/type while Cemu is running does nothing. Stop Cemu, write the file, start again.
 
-Default `GAMESTREAM_PAD_PROFILE=x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`. Do not flip the profile unless the user wants gyro.
+Default `GAMESTREAM_PAD_PROFILE=x360` (`back_button_timeout = 500`). `auto` is Xbox Series UHID `045e:0b13`; Steam Big Picture Guide needs uinput 360 `045e:028e`. DS `xone` is still UHID `0B20`, not Decky’s InputTino `045e:02ea`. `switch` is Nintendo HID via `/dev/uhid` (Lichii **Raw Gamepad**). Distrobox sunshine-ds is uid `deck`; host `/dev/uhid` is 600 root unless `udev/99-sunshine-uhid.rules` (`uaccess`, same as uinput). Log `create libvirtualhid gamepad: failed to open /dev/uhid: Permission denied` means that udev is missing — `scripts/ensure-sunshine-ds-uhid.sh`. Do not flip the profile unless the user wants gyro / raw HID.
 
 ### Launch
 

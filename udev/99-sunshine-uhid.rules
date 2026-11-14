@@ -1,0 +1,7 @@
+# Distrobox sunshine-ds runs as deck. Switch / auto / xseries pads are libvirtualhid
+# UHID (Nintendo HID for Lichii "Raw Gamepad", gyro). Host /dev/uhid is 600 root
+# without this; uinput already has uaccess (mouse/keyboard still work). Distrobox
+# does not map the host `input` group, but it does inherit uaccess ACLs (same as
+# /dev/uinput). SteamOS updates wipe /etc/udev/rules.d — re-run
+# ensure-sunshine-ds-uhid.sh.
+KERNEL=="uhid", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uhid"

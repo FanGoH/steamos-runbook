@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from fgpc.api import dump, run_action, self_test
+from fgpc.api import dump, moonlight_pad_profile, run_action, self_test
 from fgpc.catalog import WEB_GROUPS
 from fgpc.playbook import playbook_root
 
@@ -125,6 +125,8 @@ def handle_request(
         except Exception as exc:  # noqa: BLE001 — return JSON, do not crash the server
             return _json_bytes({"ok": False, "message": str(exc)}, 500)
         return _json_bytes(data, 200 if data.get("ok") else 503)
+    if method == "GET" and route == "/api/moonlight/pad-profile":
+        return _json_bytes(moonlight_pad_profile())
     if method == "GET" and route == "/api/status":
         query = parse_qs(parsed.query)
         want_live = live

@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from fgpc.api import dump, run_action, self_test
+from fgpc.api import dump, moonlight_pad_profile, run_action, self_test
 from fgpc.catalog import WEB_GROUPS
 from fgpc.playbook import playbook_root
 
@@ -97,6 +97,8 @@ def handle_request(
     if method == "GET" and route == "/api/self-test":
         data = self_test()
         return _json_bytes(data, 200 if data.get("ok") else 500)
+    if method == "GET" and route == "/api/moonlight/pad-profile":
+        return _json_bytes(moonlight_pad_profile())
     if method == "GET" and route == "/api/status":
         query = parse_qs(parsed.query)
         want_live = live

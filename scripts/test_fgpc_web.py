@@ -92,6 +92,16 @@ def test_refuse_host_mode_force() -> None:
     assert data["ok"] is False
 
 
+def test_moonlight_pad_profile() -> None:
+    status, data = _json("GET", "/api/moonlight/pad-profile")
+    assert status == 200
+    assert data["ok"] is True
+    assert data["profile"] in ("x360", "ds5", "ds4", "switch")
+    assert data["li_ctype"] in (1, 2, 3)
+    assert data["session"] in ("gamemode", "desktop", "unknown")
+
+
+
 def test_unknown_route() -> None:
     status, data = _json("GET", "/api/nope")
     assert status == 404
@@ -107,6 +117,7 @@ def main() -> int:
         test_index,
         test_static_files,
         test_refuse_host_mode_force,
+        test_moonlight_pad_profile,
         test_unknown_route,
     ]
     failed = 0

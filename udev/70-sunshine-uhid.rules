@@ -4,4 +4,8 @@
 # does not map the host `input` group, but it does inherit uaccess ACLs (same as
 # /dev/uinput). SteamOS updates wipe /etc/udev/rules.d — re-run
 # ensure-sunshine-ds-uhid.sh.
+#
+# Must sort before 71-seat.rules / 73-seat-late.rules. TAG+=uaccess at 99 is too
+# late: seat is never tagged and the uaccess builtin never applies the ACL.
+# Steam's uinput rule is 70-steam-jupiter-input.rules.
 KERNEL=="uhid", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uhid"

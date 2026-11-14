@@ -357,8 +357,8 @@ else
   record_manual "udev uaccess for /dev/uhid" <<EOF
 ./scripts/ensure-sunshine-ds-uhid.sh
 # or:
-# sudo install -m 644 $ROOT/udev/99-sunshine-uhid.rules /etc/udev/rules.d/
-# sudo udevadm control --reload && sudo udevadm trigger --name-match=uhid
+# sudo install -m 644 $ROOT/udev/70-sunshine-uhid.rules /etc/udev/rules.d/
+# sudo udevadm control --reload && sudo udevadm trigger --action=add --sysname-match=uhid
 EOF
 fi
 echo

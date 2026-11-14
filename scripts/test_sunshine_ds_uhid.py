@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RULE = (ROOT / "udev" / "99-sunshine-uhid.rules").read_text()
+RULE = (ROOT / "udev" / "70-sunshine-uhid.rules").read_text()
 ENSURE = (ROOT / "scripts" / "ensure-sunshine-ds-uhid.sh").read_text()
 POST = (ROOT / "post-update.sh").read_text()
 BOOT = (ROOT / "bootstrap.sh").read_text()
@@ -22,7 +22,10 @@ def test_rule_tags_uaccess() -> None:
 
 
 def test_ensure_installs_and_records_manual() -> None:
-    assert "/etc/udev/rules.d/99-sunshine-uhid.rules" in ENSURE
+    assert "/etc/udev/rules.d/70-sunshine-uhid.rules" in ENSURE
+    assert "99-sunshine-uhid.rules" in ENSURE
+    assert "71-seat" in RULE
+    assert "--action=add" in ENSURE
     assert "record_manual" in ENSURE
     assert "ensure-sunshine-ds.sh --restart --force" in ENSURE
     assert "chmod 666" not in ENSURE

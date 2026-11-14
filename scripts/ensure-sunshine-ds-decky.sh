@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Sunshine DS Decky plugin (Game Mode → Plasma + proven :48100).
+# Install the Sunshine DS Decky plugin (Game Mode → Plasma + proven :48200).
 # Plugins dir is often root-owned; then print the sudo copy. Does not switch sessions.
 set -uo pipefail
 

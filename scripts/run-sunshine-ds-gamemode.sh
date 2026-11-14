@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Foreground launcher for sunshine-ds-kms. systemd ExecStart for
 # steamos-sunshine-ds-gamemode.service. Also `--write-conf`.
-# Does not touch Decky (:47989) or desktop sunshine-ds (:48100).
+# Does not touch Decky (:47989). Desktop kwin DS shares :48200 when Plasma is up.
 # Unsets DISPLAY (KMS) and LD_LIBRARY_PATH (AT_SECURE / file caps).
 set -uo pipefail
 

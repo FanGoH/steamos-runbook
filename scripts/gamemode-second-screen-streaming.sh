@@ -10,7 +10,7 @@
 #   on   — BUSY + sidecar even if the client is top-only
 #   off  — never dual-screen
 #
-# Ignore :47989 / :48100. Do not hardcode uniqueid.
+# Ignore Decky :47989. Shared :48200 kms vs kwin is identified by process name. Do not hardcode uniqueid.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

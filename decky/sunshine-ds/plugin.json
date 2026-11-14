@@ -5,6 +5,6 @@
   "api_version": 1,
   "publish": {
     "tags": ["sunshine", "gamestream", "moonlight", "steamos"],
-    "description": "Leave Game Mode for Plasma and start proven sunshine-ds (:48100). Cemu/Azahar stay Moonlight apps."
+    "description": "Leave Game Mode for Plasma and start proven sunshine-ds on the shared :48200 host. Cemu/Azahar stay Moonlight apps."
   }
 }

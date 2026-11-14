@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Leave Plasma dual-stream and return to SteamOS Game Mode.
-# Stops sunshine-ds + the KWin virtual output, sets login mode to game,
-# then calls steamosctl. Does not touch Decky Sunshine.
+# Keeps sunshine-ds on the shared :48200 host until gamescope starts, then
+# steamos-sunshine-ds-teardown.service --stops DS + the KWin helper so kms
+# can bind the same port. Does not touch Decky Sunshine.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,8 +13,14 @@ setup_user_dbus
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-echo "Tearing down sunshine-ds (needed before gamescope)."
-bash "$ROOT/scripts/ensure-sunshine-ds.sh" --stop || true
+bash "$ROOT/scripts/ensure-sunshine-ds.sh" --install-shortcut >/dev/null || true
+TEARDOWN="${SUNSHINE_DS_TEARDOWN_SERVICE:-steamos-sunshine-ds-teardown.service}"
+if systemctl --user is-enabled "$TEARDOWN" >/dev/null 2>&1; then
+  echo "Keeping sunshine-ds until $TEARDOWN frees :${SUNSHINE_DS_PORT:-48200} for kms."
+else
+  echo "Tearing down sunshine-ds (needed before gamescope; teardown unit missing)."
+  bash "$ROOT/scripts/ensure-sunshine-ds.sh" --stop || true
+fi
 
 if ! command -v steamosctl >/dev/null 2>&1; then
   echo "steamosctl missing."

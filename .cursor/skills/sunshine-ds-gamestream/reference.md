@@ -4,7 +4,7 @@ Proven dual-stream GameStream as of 2026-09-08. Personal IPs/uniqueids stay in `
 
 ## Game Mode `:48200` standard (2026-09-18, user: “WE DID IT”)
 
-**THE standard is `checkpoint-2026-09-18-gamepad-xtest`.** Thor bottom taps reach Cemu and line up under Stretch. Do not “improve” GamePad tap math, XTest inject, or Stretch mapping unless it breaks. Daily Plasma dual-screen stays `:48100`. Do **not** merge kms into play / `:48100`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
+**THE standard is `checkpoint-2026-09-18-gamepad-xtest`.** Thor bottom taps reach Cemu and line up under Stretch. Do not “improve” GamePad tap math, XTest inject, or Stretch mapping unless it breaks. Daily Plasma dual-screen is kwin on shared `:48200` (same uniqueid as kms). Do **not** merge kms capture into play / sunshine-ds-dev. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`.
 
 | Item | Proven value |
 |---|---|
@@ -52,13 +52,13 @@ Do not land DS Linux work on LizardByte `master` or Moonlight-stream `master`. T
 
 ## Host layout (do not rediscover)
 
-- Decky Sunshine `:47989` (KMS). Dev sunshine-ds `:48100` (`capture = kwin`). Pin clients to `:48100`.
-- Exactly one `Virtual-sunshine-ds` at 1920×1080, HDMI-A-1 at 0,0. Distrobox `steamos-tools`. `gamepad = x360`.
-- Dual-stream is Plasma/KWin only. Game Mode is gamescope — tear DS down first (`scripts/switch-to-game-mode.sh` / Desktop **Return to Game Mode**).
+- Decky Sunshine `:47989` (KMS, HDMI-only). Pin dual-stream clients to **`:48200`**.
+- Plasma: Distrobox `sunshine-ds` (`capture = kwin`) on `:48200` with the Game Mode uniqueid/certs. Exactly one `Virtual-sunshine-ds` at 1920×1080, HDMI-A-1 at 0,0. Distrobox `steamos-tools`.
+- Game Mode: `sunshine-ds-kms` on the same `:48200` (`capture = kms`). Mode switch drops the live encode (compositor dies) then the other backend binds the same host. `scripts/switch-to-game-mode.sh` / Desktop **Return to Game Mode**.
 
 ## Game Mode KMS experiment (isolated)
 
-Do **not** change `sunshine-ds-dev` (`capture = kwin`, `:48100`). The experiment uses a copy of the binary named `sunshine-ds-kms`, config dir `~/.config/sunshine-ds-gamemode`, and HTTP `:48200`. User unit `steamos-sunshine-ds-gamemode.service` is `WantedBy=gamescope-session.target` (restored by `post-update.sh --install-service`). Headless gamescope for video/1: `scripts/sunshine-ds-gamemode-virtual.sh` (not the KWin `sunshine-ds-virtual-output` helper).
+Do **not** merge kms capture into `sunshine-ds-dev` (`capture = kwin`). The Game Mode copy is `sunshine-ds-kms`, config dir `~/.config/sunshine-ds-gamemode` (shared identity files), HTTP `:48200`. User unit `steamos-sunshine-ds-gamemode.service` is `WantedBy=gamescope-session.target` (restored by `post-update.sh --install-service`). Headless gamescope for video/1: `scripts/sunshine-ds-gamemode-virtual.sh` (not the KWin `sunshine-ds-virtual-output` helper).
 
 ```bash
 scripts/ensure-sunshine-ds-gamemode.sh --install-service  # enable boot unit; start if gamescope is up

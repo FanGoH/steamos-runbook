@@ -5,7 +5,7 @@ description: Put standalone Cemu in desktop dual-stream layout (TV on HDMI-A-1, 
 
 # Cemu dual-screen (desktop GameStream)
 
-Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read. Moonlight app **Cemu Dual-Screen** on sunshine-ds `:48100` runs `scripts/sunshine-app-cemu.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
+Run `scripts/ensure-cemu-dual-screen.sh` unless the user only wants a status read. Moonlight app **Cemu Dual-Screen** on sunshine-ds `:48200` runs `scripts/sunshine-app-cemu.sh` (install with `scripts/ensure-sunshine-ds-apps.sh`).
 
 Desktop dual-stream is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`, `-f`). Plasma needs standalone Flatpak `info.cemu.Cemu`, windowed, emulated **Wii U GamePad**. Game Mode `:48200` uses `scripts/ensure-cemu-gamemode-dual-screen.sh` instead — do **not** run this desktop script there (`kscreen-doctor` / KWin fail).
 
@@ -16,7 +16,7 @@ Desktop dual-stream is **not** RetroDECK Game Mode Cemu (`ensure-cemu-input.sh`,
 | Cemu TV (`resourceClass` `info.cemu.Cemu`, caption is not GamePad View) | HDMI-A-1 | that output’s live origin × size |
 | GamePad View | Virtual-sunshine-ds | that output’s live origin × size |
 
-Read live sizes from `kscreen-doctor`. Current Thor checkpoint is HDMI-A-1 **1920×1080** at `0,0` plus Virtual-sunshine-ds **1920×1080** at `1920,0`. Older notes said 1080×1240 — do not hardcode that. Do **not** kill `sunshine-ds-virtual-output`. Do **not** `pgrep -f` / `pkill -f` sunshine. Moonlight must already be on sunshine-ds `:48100`.
+Read live sizes from `kscreen-doctor`. Current Thor checkpoint is HDMI-A-1 **1920×1080** at `0,0` plus Virtual-sunshine-ds **1920×1080** at `1920,0`. Older notes said 1080×1240 — do not hardcode that. Do **not** kill `sunshine-ds-virtual-output`. Do **not** `pgrep -f` / `pkill -f` sunshine. Moonlight must already be on sunshine-ds `:48200`.
 
 ## Bind + settings
 

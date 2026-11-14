@@ -120,6 +120,15 @@ wanted = {
 drop_names = {"Cemu Dual-Screen"}
 
 changed = False
+desktop_png = Path.home() / "sdsast/desktop.png"
+if not desktop_png.is_file():
+    desktop_png = Path.home() / ".local/share/sunshine-ds/assets/desktop.png"
+desktop_image = str(desktop_png) if desktop_png.is_file() else "desktop.png"
+for app in apps:
+    if isinstance(app, dict) and app.get("name") == "Desktop" and app.get("image-path") != desktop_image:
+        app["image-path"] = desktop_image
+        changed = True
+        print("Pinned Desktop image-path to", desktop_image, "(same CRC as Game Mode kms)")
 before = len(apps)
 apps[:] = [app for app in apps if not (isinstance(app, dict) and app.get("name") in drop_names)]
 if len(apps) != before:
@@ -145,5 +154,5 @@ if changed:
 PY
 
 chmod +x "$CEMU_CMD" "$AZAHAR_CMD" "$STOP_CMD" "$GAME_MODE_CMD" "$ROOT/scripts/pad_profile.py"
-echo "sunshine-ds apps are in $APPS_JSON (Moonlight :48100). Icons: $ICON_DIR. Restart sunshine-ds when the session is idle so Moonlight picks up new box art."
+echo "sunshine-ds apps are in $APPS_JSON (Moonlight :${SUNSHINE_DS_PORT:-48200}). Icons: $ICON_DIR. Restart sunshine-ds when the session is idle so Moonlight picks up new box art."
 exit 0

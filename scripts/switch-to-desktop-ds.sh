@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # From Game Mode: arm proven sunshine-ds, then switch to Plasma.
-# Does not launch Cemu/Azahar — those are Moonlight apps on :48100.
+# Does not launch Cemu/Azahar — those are Moonlight apps on shared :48200.
 # Does not change the default login mode (reboot still Game Mode).
 # Requires --yes when gamescope is active (kills Game Mode).
 set -uo pipefail
@@ -46,6 +46,14 @@ if gamescope_up && [ "$YES" -ne 1 ]; then
 fi
 
 bash "$ROOT/scripts/ensure-sunshine-ds.sh" --install-shortcut >/dev/null || true
+
+# Warm Distrobox so desktop DS binds :48200 as soon as KWin is up.
+if command -v podman >/dev/null 2>&1; then
+  box="${STEAMOS_DISTROBOX_NAME:-steamos-tools}"
+  if podman container exists "$box" 2>/dev/null; then
+    podman start "$box" >/dev/null 2>&1 || true
+  fi
+fi
 
 systemctl --user reset-failed "$UNIT" 2>/dev/null || true
 if ! systemctl --user start --no-block "$UNIT"; then

@@ -5,7 +5,7 @@ from __future__ import annotations
 GROUPS = [
     ("host", "Bootstrap, post-update, health, sysstat/atop"),
     ("mode", "Plasma Desktop DS vs Game Mode"),
-    ("stream", "Moonlight / sunshine-ds :48100 and :48200"),
+    ("stream", "Moonlight / sunshine-ds :48200 (desktop kwin + Game Mode kms)"),
     ("screen", "Second screen / GamePad clock / windows"),
     ("pad", "EmuPads mux and emulator binds"),
     ("hide", "Kernel-unplug extra pads (NMH3)"),
@@ -20,7 +20,7 @@ EXAMPLES = [
     ("fgpc pad list", "Host pads (Thor / Xbox / …)"),
     ("fgpc hide list", "Which pads can look unplugged"),
     ("fgpc hide off usb:045e:028e:5F19FC0A", "NMH3: hide the physical Xbox"),
-    ("fgpc stream status", "Desktop :48100 + Game Mode :48200"),
+    ("fgpc stream status", "Shared :48200 (desktop kwin / Game Mode kms)"),
     ("fgpc stream gamemode start-kms", "kms when :2 is already up"),
     ("fgpc screen list", "gamescope windows on :0/:1/:2"),
     ("fgpc screen clock", "Idle clock on Thor bottom"),
@@ -42,7 +42,7 @@ QAM_GROUPS = ("stream", "screen", "pad", "hide")
 WEB_GROUPS = ("stream", "screen", "pad", "hide", "emu", "saves")
 
 TIPS = [
-    "Moonlight dual-stream in Game Mode is :48200 (white tile), not Decky :47989.",
+    "Moonlight dual-stream is :48200 (desktop kwin and Game Mode kms share that host), not Decky :47989.",
     "Never pgrep -f / pkill -f sunshine. Use pgrep -x sunshine-ds / sunshine-ds-kms.",
     "Never sudo systemctl --user (no user bus). export XDG_RUNTIME_DIR=/run/user/$(id -u).",
     "Never sudo ./post-update.sh. Skip a step with PLAYBOOK_SKIP=name or SKIP_ENSURE_NAME=1.",
@@ -75,8 +75,8 @@ Update Tender + wrap (`ensure-tender.sh`) without the full recovery.
     "mode": """Plasma dual-stream vs Game Mode.
 
   fgpc mode status
-  fgpc mode desktop      sunshine-ds :48100 + Virtual-sunshine-ds
-  fgpc mode game         --stop desktop DS, then steamosctl
+  fgpc mode desktop      sunshine-ds :48200 kwin + Virtual-sunshine-ds
+  fgpc mode game         switch to Game Mode (teardown frees :48200 for kms)
 """,
     "stream": """Two playbook servers (Decky :47989 stays).
 

@@ -220,7 +220,7 @@ def _run_stream(action: str, target: str) -> dict[str, Any]:
     if action in ("start", "desktop", "restart"):
         return {
             "ok": False,
-            "message": "QAM stream is Game Mode :48200. Use start-kms (not --start, not desktop :48100).",
+            "message": "QAM stream is Game Mode :48200. Use start-kms (not --start; desktop kwin also uses :48200 on Plasma).",
         }
     return {"ok": False, "message": "stream action: status | start-kms | paint | stop | close-cemu | close-azahar"}
 

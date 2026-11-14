@@ -93,7 +93,7 @@ def _active(unit: str) -> bool:
 
 def _ds_state() -> str:
     r = _run_as_deck(
-        ["curl", "-sS", "--max-time", "2", "http://127.0.0.1:48100/serverinfo"],
+        ["curl", "-sS", "--max-time", "2", "http://127.0.0.1:48200/serverinfo"],
         timeout=6,
     )
     xml = r.stdout or ""
@@ -114,13 +114,13 @@ class Plugin:
         ds = _ds_state()
         if gamescope:
             headline = "Game Mode"
-            detail = "Start Dual-Stream Desktop to switch to Plasma and boot sunshine-ds on :48100. Cemu/Azahar stay Moonlight apps."
+            detail = "Start Dual-Stream Desktop to switch to Plasma. Moonlight stays on :48200 (same host as Game Mode kms). Cemu/Azahar stay Moonlight apps."
         elif ds in ("FREE", "BUSY"):
             headline = f"sunshine-ds {ds}"
-            detail = "Moonlight → host :48100. Return via the Sunshine app Return to Game Mode."
+            detail = "Moonlight → host :48200. Return via the Sunshine app Return to Game Mode."
         else:
             headline = "Desktop"
-            detail = "sunshine-ds is not answering :48100 yet."
+            detail = "sunshine-ds is not answering :48200 yet."
         return {
             "ok": True,
             "gamescope": gamescope,
@@ -138,5 +138,5 @@ class Plugin:
         _run_as_deck(["/bin/bash", script, "--yes"], timeout=15, background=True)
         return {
             "ok": True,
-            "message": "Switching to Plasma. sunshine-ds starts when KWin is up. Moonlight: :48100.",
+            "message": "Switching to Plasma. sunshine-ds starts when KWin is up. Moonlight stays on :48200.",
         }

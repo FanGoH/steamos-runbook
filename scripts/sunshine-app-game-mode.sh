@@ -30,5 +30,5 @@ if ! systemd-run --user --collect --no-block --unit="${UNIT%.service}" \
   disown || true
 fi
 
-echo "Return to Game Mode armed. Moonlight will disconnect; gamescope comes back."
+echo "Return to Game Mode armed. Moonlight stays on :${SUNSHINE_DS_PORT:-48200}; the stream drops while gamescope starts, then kms takes the same uniqueid."
 exit 0

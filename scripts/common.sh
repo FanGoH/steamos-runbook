@@ -52,20 +52,24 @@ load_env() {
   SUNSHINE_WATCH_ON_STARTUP_SEC="${SUNSHINE_WATCH_ON_STARTUP_SEC:-45}"
   SUNSHINE_WATCH_INTERVAL="${SUNSHINE_WATCH_INTERVAL:-2min}"
   SUNSHINE_PLUGINLOADER_WAIT_SECS="${SUNSHINE_PLUGINLOADER_WAIT_SECS:-60}"
-  SUNSHINE_DS_URL="${SUNSHINE_DS_URL:-http://127.0.0.1:48100}"
+  # Desktop kwin and Game Mode kms share this port + uniqueid so Moonlight
+  # has one host. Capture backends stay separate (never merge kms into kwin).
+  SUNSHINE_DS_KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
+  SUNSHINE_DS_PORT="${SUNSHINE_DS_PORT:-${SUNSHINE_DS_KMS_PORT}}"
+  SUNSHINE_DS_URL="${SUNSHINE_DS_URL:-http://127.0.0.1:${SUNSHINE_DS_PORT}}"
   SUNSHINE_DS_BIN="${SUNSHINE_DS_BIN:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds}"
   SUNSHINE_DS_HELPER="${SUNSHINE_DS_HELPER:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds-virtual-output}"
   SUNSHINE_DS_CONF="${SUNSHINE_DS_CONF:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev/sunshine/sunshine.conf}"
   SUNSHINE_DS_CONFIG_DIR="${SUNSHINE_DS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-dev}"
   SUNSHINE_DS_ON_DESKTOP_SERVICE="${SUNSHINE_DS_ON_DESKTOP_SERVICE:-steamos-sunshine-ds-on-desktop.service}"
+  SUNSHINE_DS_TEARDOWN_SERVICE="${SUNSHINE_DS_TEARDOWN_SERVICE:-steamos-sunshine-ds-teardown.service}"
   SUNSHINE_DS_DECKY_PLUGIN="${SUNSHINE_DS_DECKY_PLUGIN:-SunshineDS}"
-  # Isolated Game Mode KMS experiment. Never share this dir with sunshine-ds-dev.
+  # Isolated Game Mode KMS. Conf dir stays separate; identity files are shared.
   SUNSHINE_DS_KMS_BIN="${SUNSHINE_DS_KMS_BIN:-/home/${STEAMOS_USER}/.local/bin/sunshine-ds-kms}"
   SUNSHINE_DS_KMS_LIB_DIR="${SUNSHINE_DS_KMS_LIB_DIR:-/home/${STEAMOS_USER}/.local/lib/sunshine-ds-kms}"
   SUNSHINE_DS_KMS_CONFIG_DIR="${SUNSHINE_DS_KMS_CONFIG_DIR:-/home/${STEAMOS_USER}/.config/sunshine-ds-gamemode}"
-  SUNSHINE_DS_KMS_PORT="${SUNSHINE_DS_KMS_PORT:-48200}"
   SUNSHINE_DS_KMS_URL="${SUNSHINE_DS_KMS_URL:-http://127.0.0.1:${SUNSHINE_DS_KMS_PORT}}"
-  SUNSHINE_DS_KMS_UI_URL="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:48201}"
+  SUNSHINE_DS_KMS_UI_URL="${SUNSHINE_DS_KMS_UI_URL:-https://127.0.0.1:$((SUNSHINE_DS_KMS_PORT + 1))}"
   SUNSHINE_DS_KMS_SERVICE="${SUNSHINE_DS_KMS_SERVICE:-steamos-sunshine-ds-gamemode.service}"
   SUNSHINE_DS_KMS_VIRTUAL_SERVICE="${SUNSHINE_DS_KMS_VIRTUAL_SERVICE:-steamos-sunshine-ds-gamemode-virtual.service}"
   SUNSHINE_DS_KMS_RECOVER_SERVICE="${SUNSHINE_DS_KMS_RECOVER_SERVICE:-steamos-sunshine-ds-gamemode-recover.service}"
@@ -251,7 +255,7 @@ sunshine_stale_busy() {
 }
 
 sunshine_ds_serverinfo() {
-  curl -sS --max-time 3 "${SUNSHINE_DS_URL:-http://127.0.0.1:48100}/serverinfo" 2>/dev/null || true
+  curl -sS --max-time 3 "${SUNSHINE_DS_URL:-http://127.0.0.1:${SUNSHINE_DS_PORT:-48200}}/serverinfo" 2>/dev/null || true
 }
 
 sunshine_ds_serverinfo_state() {

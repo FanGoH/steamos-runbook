@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wait for Plasma Wayland after a Game Mode → Desktop switch, then start
-# proven sunshine-ds (:48100, capture=kwin). Does not switch sessions.
+# proven sunshine-ds (shared :48200, capture=kwin). Does not switch sessions.
 # Started on demand by the Sunshine DS Decky plugin / switch-to-desktop-ds.sh.
 set -uo pipefail
 
@@ -18,7 +18,9 @@ log() {
 }
 
 wayland_ready() {
-  [ -S "${XDG_RUNTIME_DIR}/wayland-0" ] || [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}" ]
+  [ -S "${XDG_RUNTIME_DIR}/wayland-0" ] \
+    || [ -S "${XDG_RUNTIME_DIR}/wayland-1" ] \
+    || [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}" ]
 }
 
 gamescope_up() {

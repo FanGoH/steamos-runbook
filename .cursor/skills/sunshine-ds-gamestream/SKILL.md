@@ -17,7 +17,7 @@ curl -s --max-time 3 http://127.0.0.1:48200/serverinfo | grep -E 'uniqueid|curre
 curl -s --max-time 3 http://127.0.0.1:47989/serverinfo | grep -E 'uniqueid|currentgame|state'
 ```
 
-Plasma Thor/Odin daily dual-screen uses the **dev** uniqueid / `:48100`. Game Mode Cemu dual-screen uses `sunshine-ds-kms` / `:48200` (uniqueid `1075C8EF…`). `:47989` is Decky KMS — black on Plasma **and** black (or mouse-only) in Game Mode. Do not debug Game Mode Cemu against Decky.
+Plasma Thor/Odin daily dual-screen uses Distrobox `sunshine-ds` (`capture = kwin`) on **`:48200`** with the Game Mode uniqueid `1075C8EF…`. Game Mode Cemu dual-screen uses `sunshine-ds-kms` on the **same port and uniqueid**. `:47989` is Decky KMS — black on Plasma **and** black (or mouse-only) in Game Mode. Do not debug Game Mode Cemu against Decky. The live Moonlight session cannot survive compositor death; keep the `:48200` host so clients reconnect without switching tiles.
 
 2. Confirm the **running** pid is the installed binary (`pgrep -x sunshine-ds` only — never `pgrep -f` / `pkill -f`):
 
@@ -34,10 +34,10 @@ If `lstart` is older than the binary mtime, the process does not have the latest
 
 This is the working GameStream baseline. Do not “improve” it unless the user asks.
 
-- Conf `~/.config/sunshine-ds-dev/sunshine/sunshine.conf`: `capture = kwin`, `encoder = software`, `hevc_mode = 1`, `av1_mode = 1`, `port = 48100`, `output_name = HDMI-A-1`. `back_button_timeout = 500` (hold Back/Select 0.5s → Guide). `gamepad = x360` so that Guide is a uinput Xbox 360 `045e:028e` (Steam Big Picture). DS `auto` is Xbox Series UHID `045e:0b13`; Decky Linux `auto` is Xbox One uinput `045e:02ea`. Do not leave DS on `xseries`. `dual_display_source = Virtual-sunshine-ds`.
+- Conf `~/.config/sunshine-ds-dev/sunshine/sunshine.conf`: `capture = kwin`, `encoder = software`, `hevc_mode = 1`, `av1_mode = 1`, `port = 48200` (shared with Game Mode kms; `file_state` / certs point at `sunshine-ds-gamemode`), `output_name = HDMI-A-1`. `back_button_timeout = 500` (hold Back/Select 0.5s → Guide). `gamepad = x360` so that Guide is a uinput Xbox 360 `045e:028e` (Steam Big Picture). DS `auto` is Xbox Series UHID `045e:0b13`; Decky Linux `auto` is Xbox One uinput `045e:02ea`. Do not leave DS on `xseries`. `dual_display_source = Virtual-sunshine-ds`.
 - **One virtual display only.** HDMI-A-1 is the physical TV (Decky Sunshine uses that too). Linux DS serves at most one `Virtual-sunshine-ds` for Azahar/Cemu/other dual-screen mods. Playbook helper: `/home/deck/.local/bin/sunshine-ds-virtual-output --name sunshine-ds --width 1920 --height 1080 --scale 1`. It must stay running across connect/disconnect (one client, the other, or both). DS must not spawn a second `--name sunshine-ds` and must not SIGTERM the helper when a stream ends. Do not use `kscreen-doctor` to decide if the output exists (hangs with duplicates). Live layout is usually HDMI 1920×1080 at `0,0` plus Virtual-sunshine-ds 1920×1080 at `1920,0`.
 - Dual-stream checkpoint: HDMI primary + that one virtual second stream. Log: `Second display: reusing Virtual-sunshine-ds` (or `capturing existing`) and `Screencasting output name Virtual-sunshine-ds`. A second client must join the **shared** second-display capture, not open another KWin screencast of the same output.
-- Thor/Odin connect+disconnect: `/resume` of desktop `881448767` is how the second device joins. Each client keeps its own pad; disconnecting one must not destroy the other's pad and must not tear down HDMI or the virtual output. `ControllerNumber already allocated [0]` on the **same** client is a duplicate arrival (keep the pad). If it appears for the **other** client at join, they are sharing a session id — quit the first client and reconnect both to `:48100`.
+- Thor/Odin connect+disconnect: `/resume` of desktop `881448767` is how the second device joins. Each client keeps its own pad; disconnecting one must not destroy the other's pad and must not tear down HDMI or the virtual output. `ControllerNumber already allocated [0]` on the **same** client is a duplicate arrival (keep the pad). If it appears for the **other** client at join, they are sharing a session id — quit the first client and reconnect both to `:48200`.
 - Thor mouse checkpoint: top-panel touches must stay on HDMI. `getLocationOnScreen()` is per-display (both origin 0,0); the landscape 1920-wide top activity used to hit-test the 1080-wide bottom Presentation and send display index 1. Dual-panel routes by the view’s display; stacked mode still hit-tests. Moonlight branch `cursor/top-touch-hit-test-f15e`.
 - Thor dual-panel restore: Back can dismiss the bottom Presentation while the top stream stays up. Tapping Moonlight DS on the bottom panel should re-show that Presentation and keep Game on the top display, not move the primary stream. Moonlight branch `cursor/restore-bottom-presentation-f15e`.
 - Thor Cemu dual-screen: standalone Flatpak `info.cemu.Cemu`, **not** RetroDECK. TV on HDMI-A-1, GamePad View on Virtual-sunshine-ds. Type **Wii U GamePad**. Bind with `scripts/bind-gamepad.py`; place with `scripts/ensure-cemu-dual-screen.sh`. Recipe in **Cemu dual-screen (Thor)** below.
@@ -158,7 +158,7 @@ sudo setcap cap_sys_admin+ep ~/.local/bin/sunshine-ds-kms
 ./scripts/ensure-sunshine-ds-gamemode.sh --start-kms
 ```
 
-Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48100` `/serverinfo` is `FREE` or `BUSY` with the **dev** uniqueid (not Decky). Confirm `:48100` is owned by `sunshine-ds`. Game Mode `:48200` is `sunshine-ds-kms` via `steamos-sunshine-ds-gamemode.service` (user `deck`, no sudo).
+Do not paste the Distrobox `podman exec` by hand. Never `pgrep -f` / `pkill -f`. Keep the long-lived virtual-output helper. Wait until `:48200` `/serverinfo` is `FREE` or `BUSY` with uniqueid `1075C8EF…` (not Decky). Confirm `:48200` is owned by `sunshine-ds` on Plasma or `sunshine-ds-kms` in Game Mode. Game Mode kms is `steamos-sunshine-ds-gamemode.service` (user `deck`, no sudo).
 
 ```bash
 podman exec --user 1000 steamos-tools ninja -C /home/deck/code/sunshine-ds/build -j2 sunshine
@@ -185,7 +185,7 @@ Over SSH: `export XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## Cemu dual-screen (Thor)
 
-Desktop `:48100` Cemu is `scripts/ensure-cemu-dual-screen.sh` (or a Tender tile), not a Moonlight app. Do not re-add **Cemu Dual-Screen** to `apps.json`. Game Mode Cemu is Tender Play while `:48200` is BUSY. Overlay **Quit game** / `scripts/sunshine-app-stop.sh cemu` still kills leftover `Cemu_relwithdeb` / `Cemu-wrapper`. Do not add Cemu to Decky `:47989`.
+Desktop Cemu (shared `:48200` kwin) is `scripts/ensure-cemu-dual-screen.sh` (or a Tender tile), not a Moonlight app. Do not re-add **Cemu Dual-Screen** to `apps.json`. Game Mode Cemu is Tender Play while `:48200` is BUSY. Overlay **Quit game** / `scripts/sunshine-app-stop.sh cemu` still kills leftover `Cemu_relwithdeb` / `Cemu-wrapper`. Do not add Cemu to Decky `:47989`.
 
 Game Mode `:48200` is **THE standard** `checkpoint-2026-09-18-gamepad-xtest`. Recipe: `.cursor/skills/sunshine-ds-gamemode/SKILL.md`. Moonlight already on `sunshine-ds-kms` (not Decky). HUD subset **`checkpoint-2026-09-17-hdmi-hud`**; Cemu fill+Exit subset **`checkpoint-2026-09-14-gamemode-fill-exit`**. Desktop app is `958645192`. Last client gone must leave Desktop `FREE`; then tap **Desktop** or the Tender Cemu tile (Wind Waker HD). While `:48200` is BUSY and `$XDG_RUNTIME_DIR/sunshine-ds-gamemode-virtual` has `serial=` / `pw_node=`, Tender Play sets `CEMU_GAMEMODE_DS=1` and `--attach` (no `-f`). GamePad is on session `:1`; x11grab must use that display and `scale=1920:1080`. Local Play (kms FREE) stays `-f`. Manual: `CEMU_PAD_MATCH=Thor ./scripts/ensure-cemu-gamemode-dual-screen.sh`. Close a leftover Tender `-f` Cemu with `scripts/sunshine-app-stop.sh cemu` before the first streaming Play.
 
@@ -232,7 +232,7 @@ Default `GAMESTREAM_PAD_PROFILE=x360` (`back_button_timeout = 500`). `auto` is X
 
 ### Launch
 
-Close the smoke HUDs. Moonlight already on `:48100`. Then either set `CEMU_ROM` and run the script, or:
+Close the smoke HUDs. Moonlight already on `:48200`. Then either set `CEMU_ROM` and run the script, or:
 
 ```bash
 export XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0
@@ -253,7 +253,7 @@ Do not inherit Steam’s `SDL_GAMECONTROLLER_IGNORE_DEVICES`. Do not change Moon
 
 ## Azahar dual-screen (Thor)
 
-From Moonlight on `:48100`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-azahar.sh`; box art is the Azahar Flatpak icon). Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
+From Moonlight on `:48200`, tap **Azahar Dual-Screen** (`scripts/sunshine-app-azahar.sh`; box art is the Azahar Flatpak icon). Same dual-stream as Cemu, for 3DS. Recipe: **`.cursor/skills/azahar-dual-screen/SKILL.md`** and `scripts/ensure-azahar-dual-screen.sh`.
 
 - Standalone Flatpak `org.azahar_emu.Azahar`, **not** RetroDECK `azahar-launcher`.
 - `layout_option=4` Separate Windows, `secondary_display_layout=2` BottomScreenOnly, `screen_bottom_stretch` / `screen_top_stretch` true (otherwise 4:3 fills the 1920×1080 GamePad window by height only).

@@ -29,7 +29,7 @@ app = typer.Typer(
 
 host_app = typer.Typer(help="Bootstrap, post-update, health, sysstat/atop.")
 mode_app = typer.Typer(help="Plasma Desktop DS vs Game Mode.")
-stream_app = typer.Typer(help="Moonlight sunshine-ds :48100 / :48200.")
+stream_app = typer.Typer(help="Moonlight sunshine-ds :48200 (desktop kwin / Game Mode kms).")
 screen_app = typer.Typer(help="Second screen, windows, idle clock.")
 pad_app = typer.Typer(help="EmuPads mux and emulator binds.")
 hide_app = typer.Typer(help="Kernel-unplug extra pads (NMH3).")
@@ -274,7 +274,7 @@ def mode_status() -> None:
     """Desktop DS + Game Mode kms one-liners."""
     desk = run("ensure-sunshine-ds.sh", ["--status"], json_out=False, timeout=20)
     kms = run("ensure-sunshine-ds-gamemode.sh", ["--status"], json_out=False, timeout=20)
-    console.print("[bold]desktop :48100[/bold]")
+    console.print("[bold]desktop kwin :48200[/bold]")
     console.print((desk.stdout or desk.stderr or "").rstrip() or f"rc={desk.rc}")
     console.print("[bold]gamemode :48200[/bold]")
     console.print((kms.stdout or kms.stderr or "").rstrip() or f"rc={kms.rc}")
@@ -282,7 +282,7 @@ def mode_status() -> None:
 
 @mode_app.command("desktop")
 def mode_desktop() -> None:
-    """Start Plasma dual-stream DS (:48100)."""
+    """Start Plasma dual-stream DS (shared :48200 / kwin)."""
     result = run("ensure-sunshine-ds.sh", json_out=False, timeout=90, stream=True)
     raise typer.Exit(result.rc)
 
@@ -299,7 +299,7 @@ def mode_game() -> None:
 
 @stream_app.command("status")
 def stream_status() -> None:
-    """Desktop :48100 and Game Mode :48200."""
+    """Shared :48200 — desktop kwin and Game Mode kms."""
     mode_status()
 
 
@@ -308,7 +308,7 @@ def stream_desktop(
     action: str = typer.Argument("status", help="status | start | stop | restart"),
     force: bool = typer.Option(False, "--force", help="Restart even if BUSY."),
 ) -> None:
-    """Desktop sunshine-ds :48100 (Distrobox). Not Decky :47989."""
+    """Desktop sunshine-ds :48200 (Distrobox kwin). Not Decky :47989."""
     args = {
         "status": ["--status"],
         "start": [],

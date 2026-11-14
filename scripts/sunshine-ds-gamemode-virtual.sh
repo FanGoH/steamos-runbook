@@ -12,7 +12,7 @@
 # Do not write `node=<id>`: sunshine-ds-kms built from f8d9968c then skips
 # AUTOCONNECT + TARGET_OBJECT, and video/1 stays dummy_img() black. Sep 9
 # checkpoint 119d7452 links by object.serial. Keep the node id as `pw_node=`.
-# Does not touch :48100, sunshine-ds-dev, or the KWin helper.
+# Does not touch sunshine-ds-dev capture=kwin or the KWin helper.
 # Does not restart gamescope-session.
 #
 # Pref: ~/.config/sunshine-ds-gamemode/virtual-output (on|off). --start is a

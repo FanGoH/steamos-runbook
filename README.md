@@ -21,7 +21,7 @@ cp .env.example .env
 - `steamos-sunshine-ds-gamemode.service` + virtual helper → `sunshine-ds-kms` on **`:48200`**, idle clock on headless `:2`
 - `emupads-mux.service` → EmuPads P1/P2 (`~/.config/emupads/mux.json` routing is unchanged)
 - Decky Sunshine **`:47989`** also comes back (HDMI-only). Dual-stream is the **white** Moonlight tile on `:48200`, not Decky
-- Desktop sunshine-ds **`:48100`** stays down (Plasma only)
+- Desktop sunshine-ds (kwin) stays down; the same **`:48200`** host is kms here
 
 Then: Thor/Odin Moonlight → `:48200` → Desktop. Tender Play while that host is `BUSY` is the dual-screen path (Cemu windowed GamePad grab, Azahar standalone). You do not re-pair, re-bind, or re-copy dumps. If `:48200` is down after a reboot:
 
@@ -104,7 +104,7 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/build-moonlight-ds.sh` | Build Moonlight DS debug APK (`com.fangoh.moonlight.debug`) |
 | `scripts/build-fgpc-apk.sh` | Thin WebView APK for the FGPC phone UI (`com.fangoh.fgpc`) |
 | `scripts/install-fgpc-apk.sh` | Sideload `FGPC.apk` to connected ADB devices (do not `adb kill-server`) |
-| `scripts/test-sunshine-ds-desktop.sh` | Desktop dual-display smoke test for sunshine-ds (`:48100`) |
+| `scripts/test-sunshine-ds-desktop.sh` | Desktop dual-display smoke test for sunshine-ds (`:48200`) |
 | `scripts/ensure-kwin-screencast.sh` | Last-resort: reinitialize KWin if desktop screenshots are all black |
 | `scripts/run-cursor-agent-worker.sh` | Long-lived `agent worker start` for My Machines (systemd) |
 | `scripts/ensure-cursor-agent.sh` | Cursor Agent worker user service |
@@ -153,12 +153,12 @@ Set `TAILSCALE_LOGIN_SERVER` (and related vars) in `.env` before relying on this
 | `scripts/sunshine-app-cemu.sh` | Moonlight app wrapper: dual-screen Cemu, wait until Cemu exits |
 | `scripts/sunshine-app-azahar.sh` | Moonlight app wrapper: dual-screen Azahar, wait until Azahar exits |
 | `scripts/sunshine-app-stop.sh` | Kill leftover Cemu/Azahar after Moonlight Quit game (`azahar` or `cemu`) |
-| `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (`:48100` only) and copy Cemu/Azahar Flatpak icons |
-| `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (`:48100`). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
-| `scripts/ensure-sunshine-ds-decky.sh` | Install Decky **SunshineDS** (Game Mode → Plasma + proven `:48100`). `~/homebrew/plugins` may need sudo |
+| `scripts/ensure-sunshine-ds-apps.sh` | Add those apps to sunshine-ds-dev `apps.json` (shared `:48200`) and copy Cemu/Azahar Flatpak icons |
+| `scripts/ensure-sunshine-ds.sh` | Start Distrobox + one Virtual-sunshine-ds helper + sunshine-ds (shared `:48200` / kwin). `--stop` tears down for Game Mode. `--install-shortcut` writes `~/Desktop/Return to Game Mode.desktop` without starting DS. `--restart` if idle. Not Decky `:47989`. |
+| `scripts/ensure-sunshine-ds-decky.sh` | Install Decky **SunshineDS** (Game Mode → Plasma on shared `:48200`). `~/homebrew/plugins` may need sudo |
 | `scripts/sunshine-ds-on-desktop.sh` | Called by that plugin: start desktop dual-stream DS and switch to Plasma |
-| `scripts/switch-to-game-mode.sh` | Stop sunshine-ds + virtual output, set login mode to game, `steamosctl switch-to-game-mode`. Desktop icon: **Return to Game Mode**. |
-| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not touch `:48100` / `sunshine-ds-dev`. |
+| `scripts/switch-to-game-mode.sh` | Switch to Game Mode; teardown unit frees shared `:48200` for kms. Desktop icon: **Return to Game Mode**. |
+| `scripts/ensure-sunshine-ds-gamemode.sh` | Isolated Game Mode KMS (`sunshine-ds-kms` host + RUNPATH, shared `:48200`). `--install-service` enables `steamos-sunshine-ds-gamemode.service` on `gamescope-session.target` (starts as `deck`; sudo is only `setcap`). `--start` also enables it. Does not merge kms capture into `sunshine-ds-dev`. |
 | `scripts/ensure-mangohud-presets.sh` | Steam QAM performance overlay preset 2: horizontal bar stretched to HDMI (`horizontal_stretch=1`). Headless `:2` gamescope uses a separate mangoapp ftok cwd so 1080p frames do not 1/4-flash the HUD. Other presets stay stock. |
 | `scripts/ensure-sunshine-ds-kms-setcap.sh` | Detect passwordless `setcap` for `sunshine-ds-kms` / `.new`. Drop-in must be `zzz-sunshine-ds-kms-setcap` (after `wheel`). Prints sudo lines after a SteamOS update. |
 | `scripts/sunshine-ds-gamemode-virtual.sh` | Headless gamescope for Game Mode video/1 (`--start` / `--paint` idle screensaver clock on `:2`; `--recover` / `--watch` restore empty `:2`; sidecar `serial=` + `pw_node=`; `--smoke` / `--stop`). Not the KWin virtual-output helper. |
@@ -227,9 +227,9 @@ curl -sf http://127.0.0.1:18789/healthz
 
 ## Sunshine DS / Moonlight DS
 
-Sunshine DS source lives on https://github.com/FanGoH/Sunshine (`sunshine-ds-linux`). The playbook clones/builds/tests only. Production Decky Sunshine on `:47989` stays untouched; the side-by-side binary is `sunshine-ds` on **`:48100`**. Checkpoint SHAs: `.cursor/skills/sunshine-ds-gamestream/reference.md`.
+Sunshine DS source lives on https://github.com/FanGoH/Sunshine (`sunshine-ds-linux`). The playbook clones/builds/tests only. Production Decky Sunshine on `:47989` stays untouched; Plasma kwin `sunshine-ds` and Game Mode `sunshine-ds-kms` share Moonlight **`:48200`**. Checkpoint SHAs: `.cursor/skills/sunshine-ds-gamestream/reference.md`.
 
-Moonlight DS (https://github.com/FanGoH/moonlight-android `dual-display`) streams both displays. Build with `scripts/build-moonlight-ds.sh` (JDK 17 + Android SDK under `/home`). Pair the client to `HOST:48100`, not `:47989`.
+Moonlight DS (https://github.com/FanGoH/moonlight-android `dual-display`) streams both displays. Build with `scripts/build-moonlight-ds.sh` (JDK 17 + Android SDK under `/home`). Pair the client to `HOST:48200`, not `:47989`.
 
 ## Manual checks
 

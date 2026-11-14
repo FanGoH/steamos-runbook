@@ -21,7 +21,7 @@
 # (standalone Flatpak, not RetroDECK azahar-launcher -f) and waits for
 # Azahar so Steam Exit / tile end can --quit. Paint :2 only after azahar
 # is gone; --paint hops out of Steam's reaper via systemd-run.
-# Does not rewrite shortcuts.vdf. Does not touch :48100 / KWin.
+# Does not rewrite shortcuts.vdf. Does not touch desktop kwin capture.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

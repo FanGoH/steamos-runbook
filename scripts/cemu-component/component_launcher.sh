@@ -23,7 +23,7 @@ if [ -f "$want" ]; then
 fi
 
 # Tender Play while Moonlight is on :48200 video/1: same windowed GamePad
-# path as the want file. Helper ignores Decky :47989 and desktop :48100.
+# path as the want file. Helper ignores Decky :47989 and desktop kwin DS.
 if [ "${CEMU_GAMEMODE_DS:-}" != 1 ]; then
   stream_chk="${STEAMOS_PLAYBOOK:-/home/deck/steamos-playbook}/scripts/gamemode-second-screen-streaming.sh"
   if [ -x "$stream_chk" ] && "$stream_chk"; then
